@@ -26,6 +26,8 @@ export const AppProvider = ({children}) => {
     // Loading and error states
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [syncing, setSyncing] = useState(false); // NEW
+
     const [uploading, setUploading] = useState(false); // NEW
     const [error, setError] = useState(null);
     const [lastSaved, setLastSaved] = useState(null);
@@ -339,6 +341,147 @@ export const AppProvider = ({children}) => {
             }
         }
     };
+    // Platform management functions (NEW)
+    const connectPlatform = async (platformId, authData) => {
+        const oldPlatforms = platforms;
+        setPlatforms(prev => prev.map(p =>
+            p.id === platformId ? {...p, connected: true, authData} : p
+        ));
+        setSaving(true);
+
+        try {
+            const result = await apiService.connectPlatform(platformId, authData);
+            setPlatforms(prev => prev.map(p =>
+                p.id === platformId ? {...p, ...result.platform} : p
+            ));
+            setLastSaved(new Date());
+        } catch (err) {
+            console.error('Failed to connect platform:', err);
+            setPlatforms(oldPlatforms);
+            if (!apiService.demoMode) {
+                setError('Fehler beim Verbinden der Plattform');
+            }
+            throw err;
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const disconnectPlatform = async (platformId) => {
+        const oldPlatforms = platforms;
+        setPlatforms(prev => prev.map(p =>
+            p.id === platformId ? {...p, connected: false, authData: {}, lastSync: null} : p
+        ));
+        setSaving(true);
+
+        try {
+            await apiService.disconnectPlatform(platformId);
+            setLastSaved(new Date());
+        } catch (err) {
+            console.error('Failed to disconnect platform:', err);
+            setPlatforms(oldPlatforms);
+            if (!apiService.demoMode) {
+                setError('Fehler beim Trennen der Plattform');
+            }
+            throw err;
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const updatePlatformSettings = async (platformId, settings) => {
+        const oldPlatforms = platforms;
+        setPlatforms(prev => prev.map(p =>
+            p.id === platformId ? {...p, syncSettings: {...p.syncSettings, ...settings}} : p
+        ));
+        setSaving(true);
+
+        try {
+            await apiService.updatePlatformSettings(platformId, settings);
+            setLastSaved(new Date());
+        } catch (err) {
+            console.error('Failed to update platform settings:', err);
+            setPlatforms(oldPlatforms);
+            if (!apiService.demoMode) {
+                setError('Fehler beim Aktualisieren der Plattform-Einstellungen');
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const testPlatformConnection = async (platformId) => {
+        setSyncing(true);
+        try {
+            const result = await apiService.testPlatformConnection(platformId);
+            setPlatforms(prev => prev.map(p =>
+                p.id === platformId ? {...p, lastTested: result.lastTested, testResult: result} : p
+            ));
+            return result;
+        } catch (err) {
+            console.error('Failed to test platform connection:', err);
+            if (!apiService.demoMode) {
+                setError('Fehler beim Testen der Plattform-Verbindung');
+            }
+            throw err;
+        } finally {
+            setSyncing(false);
+        }
+    };
+
+    const syncToPlatform = async (platformId, dataTypes = ['profile', 'availability']) => {
+        setSyncing(true);
+        try {
+            const result = await apiService.syncToPlatform(platformId, dataTypes);
+            setPlatforms(prev => prev.map(p =>
+                p.id === platformId ? {...p, lastSync: result.timestamp} : p
+            ));
+            return result;
+        } catch (err) {
+            console.error('Failed to sync to platform:', err);
+            if (!apiService.demoMode) {
+                setError('Fehler bei der Plattform-Synchronisation');
+            }
+            throw err;
+        } finally {
+            setSyncing(false);
+        }
+    };
+
+    const bulkSyncToPlatforms = async (platformIds, dataTypes = ['profile', 'availability']) => {
+        setSyncing(true);
+        try {
+            const result = await apiService.bulkSyncToPlatforms(platformIds, dataTypes);
+            setPlatforms(prev => prev.map(p =>
+                platformIds.includes(p.id) ? {...p, lastSync: result.timestamp} : p
+            ));
+            setSyncStatus({syncing: false, lastSync: result.timestamp});
+            return result;
+        } catch (err) {
+            console.error('Failed to bulk sync platforms:', err);
+            if (!apiService.demoMode) {
+                setError('Fehler bei der Massen-Synchronisation');
+            }
+            throw err;
+        } finally {
+            setSyncing(false);
+        }
+    };
+
+    const initiateOAuth = async (platformId) => {
+        try {
+            const result = await apiService.initiateOAuth(platformId);
+            // Open OAuth window
+            window.open(result.authUrl, '_blank', 'width=500,height=600');
+            return result;
+        } catch (err) {
+            console.error('Failed to initiate OAuth:', err);
+            if (!apiService.demoMode) {
+                setError('Fehler beim Starten der OAuth-Authentifizierung');
+            }
+            throw err;
+        }
+    };
 
     // ... rest of existing functions remain the same ...
 
@@ -355,8 +498,19 @@ export const AppProvider = ({children}) => {
         loading,
         saving,
         uploading, // NEW
+        syncing, // NEW
+
         error,
         lastSaved,
+
+        // Platform functions (NEW)
+        connectPlatform,
+        disconnectPlatform,
+        updatePlatformSettings,
+        testPlatformConnection,
+        syncToPlatform,
+        bulkSyncToPlatforms,
+        initiateOAuth,
 
         // Profile functions
         updateProfile,

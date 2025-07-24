@@ -28,7 +28,7 @@ import {
 
 // Import refactored components
 import {AppProvider} from './context/AppContext';
-import {Dashboard, CalendarView, ProfileView, SyncIndicator, Button, Card, Badge, Modal, Input} from './components';
+import {Dashboard, CalendarView, ProfileView, PlatformsView, SyncIndicator, Button, Card, Badge, Modal, Input} from './components';
 
 // Main App Component
 const App = () => {
@@ -135,16 +135,6 @@ const SidebarItem = ({icon: Icon, label, active, onClick}) => (
         <span className="font-medium">{label}</span>
         {active && <ChevronRight className="w-4 h-4 ml-auto"/>}
     </button>
-);
-
-// Platforms View Component (placeholder)
-const PlatformsView = () => (
-    <div className="space-y-6">
-        <h1 className="text-3xl font-bold text-gray-900">Plattformen</h1>
-        <Card>
-            <p className="text-gray-600">Platforms view implementation goes here...</p>
-        </Card>
-    </div>
 );
 
 // Settings View Component (placeholder)
