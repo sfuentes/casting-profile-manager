@@ -6,6 +6,7 @@ import {initialPlatforms} from "../data/initialData.js";
 // App Context for State Management
 const AppContext = createContext();
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAppContext = () => {
     const context = useContext(AppContext);
     if (!context) {
@@ -26,9 +27,8 @@ export const AppProvider = ({children}) => {
     // Loading and error states
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [syncing, setSyncing] = useState(false); // NEW
-
-    const [uploading, setUploading] = useState(false); // NEW
+    const [syncing, setSyncing] = useState(false);
+    const [uploading, setUploading] = useState(false);
     const [error, setError] = useState(null);
     const [lastSaved, setLastSaved] = useState(null);
 
@@ -71,7 +71,7 @@ export const AppProvider = ({children}) => {
         }
     };
 
-    // Profile functions with API integration (enhanced)
+    // Profile functions with API integration
     const updateProfile = async (updates) => {
         const oldProfile = profile;
         setProfile(prev => ({...prev, ...updates}));
@@ -94,7 +94,7 @@ export const AppProvider = ({children}) => {
         }
     };
 
-    // Work history functions (NEW)
+    // Work history functions
     const addWorkHistory = async (workItem) => {
         setSaving(true);
         try {
@@ -104,16 +104,19 @@ export const AppProvider = ({children}) => {
                 workHistory: [...(prev.workHistory || []), newWorkItem]
             }));
             setLastSaved(new Date());
+            return newWorkItem;
         } catch (err) {
             console.error('Failed to add work history:', err);
             if (!apiService.demoMode) {
                 setError('Fehler beim Hinzufügen der Berufserfahrung');
             } else {
+                const newWorkItem = {...workItem, id: Date.now()};
                 setProfile(prev => ({
                     ...prev,
-                    workHistory: [...(prev.workHistory || []), {...workItem, id: Date.now()}]
+                    workHistory: [...(prev.workHistory || []), newWorkItem]
                 }));
                 setLastSaved(new Date());
+                return newWorkItem;
             }
         } finally {
             setSaving(false);
@@ -168,7 +171,7 @@ export const AppProvider = ({children}) => {
         }
     };
 
-    // Education functions (NEW)
+    // Education functions
     const addEducation = async (educationItem) => {
         setSaving(true);
         try {
@@ -178,16 +181,19 @@ export const AppProvider = ({children}) => {
                 education: [...(prev.education || []), newEducationItem]
             }));
             setLastSaved(new Date());
+            return newEducationItem;
         } catch (err) {
             console.error('Failed to add education:', err);
             if (!apiService.demoMode) {
                 setError('Fehler beim Hinzufügen der Ausbildung');
             } else {
+                const newEducationItem = {...educationItem, id: Date.now()};
                 setProfile(prev => ({
                     ...prev,
-                    education: [...(prev.education || []), {...educationItem, id: Date.now()}]
+                    education: [...(prev.education || []), newEducationItem]
                 }));
                 setLastSaved(new Date());
+                return newEducationItem;
             }
         } finally {
             setSaving(false);
@@ -242,7 +248,7 @@ export const AppProvider = ({children}) => {
         }
     };
 
-    // Image upload functions (NEW)
+    // Image upload functions
     const uploadProfilePhoto = async (file) => {
         setUploading(true);
         try {
@@ -314,7 +320,205 @@ export const AppProvider = ({children}) => {
         }
     };
 
-    // Sync profile to platforms (NEW)
+    // Booking functions with API integration
+    const addBooking = async (bookingData) => {
+        setSaving(true);
+        try {
+            const newBooking = await apiService.addBooking(bookingData);
+            setBookings(prev => [...prev, newBooking]);
+            setLastSaved(new Date());
+            return newBooking;
+        } catch (err) {
+            console.error('Failed to add booking:', err);
+            if (!apiService.demoMode) {
+                setError('Fehler beim Hinzufügen der Buchung');
+            } else {
+                const newBooking = {...bookingData, id: Date.now()};
+                setBookings(prev => [...prev, newBooking]);
+                setLastSaved(new Date());
+                return newBooking;
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const updateBooking = async (bookingId, updates) => {
+        const oldBookings = bookings;
+        setBookings(prev => prev.map(b => b.id === bookingId ? {...b, ...updates} : b));
+        setSaving(true);
+
+        try {
+            const updatedBooking = await apiService.updateBooking(bookingId, updates);
+            setBookings(prev => prev.map(b => b.id === bookingId ? updatedBooking : b));
+            setLastSaved(new Date());
+        } catch (err) {
+            console.error('Failed to update booking:', err);
+            if (!apiService.demoMode) {
+                setBookings(oldBookings);
+                setError('Fehler beim Aktualisieren der Buchung');
+            } else {
+                setLastSaved(new Date());
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const deleteBooking = async (bookingId) => {
+        const oldBookings = bookings;
+        setBookings(prev => prev.filter(b => b.id !== bookingId));
+        setSaving(true);
+
+        try {
+            await apiService.deleteBooking(bookingId);
+            setLastSaved(new Date());
+        } catch (err) {
+            console.error('Failed to delete booking:', err);
+            if (!apiService.demoMode) {
+                setBookings(oldBookings);
+                setError('Fehler beim Löschen der Buchung');
+            } else {
+                setLastSaved(new Date());
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // Option functions with API integration
+    const addOption = async (optionData) => {
+        setSaving(true);
+        try {
+            const newOption = await apiService.addOption(optionData);
+            setOptions(prev => [...prev, newOption]);
+            setLastSaved(new Date());
+            return newOption;
+        } catch (err) {
+            console.error('Failed to add option:', err);
+            if (!apiService.demoMode) {
+                setError('Fehler beim Hinzufügen der Option');
+            } else {
+                const newOption = {...optionData, id: Date.now()};
+                setOptions(prev => [...prev, newOption]);
+                setLastSaved(new Date());
+                return newOption;
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const updateOption = async (optionId, updates) => {
+        const oldOptions = options;
+        setOptions(prev => prev.map(o => o.id === optionId ? {...o, ...updates} : o));
+        setSaving(true);
+
+        try {
+            const updatedOption = await apiService.updateOption(optionId, updates);
+            setOptions(prev => prev.map(o => o.id === optionId ? updatedOption : o));
+            setLastSaved(new Date());
+        } catch (err) {
+            console.error('Failed to update option:', err);
+            if (!apiService.demoMode) {
+                setOptions(oldOptions);
+                setError('Fehler beim Aktualisieren der Option');
+            } else {
+                setLastSaved(new Date());
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const deleteOption = async (optionId) => {
+        const oldOptions = options;
+        setOptions(prev => prev.filter(o => o.id !== optionId));
+        setSaving(true);
+
+        try {
+            await apiService.deleteOption(optionId);
+            setLastSaved(new Date());
+        } catch (err) {
+            console.error('Failed to delete option:', err);
+            if (!apiService.demoMode) {
+                setOptions(oldOptions);
+                setError('Fehler beim Löschen der Option');
+            } else {
+                setLastSaved(new Date());
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // Availability functions with API integration
+    const addAvailability = async (availabilityData) => {
+        setSaving(true);
+        try {
+            const newAvailability = await apiService.addAvailability(availabilityData);
+            setAvailability(prev => [...prev, newAvailability]);
+            setLastSaved(new Date());
+            return newAvailability;
+        } catch (err) {
+            console.error('Failed to add availability:', err);
+            if (!apiService.demoMode) {
+                setError('Fehler beim Hinzufügen der Verfügbarkeit');
+            } else {
+                const newAvailability = {...availabilityData, id: Date.now()};
+                setAvailability(prev => [...prev, newAvailability]);
+                setLastSaved(new Date());
+                return newAvailability;
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const updateAvailability = async (availabilityId, updates) => {
+        const oldAvailability = availability;
+        setAvailability(prev => prev.map(a => a.id === availabilityId ? {...a, ...updates} : a));
+        setSaving(true);
+
+        try {
+            const updatedAvailability = await apiService.updateAvailabilityItem(availabilityId, updates);
+            setAvailability(prev => prev.map(a => a.id === availabilityId ? updatedAvailability : a));
+            setLastSaved(new Date());
+        } catch (err) {
+            console.error('Failed to update availability:', err);
+            if (!apiService.demoMode) {
+                setAvailability(oldAvailability);
+                setError('Fehler beim Aktualisieren der Verfügbarkeit');
+            } else {
+                setLastSaved(new Date());
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const deleteAvailability = async (availabilityId) => {
+        const oldAvailability = availability;
+        setAvailability(prev => prev.filter(a => a.id !== availabilityId));
+        setSaving(true);
+
+        try {
+            await apiService.deleteAvailability(availabilityId);
+            setLastSaved(new Date());
+        } catch (err) {
+            console.error('Failed to delete availability:', err);
+            if (!apiService.demoMode) {
+                setAvailability(oldAvailability);
+                setError('Fehler beim Löschen der Verfügbarkeit');
+            } else {
+                setLastSaved(new Date());
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // Sync profile to platforms
     const syncProfileToPlatforms = async () => {
         setSyncStatus({syncing: true});
 
@@ -341,7 +545,34 @@ export const AppProvider = ({children}) => {
             }
         }
     };
-    // Platform management functions (NEW)
+
+    // Sync availability to platforms
+    const syncAvailabilityToPlatforms = async () => {
+        setSyncing(true);
+        try {
+            const result = await apiService.syncAvailabilityToPlatforms();
+
+            // Update platforms with last sync time
+            setPlatforms(prev => prev.map(p =>
+                p.connected && p.syncSettings?.syncAvailability
+                    ? {...p, lastSync: result.timestamp}
+                    : p
+            ));
+
+            setLastSaved(new Date());
+            return result.syncedCount;
+        } catch (err) {
+            console.error('Failed to sync availability:', err);
+            if (!apiService.demoMode) {
+                setError('Fehler bei der Verfügbarkeits-Synchronisation');
+            }
+            throw err;
+        } finally {
+            setSyncing(false);
+        }
+    };
+
+    // Platform management functions
     const connectPlatform = async (platformId, authData) => {
         const oldPlatforms = platforms;
         setPlatforms(prev => prev.map(p =>
@@ -483,10 +714,9 @@ export const AppProvider = ({children}) => {
         }
     };
 
-    // ... rest of existing functions remain the same ...
-
+    // Context value with all functions and state
     const value = {
-        // Data
+        // State data
         profile,
         bookings,
         options,
@@ -497,13 +727,44 @@ export const AppProvider = ({children}) => {
         // Loading states
         loading,
         saving,
-        uploading, // NEW
-        syncing, // NEW
-
+        uploading,
+        syncing,
         error,
         lastSaved,
 
-        // Platform functions (NEW)
+        // Utility functions
+        loadAllData,
+
+        // Profile functions
+        updateProfile,
+        addWorkHistory,
+        updateWorkHistory,
+        deleteWorkHistory,
+        addEducation,
+        updateEducation,
+        deleteEducation,
+        uploadProfilePhoto,
+        uploadSetcardPhoto,
+        deleteSetcardPhoto,
+        syncProfileToPlatforms,
+
+        // Booking functions
+        addBooking,
+        updateBooking,
+        deleteBooking,
+
+        // Option functions
+        addOption,
+        updateOption,
+        deleteOption,
+
+        // Availability functions
+        addAvailability,
+        updateAvailability,
+        deleteAvailability,
+        syncAvailabilityToPlatforms,
+
+        // Platform functions
         connectPlatform,
         disconnectPlatform,
         updatePlatformSettings,
@@ -511,21 +772,6 @@ export const AppProvider = ({children}) => {
         syncToPlatform,
         bulkSyncToPlatforms,
         initiateOAuth,
-
-        // Profile functions
-        updateProfile,
-        addWorkHistory, // NEW
-        updateWorkHistory, // NEW
-        deleteWorkHistory, // NEW
-        addEducation, // NEW
-        updateEducation, // NEW
-        deleteEducation, // NEW
-        uploadProfilePhoto, // NEW
-        uploadSetcardPhoto, // NEW
-        deleteSetcardPhoto, // NEW
-        syncProfileToPlatforms, // NEW
-
-        // ... existing functions remain the same
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
