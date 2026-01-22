@@ -1,9 +1,140 @@
 import crypto from 'crypto';
 import User from '../models/User.js';
+import Platform from '../models/Platform.js';
 import { ApiError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 import { asyncHandler as catchAsync } from '../middleware/asyncHandler.js';
 // import sendEmail from '../utils/sendEmail.js';
+
+// Default platforms to add for all new users
+const DEFAULT_PLATFORMS = [
+  {
+    platformId: 1,
+    name: 'Filmmakers',
+    authType: 'oauth',
+    connected: false,
+    meta: {
+      hasAPI: true,
+      agentCapable: true,
+      connectionType: 'oauth',
+      features: ['profile', 'media', 'bookings'],
+      regions: ['DE', 'AT', 'CH'],
+      description: 'Largest casting platform in German-speaking region'
+    }
+  },
+  {
+    platformId: 2,
+    name: 'Casting Network',
+    authType: 'api',
+    connected: false,
+    meta: {
+      hasAPI: true,
+      agentCapable: true,
+      connectionType: 'api_key',
+      features: ['profile', 'media', 'bookings', 'recommendations'],
+      regions: ['US', 'UK', 'CA', 'AU'],
+      description: 'International casting platform for professional actors'
+    }
+  },
+  {
+    platformId: 3,
+    name: 'Schauspielervideos',
+    authType: 'api',
+    connected: false,
+    meta: {
+      hasAPI: true,
+      agentCapable: true,
+      connectionType: 'api_key',
+      features: ['profile', 'videos', 'photos', 'showreel'],
+      regions: ['DE', 'AT', 'CH'],
+      description: 'German actor video platform'
+    }
+  },
+  {
+    platformId: 4,
+    name: 'e-TALENTA',
+    authType: 'api',
+    connected: false,
+    meta: {
+      hasAPI: true,
+      agentCapable: true,
+      connectionType: 'api_key',
+      features: ['profile', 'photos', 'availability', 'castings'],
+      regions: ['EU', 'DE', 'AT', 'CH'],
+      description: 'European casting network'
+    }
+  },
+  {
+    platformId: 5,
+    name: 'JobWork',
+    authType: 'oauth',
+    connected: false,
+    meta: {
+      hasAPI: true,
+      agentCapable: true,
+      connectionType: 'oauth',
+      features: ['profile', 'jobs', 'networking'],
+      regions: ['DE', 'AT', 'CH'],
+      description: 'Platform for commercial and model castings'
+    }
+  },
+  {
+    platformId: 6,
+    name: 'Agentur Iris Müller',
+    authType: 'credentials',
+    connected: false,
+    meta: {
+      hasAPI: false,
+      agentCapable: false,
+      connectionType: 'manual',
+      features: ['profile', 'representation'],
+      regions: ['DE'],
+      description: 'Traditional talent agency'
+    }
+  },
+  {
+    platformId: 7,
+    name: 'Agentur Connection',
+    authType: 'api',
+    connected: false,
+    meta: {
+      hasAPI: true,
+      agentCapable: false,
+      connectionType: 'api',
+      features: ['profile', 'representation', 'bookings'],
+      regions: ['DE', 'AT'],
+      description: 'Professional talent agency'
+    }
+  },
+  {
+    platformId: 8,
+    name: 'Agentur Sarah Weiss',
+    authType: 'credentials',
+    connected: false,
+    meta: {
+      hasAPI: false,
+      agentCapable: false,
+      connectionType: 'manual',
+      features: ['profile', 'representation'],
+      regions: ['DE'],
+      description: 'Boutique talent agency'
+    }
+  },
+  {
+    platformId: 9,
+    name: 'Wanted',
+    authType: 'oauth',
+    connected: false,
+    meta: {
+      hasAPI: true,
+      agentCapable: true,
+      connectionType: 'oauth',
+      features: ['profile', 'jobs', 'availability'],
+      regions: ['DE', 'AT', 'CH'],
+      description: 'Entertainment job portal'
+    }
+  }
+];
 
 // Get token from model, create cookie and send response
 const sendTokenResponse = (user, statusCode, res) => {
@@ -67,6 +198,19 @@ export const register = catchAsync(async (req, res, next) => {
     .digest('hex');
 
   await user.save({ validateBeforeSave: false });
+
+  // Create default platforms for the new user
+  try {
+    const platformsToCreate = DEFAULT_PLATFORMS.map(platform => ({
+      ...platform,
+      user: user._id
+    }));
+    await Platform.insertMany(platformsToCreate);
+    logger.info(`Created ${platformsToCreate.length} default platforms for user ${user.email}`);
+  } catch (platformError) {
+    logger.error('Failed to create default platforms:', platformError);
+    // Continue with registration even if platform creation fails
+  }
 
   // Create verification url
   const verificationUrl = `${req.protocol}://${req.get(

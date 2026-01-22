@@ -89,8 +89,6 @@ const platformCapabilities = {
 
 // API Service with improved error handling
 export const apiService = {
-    demoMode: false,
-
     // Auth endpoints
     login: async (email, password) => {
         const response = await fetch(`${API_BASE_URL}/auth/login`, {
@@ -150,20 +148,6 @@ export const apiService = {
 
     // Profile management endpoints
     getProfile: async () => {
-        if (apiService.demoMode) {
-            try {
-                const {initialProfile} = await import('../data/initialData');
-                return Promise.resolve(initialProfile);
-            } catch (error) {
-                console.error('Failed to load initial profile:', error);
-                return Promise.resolve({
-                    name: 'Demo User',
-                    biography: 'Demo biography',
-                    height: '175 cm',
-                    eyeColor: 'Brown'
-                });
-            }
-        }
         const response = await fetch(`${API_BASE_URL}/profile`, {headers: getHeaders()});
         const data = await response.json();
         if (!response.ok) {
@@ -174,10 +158,6 @@ export const apiService = {
     },
 
     updateProfile: async (profileData) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            return Promise.resolve({success: true, profile: profileData});
-        }
         const response = await fetch(`${API_BASE_URL}/profile`, {
             method: 'PUT',
             headers: getHeaders(),
@@ -187,10 +167,6 @@ export const apiService = {
     },
 
     addWorkHistory: async (workItem) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            return Promise.resolve({...workItem, id: `work-${Date.now()}`});
-        }
         const response = await fetch(`${API_BASE_URL}/profile/work-history`, {
             method: 'POST',
             headers: getHeaders(),
@@ -200,10 +176,6 @@ export const apiService = {
     },
 
     updateWorkHistory: async (id, updates) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 400));
-            return Promise.resolve({...updates, id});
-        }
         const response = await fetch(`${API_BASE_URL}/profile/work-history/${id}`, {
             method: 'PUT',
             headers: getHeaders(),
@@ -213,10 +185,6 @@ export const apiService = {
     },
 
     deleteWorkHistory: async (id) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-            return Promise.resolve({success: true});
-        }
         const response = await fetch(`${API_BASE_URL}/profile/work-history/${id}`, {
             method: 'DELETE',
             headers: getHeaders()
@@ -225,10 +193,6 @@ export const apiService = {
     },
 
     addEducation: async (educationItem) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            return Promise.resolve({...educationItem, id: `edu-${Date.now()}`});
-        }
         const response = await fetch(`${API_BASE_URL}/profile/education`, {
             method: 'POST',
             headers: getHeaders(),
@@ -238,10 +202,6 @@ export const apiService = {
     },
 
     updateEducation: async (id, updates) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 400));
-            return Promise.resolve({...updates, id});
-        }
         const response = await fetch(`${API_BASE_URL}/profile/education/${id}`, {
             method: 'PUT',
             headers: getHeaders(),
@@ -251,10 +211,6 @@ export const apiService = {
     },
 
     deleteEducation: async (id) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-            return Promise.resolve({success: true});
-        }
         const response = await fetch(`${API_BASE_URL}/profile/education/${id}`, {
             method: 'DELETE',
             headers: getHeaders()
@@ -308,43 +264,15 @@ export const apiService = {
 
     // Booking management endpoints
     getBookings: async () => {
-        if (apiService.demoMode) {
-            try {
-                const {initialBookings} = await import('../data/initialData');
-                return Promise.resolve(initialBookings);
-            } catch (error) {
-                console.error('Failed to load initial bookings:', error);
-                return Promise.resolve([]);
-            }
-        }
         const response = await fetch(`${API_BASE_URL}/bookings`, {headers: getHeaders()});
         return handleResponse(response);
     },
     getOptions: async () => {
-        if (apiService.demoMode) {
-            try {
-                const {initialOptions} = await import('../data/initialData');
-                return Promise.resolve(initialOptions);
-            } catch (error) {
-                console.error('Failed to load initial options:', error);
-                return Promise.resolve([]);
-            }
-        }
         const response = await fetch(`${API_BASE_URL}/options`, {headers: getHeaders()});
         return handleResponse(response);
     },
 
     addOption: async (optionData) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            const newOption = {
-                ...optionData,
-                id: Date.now(),
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            };
-            return Promise.resolve(newOption);
-        }
         const response = await fetch(`${API_BASE_URL}/options`, {
             method: 'POST',
             headers: getHeaders(),
@@ -354,15 +282,6 @@ export const apiService = {
     },
 
     updateOption: async (optionId, updates) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 400));
-            const updatedOption = {
-                ...updates,
-                id: optionId,
-                updatedAt: new Date().toISOString()
-            };
-            return Promise.resolve(updatedOption);
-        }
         const response = await fetch(`${API_BASE_URL}/options/${optionId}`, {
             method: 'PUT',
             headers: getHeaders(),
@@ -372,10 +291,6 @@ export const apiService = {
     },
 
     deleteOption: async (optionId) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-            return Promise.resolve({success: true, deletedId: optionId});
-        }
         const response = await fetch(`${API_BASE_URL}/options/${optionId}`, {
             method: 'DELETE',
             headers: getHeaders()
@@ -385,16 +300,6 @@ export const apiService = {
 
 // Also add booking methods if they're not already implemented
     addBooking: async (bookingData) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 600));
-            const newBooking = {
-                ...bookingData,
-                id: Date.now(),
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            };
-            return Promise.resolve(newBooking);
-        }
         const response = await fetch(`${API_BASE_URL}/bookings`, {
             method: 'POST',
             headers: getHeaders(),
@@ -404,15 +309,6 @@ export const apiService = {
     },
 
     updateBooking: async (bookingId, updates) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            const updatedBooking = {
-                ...updates,
-                id: bookingId,
-                updatedAt: new Date().toISOString()
-            };
-            return Promise.resolve(updatedBooking);
-        }
         const response = await fetch(`${API_BASE_URL}/bookings/${bookingId}`, {
             method: 'PUT',
             headers: getHeaders(),
@@ -422,10 +318,6 @@ export const apiService = {
     },
 
     deleteBooking: async (bookingId) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 400));
-            return Promise.resolve({success: true, deletedId: bookingId});
-        }
         const response = await fetch(`${API_BASE_URL}/bookings/${bookingId}`, {
             method: 'DELETE',
             headers: getHeaders()
@@ -435,16 +327,6 @@ export const apiService = {
 
 // Add availability methods
     addAvailability: async (availabilityData) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 400));
-            const newAvailability = {
-                ...availabilityData,
-                id: Date.now(),
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            };
-            return Promise.resolve(newAvailability);
-        }
         const response = await fetch(`${API_BASE_URL}/availability`, {
             method: 'POST',
             headers: getHeaders(),
@@ -454,15 +336,6 @@ export const apiService = {
     },
 
     updateAvailabilityItem: async (availabilityId, updates) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 350));
-            const updatedAvailability = {
-                ...updates,
-                id: availabilityId,
-                updatedAt: new Date().toISOString()
-            };
-            return Promise.resolve(updatedAvailability);
-        }
         const response = await fetch(`${API_BASE_URL}/availability/${availabilityId}`, {
             method: 'PUT',
             headers: getHeaders(),
@@ -472,10 +345,6 @@ export const apiService = {
     },
 
     deleteAvailability: async (availabilityId) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-            return Promise.resolve({success: true, deletedId: availabilityId});
-        }
         const response = await fetch(`${API_BASE_URL}/availability/${availabilityId}`, {
             method: 'DELETE',
             headers: getHeaders()
@@ -485,16 +354,6 @@ export const apiService = {
 
 // Sync availability to platforms
     syncAvailabilityToPlatforms: async () => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            // Simulate syncing to connected platforms
-            return Promise.resolve({
-                success: true,
-                syncedCount: 3,
-                message: 'Availability synced to 3 platforms',
-                timestamp: new Date().toISOString()
-            });
-        }
         const response = await fetch(`${API_BASE_URL}/availability/sync`, {
             method: 'POST',
             headers: getHeaders()
@@ -504,24 +363,11 @@ export const apiService = {
 
     // Availability management endpoints
     getAvailability: async () => {
-        if (apiService.demoMode) {
-            try {
-                const {initialAvailability} = await import('../data/initialData');
-                return Promise.resolve(initialAvailability);
-            } catch (error) {
-                console.error('Failed to load initial availability:', error);
-                return Promise.resolve([]);
-            }
-        }
         const response = await fetch(`${API_BASE_URL}/availability`, {headers: getHeaders()});
         return handleResponse(response);
     },
 
     updateAvailability: async (availability) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            return Promise.resolve({success: true, availability});
-        }
         const response = await fetch(`${API_BASE_URL}/availability`, {
             method: 'PUT',
             headers: getHeaders(),
@@ -533,20 +379,6 @@ export const apiService = {
 
     // Enhanced platform management with proper error handling
     getPlatforms: async () => {
-        if (apiService.demoMode) {
-            try {
-                const {initialPlatforms} = await import('../data/initial/platforms');
-                const enhancedPlatforms = initialPlatforms.map(platform => ({
-                    ...platform,
-                    ...platformCapabilities[platform.id],
-                    description: apiService.getPlatformDescription(platform.id, platform.name)
-                }));
-                return Promise.resolve(enhancedPlatforms);
-            } catch (error) {
-                console.error('Failed to load platforms:', error);
-                return Promise.resolve([]);
-            }
-        }
         const response = await fetch(`${API_BASE_URL}/platforms`, {headers: getHeaders()});
         return handleResponse(response);
     },
@@ -567,48 +399,6 @@ export const apiService = {
     },
 
     connectPlatform: async (platformId, authData) => {
-        if (apiService.demoMode) {
-            const capabilities = platformCapabilities[platformId];
-
-            if (capabilities?.agentCapable) {
-                try {
-                    const testResult = await platformAgent.testConnection(platformId, authData);
-
-                    if (testResult.success) {
-                        return Promise.resolve({
-                            success: true,
-                            platform: {
-                                id: platformId,
-                                connected: true,
-                                lastSync: new Date().toISOString(),
-                                authData: authData,
-                                connectionType: capabilities.connectionType,
-                                testResult: testResult
-                            }
-                        });
-                    } else {
-                        throw new Error(testResult.message);
-                    }
-                } catch (error) {
-                    console.error(`Agent connection failed for platform ${platformId}:`, error);
-                    throw new Error(`Agent connection failed: ${error.message}`);
-                }
-            } else {
-                // Standard connection for non-agent platforms
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                return Promise.resolve({
-                    success: true,
-                    platform: {
-                        id: platformId,
-                        connected: true,
-                        lastSync: new Date().toISOString(),
-                        authData: authData,
-                        connectionType: capabilities?.connectionType || 'standard'
-                    }
-                });
-            }
-        }
-
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/connect`, {
             method: 'POST',
             headers: getHeaders(),
@@ -618,18 +408,6 @@ export const apiService = {
     },
 
     disconnectPlatform: async (platformId) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            return Promise.resolve({
-                success: true,
-                platform: {
-                    id: platformId,
-                    connected: false,
-                    lastSync: null,
-                    authData: {}
-                }
-            });
-        }
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/disconnect`, {
             method: 'POST',
             headers: getHeaders()
@@ -638,13 +416,6 @@ export const apiService = {
     },
 
     updatePlatformSettings: async (platformId, settings) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-            return Promise.resolve({
-                success: true,
-                settings: settings
-            });
-        }
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/settings`, {
             method: 'PUT',
             headers: getHeaders(),
@@ -654,40 +425,6 @@ export const apiService = {
     },
 
     testPlatformConnection: async (platformId, credentials) => {
-        if (apiService.demoMode) {
-            const capabilities = platformCapabilities[platformId];
-
-            if (capabilities?.agentCapable) {
-                try {
-                    const result = await platformAgent.testConnection(platformId, credentials);
-                    return Promise.resolve({
-                        success: result.success,
-                        message: result.message,
-                        lastTested: new Date().toISOString(),
-                        connectionType: capabilities.connectionType
-                    });
-                } catch (error) {
-                    console.error(`Test connection failed for platform ${platformId}:`, error);
-                    return Promise.resolve({
-                        success: false,
-                        message: error.message,
-                        lastTested: new Date().toISOString(),
-                        connectionType: capabilities.connectionType
-                    });
-                }
-            } else {
-                // Simulate connection test for non-agent platforms
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                const success = Math.random() > 0.2;
-                return Promise.resolve({
-                    success: success,
-                    message: success ? 'Verbindung erfolgreich' : 'Verbindung fehlgeschlagen',
-                    lastTested: new Date().toISOString(),
-                    connectionType: capabilities?.connectionType || 'standard'
-                });
-            }
-        }
-
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/test`, {
             method: 'POST',
             headers: getHeaders(),
@@ -697,47 +434,6 @@ export const apiService = {
     },
 
     syncToPlatform: async (platformId, dataTypes = ['profile', 'availability'], credentials) => {
-        if (apiService.demoMode) {
-            const capabilities = platformCapabilities[platformId];
-
-            if (capabilities?.agentCapable) {
-                try {
-                    const results = {};
-
-                    if (dataTypes.includes('profile')) {
-                        const profile = await apiService.getProfile();
-                        results.profile = await platformAgent.syncProfile(platformId, credentials, profile);
-                    }
-
-                    if (dataTypes.includes('availability')) {
-                        const availability = await apiService.getAvailability();
-                        results.availability = await platformAgent.updateAvailability(platformId, credentials, availability);
-                    }
-
-                    return Promise.resolve({
-                        success: true,
-                        synced: dataTypes,
-                        results: results,
-                        timestamp: new Date().toISOString(),
-                        connectionType: capabilities.connectionType
-                    });
-
-                } catch (error) {
-                    console.error(`Sync failed for platform ${platformId}:`, error);
-                    throw new Error(`Agent sync failed: ${error.message}`);
-                }
-            } else {
-                // Simulate sync for non-agent platforms
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                return Promise.resolve({
-                    success: true,
-                    synced: dataTypes,
-                    timestamp: new Date().toISOString(),
-                    connectionType: capabilities?.connectionType || 'standard'
-                });
-            }
-        }
-
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/sync`, {
             method: 'POST',
             headers: getHeaders(),
@@ -747,43 +443,6 @@ export const apiService = {
     },
 
     bulkSyncToPlatforms: async (platformIds, dataTypes = ['profile', 'availability'], credentialsMap) => {
-        if (apiService.demoMode) {
-            try {
-                const results = [];
-                let successCount = 0;
-                let failureCount = 0;
-
-                for (const platformId of platformIds) {
-                    try {
-                        const credentials = credentialsMap[platformId];
-                        if (!credentials) {
-                            throw new Error('No credentials provided for platform');
-                        }
-
-                        const result = await apiService.syncToPlatform(platformId, dataTypes, credentials);
-                        results.push({platformId, success: true, result});
-                        successCount++;
-                    } catch (error) {
-                        console.error(`Bulk sync failed for platform ${platformId}:`, error);
-                        results.push({platformId, success: false, error: error.message});
-                        failureCount++;
-                    }
-                }
-
-                return Promise.resolve({
-                    success: true,
-                    synced: successCount,
-                    failed: failureCount,
-                    results: results,
-                    timestamp: new Date().toISOString()
-                });
-
-            } catch (error) {
-                console.error('Bulk sync failed:', error);
-                throw new Error(`Bulk sync failed: ${error.message}`);
-            }
-        }
-
         const response = await fetch(`${API_BASE_URL}/platforms/bulk-sync`, {
             method: 'POST',
             headers: getHeaders(),
@@ -793,39 +452,6 @@ export const apiService = {
     },
 
     readProfileFromPlatform: async (platformId, credentials) => {
-        if (apiService.demoMode) {
-            const capabilities = platformCapabilities[platformId];
-
-            if (capabilities?.agentCapable) {
-                try {
-                    const profileData = await platformAgent.readProfile(platformId, credentials);
-                    return Promise.resolve({
-                        success: true,
-                        data: profileData,
-                        timestamp: new Date().toISOString(),
-                        connectionType: capabilities.connectionType
-                    });
-                } catch (error) {
-                    console.error(`Read profile failed for platform ${platformId}:`, error);
-                    throw new Error(`Failed to read profile from platform: ${error.message}`);
-                }
-            } else {
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                const mockProfile = {
-                    name: 'Imported Name',
-                    biography: 'Imported biography from platform',
-                    height: '175 cm',
-                    eyeColor: 'Brown'
-                };
-                return Promise.resolve({
-                    success: true,
-                    data: mockProfile,
-                    timestamp: new Date().toISOString(),
-                    connectionType: capabilities?.connectionType || 'standard'
-                });
-            }
-        }
-
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/profile`, {
             method: 'GET',
             headers: {...getHeaders(), 'X-Platform-Credentials': btoa(JSON.stringify(credentials))}
@@ -834,53 +460,12 @@ export const apiService = {
     },
 
     checkAgentHealth: async () => {
-        if (apiService.demoMode) {
-            try {
-                await platformAgent.initialize();
-
-                const agentCapablePlatforms = Object.entries(platformCapabilities)
-                    .filter(([id, caps]) => caps.agentCapable)
-                    .length;
-
-                return Promise.resolve({
-                    success: true,
-                    status: 'healthy',
-                    message: `Platform agent running in simulation mode - ${agentCapablePlatforms} platforms supported`,
-                    timestamp: new Date().toISOString(),
-                    supportedPlatforms: agentCapablePlatforms,
-                    mode: 'simulation'
-                });
-            } catch (error) {
-                console.error('Agent health check failed:', error);
-                return Promise.resolve({
-                    success: false,
-                    status: 'error',
-                    message: error.message,
-                    timestamp: new Date().toISOString()
-                });
-            }
-        }
-
         const response = await fetch(`${API_BASE_URL}/agent/health`, {headers: getHeaders()});
         return handleResponse(response);
     },
 
     // OAuth flow endpoints
     initiateOAuth: async (platformId) => {
-        if (apiService.demoMode) {
-            const platformNames = {
-                1: 'filmmakers',
-                5: 'jobwork',
-                9: 'wanted'
-            };
-            const platformName = platformNames[platformId] || 'platform';
-
-            await new Promise(resolve => setTimeout(resolve, 500));
-            return Promise.resolve({
-                authUrl: `https://demo-oauth.com/${platformName}?client_id=demo&redirect_uri=http://localhost:3000/oauth/callback`,
-                state: `${platformId}_${Date.now()}`
-            });
-        }
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/oauth/initiate`, {
             headers: getHeaders()
         });
@@ -892,14 +477,6 @@ export const apiService = {
     },
 
     completeOAuth: async (platformId, authCode, state) => {
-        if (apiService.demoMode) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            return Promise.resolve({
-                success: true,
-                accessToken: `demo_token_${platformId}`,
-                expiresIn: 3600
-            });
-        }
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/oauth/callback?code=${authCode}&state=${state}`, {
             headers: getHeaders()
         });

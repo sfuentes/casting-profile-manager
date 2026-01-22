@@ -23,6 +23,7 @@ import bookingRoutes from './routes/bookingRoutes.js';
 import availabilityRoutes from './routes/availabilityRoutes.js';
 import optionRoutes from './routes/optionRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import syncRoutes from './routes/syncRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -110,6 +111,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/availability', availabilityRoutes);
 app.use('/api/options', optionRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/sync', syncRoutes);
 
 // Welcome route
 app.get('/', (req, res) => {

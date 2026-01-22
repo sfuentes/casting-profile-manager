@@ -5,6 +5,8 @@ export {default as CalendarView} from './CalendarView';
 export {default as ProfileView} from './ProfileView';
 export {default as PlatformsView} from './PlatformsView.jsx';
 export {default as SyncIndicator} from './SyncIndicator';
+export {default as SyncStatus} from './SyncStatus';
+export {default as SyncHistory} from './SyncHistory';
 export {default as Login} from './Login';
 export {default as Register} from './Register';
 
