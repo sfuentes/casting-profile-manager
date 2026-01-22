@@ -1,15 +1,16 @@
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { logger } from './logger.js';
+import { connectDB } from '../config/database.js';
 import User from '../models/User.js';
 import Platform from '../models/Platform.js';
 import Profile from '../models/Profile.js';
+import Availability from '../models/Availability.js';
+import Booking from '../models/Booking.js';
+import Option from '../models/Option.js';
 
 // Load env vars
 dotenv.config();
-
-// Connect to DB
-mongoose.connect(process.env.MONGO_URI);
 
 // Sample data
 const users = [
@@ -87,19 +88,25 @@ const platforms = [
 // Import data into DB
 const importData = async () => {
   try {
+    // Connect to DB
+    await connectDB();
+
     // Clear the database
     await User.deleteMany();
     await Platform.deleteMany();
     await Profile.deleteMany();
+    await Availability.deleteMany();
+    await Booking.deleteMany();
+    await Option.deleteMany();
 
     // Create users
     const createdUsers = await User.create(users);
-    const adminUser = createdUsers[0]._id;
+    const adminUser = createdUsers[0];
 
     // Add user reference to platforms and create them
-    const platformsWithUser = platforms.map(platform => ({
+    const platformsWithUser = platforms.map((platform) => ({
       ...platform,
-      user: adminUser,
+      user: adminUser._id,
       platformId: Math.floor(Math.random() * 1000) + 1 // Random ID for demo
     }));
 
@@ -107,21 +114,63 @@ const importData = async () => {
 
     // Create a profile for the admin
     await Profile.create({
-      user: adminUser,
+      user: adminUser._id,
+      name: adminUser.name,
       firstName: 'Admin',
       lastName: 'User',
       dateOfBirth: new Date('1985-01-01'),
       gender: 'male',
-      nationality: 'German',
-      languages: ['German', 'English'],
+      citizenship: 'German',
+      languages: [
+        { language: 'German', level: 'native' },
+        { language: 'English', level: 'fluent' }
+      ],
       skills: ['Acting', 'Voice Acting'],
-      bio: 'Professional actor with over 10 years of experience in film and theatre.',
-      contactInfo: {
+      biography: 'Professional actor with over 10 years of experience in film and theatre.',
+      contact: {
         email: 'admin@example.com',
         phone: '+49123456789',
         address: 'Musterstraße 123, 10115 Berlin'
       }
     });
+
+    // Seed some bookings for demo
+    await Booking.create([
+      {
+        user: adminUser._id,
+        title: 'Tatort: Berlin',
+        type: 'tv',
+        startDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        endDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+        status: 'confirmed',
+        location: 'Berlin',
+        notes: 'Supporting role as witness'
+      },
+      {
+        user: adminUser._id,
+        title: 'Commercial: Car Brand',
+        type: 'commercial',
+        startDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        endDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
+        status: 'pending',
+        location: 'Hamburg',
+        notes: 'Lead role'
+      }
+    ]);
+
+    // Seed some options
+    await Option.create([
+      {
+        user: adminUser._id,
+        title: 'Netflix Series: Mystery',
+        production: 'Wiedemann & Berg',
+        startDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        endDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+        status: 'pending',
+        location: 'Prague',
+        notes: 'Waiting for call back'
+      }
+    ]);
 
     logger.info('Data imported successfully');
     process.exit();
@@ -134,9 +183,15 @@ const importData = async () => {
 // Delete data from DB
 const deleteData = async () => {
   try {
+    // Connect to DB
+    await connectDB();
+
     await User.deleteMany();
     await Platform.deleteMany();
     await Profile.deleteMany();
+    await Availability.deleteMany();
+    await Booking.deleteMany();
+    await Option.deleteMany();
 
     logger.info('Data destroyed successfully');
     process.exit();

@@ -1,5 +1,4 @@
 import { logger } from '../utils/logger.js';
-import { logger } from '../utils/logger.js';
 
 // Custom error class
 export class ApiError extends Error {
@@ -19,7 +18,7 @@ export const errorHandler = (err, req, res, next) => {
   error.message = err.message;
 
   // Log error
-  logger.error(`${err.name || 'Error'}: ${err.message}`, { 
+  logger.error(`${err.name || 'Error'}: ${err.message}`, {
     stack: err.stack,
     url: req.originalUrl,
     method: req.method,
@@ -40,7 +39,7 @@ export const errorHandler = (err, req, res, next) => {
 
   // Mongoose validation error
   if (err.name === 'ValidationError') {
-    const message = Object.values(err.errors).map(val => val.message).join(', ');
+    const message = Object.values(err.errors).map((val) => val.message).join(', ');
     error = new ApiError(message, 400);
   }
 
@@ -60,40 +59,13 @@ export const errorHandler = (err, req, res, next) => {
     success: false,
     error: {
       message: error.message || 'Server Error',
-      ...(process.env.NODE_ENV === 'development' && { 
+      ...(process.env.NODE_ENV === 'development' && {
         stack: error.stack,
         details: error.details
       })
     }
   });
 };
-export const errorHandler = (err, req, res, next) => {
-  const statusCode = err.statusCode || 500;
-
-  // Log the error
-  logger.error(`${statusCode} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
-  if (err.stack) {
-    logger.error(err.stack);
-  }
-
-  res.status(statusCode).json({
-    status: 'error',
-    statusCode,
-    message: err.message || 'Internal Server Error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
-  });
-};
-
-// Custom error class
-export class ApiError extends Error {
-  constructor(message, statusCode) {
-    super(message);
-    this.statusCode = statusCode;
-    this.status = `${statusCode}`.startsWith('4') ? 'fail' : 'error';
-    Error.captureStackTrace(this, this.constructor);
-  }
-}
-
 // Not Found handler
 export const notFound = (req, res, next) => {
   const error = new ApiError(`Not found - ${req.originalUrl}`, 404);

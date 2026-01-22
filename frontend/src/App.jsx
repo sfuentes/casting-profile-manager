@@ -23,16 +23,43 @@ import {
     Image,
     Grid,
     Save,
-    Loader
+    Loader,
+    LogOut
 } from 'lucide-react';
 
 // Import refactored components
-import {AppProvider} from './context/AppContext';
-import {Dashboard, CalendarView, ProfileView, PlatformsView, SyncIndicator, Button, Card, Badge, Modal, Input} from './components';
+import {AppProvider, useAppContext} from './context/AppContext';
+import {Dashboard, CalendarView, ProfileView, PlatformsView, SyncIndicator, Button, Card, Badge, Modal, Input, Login, Register} from './components';
 
 // Main App Component
 const App = () => {
+    return (
+        <AppProvider>
+            <AppContent />
+        </AppProvider>
+    );
+};
+
+const AppContent = () => {
+    const { user, isAuthenticated, loading, logout } = useAppContext();
     const [currentView, setCurrentView] = useState('dashboard');
+    const [authView, setAuthView] = useState('login'); // 'login' or 'register'
+
+    if (loading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <Loader className="w-12 h-12 text-blue-600 animate-spin" />
+            </div>
+        );
+    }
+
+    if (!isAuthenticated || !user) {
+        return authView === 'login' ? (
+            <Login onSwitchToRegister={() => setAuthView('register')} />
+        ) : (
+            <Register onSwitchToLogin={() => setAuthView('login')} />
+        );
+    }
 
     const renderContent = () => {
         switch (currentView) {
@@ -52,25 +79,34 @@ const App = () => {
     };
 
     return (
-        <AppProvider>
-            <div className="min-h-screen bg-gray-50">
-                {/* Header */}
-                <header className="bg-white shadow-sm border-b">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                        <div className="flex justify-between items-center h-16">
-                            <div className="flex items-center">
-                                <h1 className="text-xl font-semibold text-gray-900">
-                                    Darsteller Manager
-                                </h1>
-                            </div>
-                            <div className="flex items-center space-x-4">
-                                <SyncIndicator/>
-                                <Bell className="w-6 h-6 text-gray-400 hover:text-gray-600 cursor-pointer"/>
-                                <User className="w-8 h-8 text-gray-400 hover:text-gray-600 cursor-pointer"/>
+        <div className="min-h-screen bg-gray-50">
+            {/* Header */}
+            <header className="bg-white shadow-sm border-b">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex justify-between items-center h-16">
+                        <div className="flex items-center">
+                            <h1 className="text-xl font-semibold text-gray-900">
+                                Darsteller Manager
+                            </h1>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                            <SyncIndicator/>
+                            <Bell className="w-6 h-6 text-gray-400 hover:text-gray-600 cursor-pointer"/>
+                            <div className="flex items-center space-x-2 border-l pl-4 ml-4">
+                                <User className="w-6 h-6 text-gray-400"/>
+                                <span className="text-sm font-medium text-gray-700">{user?.name}</span>
+                                <button 
+                                    onClick={logout}
+                                    className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                    title="Abmelden"
+                                >
+                                    <LogOut className="w-5 h-5"/>
+                                </button>
                             </div>
                         </div>
                     </div>
-                </header>
+                </div>
+            </header>
 
                 <div className="flex">
                     {/* Sidebar */}
@@ -117,7 +153,6 @@ const App = () => {
                     </main>
                 </div>
             </div>
-        </AppProvider>
     );
 };
 

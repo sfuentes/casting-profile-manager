@@ -36,6 +36,11 @@ const BookingSchema = new mongoose.Schema({
   fee: {
     type: String,
   },
+  type: {
+    type: String,
+    enum: ['tv', 'film', 'theater', 'commercial', 'other'],
+    default: 'other',
+  },
   status: {
     type: String,
     enum: ['confirmed', 'pending', 'cancelled'],

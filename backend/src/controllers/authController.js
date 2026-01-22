@@ -1,9 +1,8 @@
+import crypto from 'crypto';
 import User from '../models/User.js';
 import { ApiError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
-import crypto from 'crypto';
-import User from '../models/User.js';
-import { catchAsync, AppError } from '../utils/errorHandler.js';
+import { asyncHandler as catchAsync } from '../middleware/asyncHandler.js';
 // import sendEmail from '../utils/sendEmail.js';
 
 // Get token from model, create cookie and send response
@@ -13,7 +12,7 @@ const sendTokenResponse = (user, statusCode, res) => {
 
   const options = {
     expires: new Date(
-      Date.now() + process.env.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000
+      Date.now() + (process.env.JWT_COOKIE_EXPIRE || 30) * 24 * 60 * 60 * 1000
     ),
     httpOnly: true
   };
@@ -32,7 +31,13 @@ const sendTokenResponse = (user, statusCode, res) => {
     .cookie('token', token, options)
     .json({
       success: true,
-      token
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
     });
 };
 
@@ -40,7 +45,9 @@ const sendTokenResponse = (user, statusCode, res) => {
 // @route   POST /api/auth/register
 // @access  Public
 export const register = catchAsync(async (req, res, next) => {
-  const { name, email, password, role } = req.body;
+  const {
+    name, email, password, role
+  } = req.body;
 
   // Create user
   const user = await User.create({
@@ -85,7 +92,7 @@ export const register = catchAsync(async (req, res, next) => {
     user.emailVerificationToken = undefined;
     await user.save({ validateBeforeSave: false });
 
-    return next(new AppError('Email could not be sent', 500));
+    return next(new ApiError('Email could not be sent', 500));
   }
 });
 
@@ -97,21 +104,21 @@ export const login = catchAsync(async (req, res, next) => {
 
   // Validate email & password
   if (!email || !password) {
-    return next(new AppError('Please provide an email and password', 400));
+    return next(new ApiError('Please provide an email and password', 400));
   }
 
   // Check for user
   const user = await User.findOne({ email }).select('+password');
 
   if (!user) {
-    return next(new AppError('Invalid credentials', 401));
+    return next(new ApiError('Invalid credentials', 401));
   }
 
   // Check if password matches
   const isMatch = await user.matchPassword(password);
 
   if (!isMatch) {
-    return next(new AppError('Invalid credentials', 401));
+    return next(new ApiError('Invalid credentials', 401));
   }
 
   // Send token response
@@ -173,7 +180,7 @@ export const updatePassword = catchAsync(async (req, res, next) => {
 
   // Check current password
   if (!(await user.matchPassword(req.body.currentPassword))) {
-    return next(new AppError('Password is incorrect', 401));
+    return next(new ApiError('Password is incorrect', 401));
   }
 
   user.password = req.body.newPassword;
@@ -189,7 +196,7 @@ export const forgotPassword = catchAsync(async (req, res, next) => {
   const user = await User.findOne({ email: req.body.email });
 
   if (!user) {
-    return next(new AppError('There is no user with that email', 404));
+    return next(new ApiError('There is no user with that email', 404));
   }
 
   // Get reset token
@@ -232,7 +239,7 @@ export const forgotPassword = catchAsync(async (req, res, next) => {
 
     await user.save({ validateBeforeSave: false });
 
-    return next(new AppError('Email could not be sent', 500));
+    return next(new ApiError('Email could not be sent', 500));
   }
 });
 
@@ -252,7 +259,7 @@ export const resetPassword = catchAsync(async (req, res, next) => {
   });
 
   if (!user) {
-    return next(new AppError('Invalid token', 400));
+    return next(new ApiError('Invalid token', 400));
   }
 
   // Set new password
@@ -279,7 +286,7 @@ export const verifyEmail = catchAsync(async (req, res, next) => {
   });
 
   if (!user) {
-    return next(new AppError('Invalid token', 400));
+    return next(new ApiError('Invalid token', 400));
   }
 
   // Mark email as verified
@@ -292,143 +299,17 @@ export const verifyEmail = catchAsync(async (req, res, next) => {
     message: 'Email verified successfully'
   });
 });
-// @desc    Register user
-// @route   POST /api/v1/auth/register
-// @access  Public
-export const register = async (req, res, next) => {
-  try {
-    const { name, email, password } = req.body;
 
-    // Check if user already exists
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-      throw new ApiError('User already exists', 400);
-    }
+export const refreshToken = catchAsync(async (req, res, next) => {
+  res.status(200).json({
+    success: true,
+    message: 'Refresh token endpoint - implement in controller'
+  });
+});
 
-    // Create user
-    const user = await User.create({
-      name,
-      email,
-      password, // Password will be hashed in the model's pre-save hook
-    });
-
-    // Generate token
-    const token = user.generateAuthToken();
-
-    res.status(201).json({
-      success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-      },
-      token,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Login user
-// @route   POST /api/v1/auth/login
-// @access  Public
-export const login = async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
-
-    // Check for user
-    const user = await User.findOne({ email }).select('+password');
-    if (!user) {
-      throw new ApiError('Invalid credentials', 401);
-    }
-
-    // Check if password matches
-    // This would normally use bcrypt.compare, but we're keeping it simple
-    const isMatch = user.password === password;
-    if (!isMatch) {
-      throw new ApiError('Invalid credentials', 401);
-    }
-
-    // Generate token
-    const token = user.generateAuthToken();
-
-    res.status(200).json({
-      success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-      },
-      token,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Get current logged-in user
-// @route   GET /api/v1/auth/me
-// @access  Private
-export const getMe = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.user.id);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        createdAt: user.createdAt,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Forgot password
-// @route   POST /api/v1/auth/forgot-password
-// @access  Public
-export const forgotPassword = async (req, res, next) => {
-  try {
-    const { email } = req.body;
-
-    const user = await User.findOne({ email });
-
-    if (!user) {
-      throw new ApiError('No user with that email', 404);
-    }
-
-    // In a real application, we would generate a reset token
-    // and send it via email
-
-    res.status(200).json({
-      success: true,
-      message: 'Password reset email sent',
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Reset password
-// @route   PUT /api/v1/auth/reset-password/:resetToken
-// @access  Public
-export const resetPassword = async (req, res, next) => {
-  try {
-    const { resetToken } = req.params;
-    const { password } = req.body;
-
-    // In a real application, we would verify the reset token
-    // and update the user's password
-
-    res.status(200).json({
-      success: true,
-      message: 'Password reset successful',
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+export const deleteAccount = catchAsync(async (req, res, next) => {
+  res.status(200).json({
+    success: true,
+    message: 'Delete account endpoint - implement in controller'
+  });
+});

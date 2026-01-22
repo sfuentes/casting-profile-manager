@@ -11,12 +11,12 @@ import {
   initiateOAuth,
   handleOAuthCallback,
 } from '../controllers/platformController.js';
-import { demoAuth } from '../middleware/auth.js';
+import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // All routes are protected
-router.use(demoAuth);
+router.use(protect);
 
 router.route('/')
   .get(getPlatforms);

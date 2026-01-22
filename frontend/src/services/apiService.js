@@ -1,10 +1,23 @@
 import platformAgent from './platformAgent';
 
 // API Configuration
-const API_BASE_URL = 'https://api.darsteller-manager.de/v1';
-const API_HEADERS = {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer demo-token'
+const API_BASE_URL = 'http://localhost:5000/api';
+
+const getHeaders = () => {
+    const token = localStorage.getItem('token');
+    return {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+    };
+};
+
+const handleResponse = async (response) => {
+    const data = await response.json();
+    if (!response.ok) {
+        const errorMsg = data.error?.message || data.message || 'API request failed';
+        throw new Error(errorMsg);
+    }
+    return data.data !== undefined ? data.data : data;
 };
 
 // Platform capabilities mapping based on existing platforms.js structure
@@ -76,7 +89,64 @@ const platformCapabilities = {
 
 // API Service with improved error handling
 export const apiService = {
-    demoMode: true,
+    demoMode: false,
+
+    // Auth endpoints
+    login: async (email, password) => {
+        const response = await fetch(`${API_BASE_URL}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            const errorMsg = data.error?.message || data.message || 'Login failed';
+            throw new Error(errorMsg);
+        }
+        if (data.token) {
+            localStorage.setItem('token', data.token);
+        }
+        return data;
+    },
+
+    register: async (userData) => {
+        const response = await fetch(`${API_BASE_URL}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(userData)
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            const errorMsg = data.error?.message || data.message || 'Registration failed';
+            throw new Error(errorMsg);
+        }
+        return data;
+    },
+
+    logout: async () => {
+        localStorage.removeItem('token');
+        try {
+            await fetch(`${API_BASE_URL}/auth/logout`, {
+                method: 'POST',
+                headers: getHeaders()
+            });
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+        return { success: true };
+    },
+
+    getMe: async () => {
+        const response = await fetch(`${API_BASE_URL}/auth/me`, {
+            headers: getHeaders()
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            const errorMsg = data.error?.message || data.message || 'Failed to fetch user';
+            throw new Error(errorMsg);
+        }
+        return data.data;
+    },
 
     // Profile management endpoints
     getProfile: async () => {
@@ -94,9 +164,13 @@ export const apiService = {
                 });
             }
         }
-        const response = await fetch(`${API_BASE_URL}/profile`, {headers: API_HEADERS});
-        if (!response.ok) throw new Error('Failed to fetch profile');
-        return response.json();
+        const response = await fetch(`${API_BASE_URL}/profile`, {headers: getHeaders()});
+        const data = await response.json();
+        if (!response.ok) {
+            const errorMsg = data.error?.message || data.message || 'Failed to fetch profile';
+            throw new Error(errorMsg);
+        }
+        return data.data;
     },
 
     updateProfile: async (profileData) => {
@@ -106,11 +180,130 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/profile`, {
             method: 'PUT',
-            headers: API_HEADERS,
+            headers: getHeaders(),
             body: JSON.stringify(profileData)
         });
-        if (!response.ok) throw new Error('Failed to update profile');
-        return response.json();
+        return handleResponse(response);
+    },
+
+    addWorkHistory: async (workItem) => {
+        if (apiService.demoMode) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            return Promise.resolve({...workItem, id: `work-${Date.now()}`});
+        }
+        const response = await fetch(`${API_BASE_URL}/profile/work-history`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(workItem)
+        });
+        return handleResponse(response);
+    },
+
+    updateWorkHistory: async (id, updates) => {
+        if (apiService.demoMode) {
+            await new Promise(resolve => setTimeout(resolve, 400));
+            return Promise.resolve({...updates, id});
+        }
+        const response = await fetch(`${API_BASE_URL}/profile/work-history/${id}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(updates)
+        });
+        return handleResponse(response);
+    },
+
+    deleteWorkHistory: async (id) => {
+        if (apiService.demoMode) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            return Promise.resolve({success: true});
+        }
+        const response = await fetch(`${API_BASE_URL}/profile/work-history/${id}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        return handleResponse(response);
+    },
+
+    addEducation: async (educationItem) => {
+        if (apiService.demoMode) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            return Promise.resolve({...educationItem, id: `edu-${Date.now()}`});
+        }
+        const response = await fetch(`${API_BASE_URL}/profile/education`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(educationItem)
+        });
+        return handleResponse(response);
+    },
+
+    updateEducation: async (id, updates) => {
+        if (apiService.demoMode) {
+            await new Promise(resolve => setTimeout(resolve, 400));
+            return Promise.resolve({...updates, id});
+        }
+        const response = await fetch(`${API_BASE_URL}/profile/education/${id}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(updates)
+        });
+        return handleResponse(response);
+    },
+
+    deleteEducation: async (id) => {
+        if (apiService.demoMode) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            return Promise.resolve({success: true});
+        }
+        const response = await fetch(`${API_BASE_URL}/profile/education/${id}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        return handleResponse(response);
+    },
+
+    uploadProfilePhoto: async (file) => {
+        const formData = new FormData();
+        formData.append('photo', file);
+
+        const response = await fetch(`${API_BASE_URL}/upload/profile-photo`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: formData
+        });
+        return handleResponse(response);
+    },
+
+    uploadSetcardPhoto: async (photoId, file) => {
+        const formData = new FormData();
+        formData.append('photo', file);
+
+        const response = await fetch(`${API_BASE_URL}/upload/setcard-photo/${photoId}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: formData
+        });
+        return handleResponse(response);
+    },
+
+    deleteSetcardPhoto: async (photoId) => {
+        const response = await fetch(`${API_BASE_URL}/upload/setcard-photo/${photoId}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        return handleResponse(response);
+    },
+
+    syncProfileToPlatforms: async () => {
+        const response = await fetch(`${API_BASE_URL}/profile/sync`, {
+            method: 'POST',
+            headers: getHeaders()
+        });
+        return handleResponse(response);
     },
 
     // Booking management endpoints
@@ -124,9 +317,8 @@ export const apiService = {
                 return Promise.resolve([]);
             }
         }
-        const response = await fetch(`${API_BASE_URL}/bookings`, {headers: API_HEADERS});
-        if (!response.ok) throw new Error('Failed to fetch bookings');
-        return response.json();
+        const response = await fetch(`${API_BASE_URL}/bookings`, {headers: getHeaders()});
+        return handleResponse(response);
     },
     getOptions: async () => {
         if (apiService.demoMode) {
@@ -138,9 +330,8 @@ export const apiService = {
                 return Promise.resolve([]);
             }
         }
-        const response = await fetch(`${API_BASE_URL}/options`, {headers: API_HEADERS});
-        if (!response.ok) throw new Error('Failed to fetch options');
-        return response.json();
+        const response = await fetch(`${API_BASE_URL}/options`, {headers: getHeaders()});
+        return handleResponse(response);
     },
 
     addOption: async (optionData) => {
@@ -156,11 +347,10 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/options`, {
             method: 'POST',
-            headers: API_HEADERS,
+            headers: getHeaders(),
             body: JSON.stringify(optionData)
         });
-        if (!response.ok) throw new Error('Failed to add option');
-        return response.json();
+        return handleResponse(response);
     },
 
     updateOption: async (optionId, updates) => {
@@ -175,11 +365,10 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/options/${optionId}`, {
             method: 'PUT',
-            headers: API_HEADERS,
+            headers: getHeaders(),
             body: JSON.stringify(updates)
         });
-        if (!response.ok) throw new Error('Failed to update option');
-        return response.json();
+        return handleResponse(response);
     },
 
     deleteOption: async (optionId) => {
@@ -189,10 +378,9 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/options/${optionId}`, {
             method: 'DELETE',
-            headers: API_HEADERS
+            headers: getHeaders()
         });
-        if (!response.ok) throw new Error('Failed to delete option');
-        return response.json();
+        return handleResponse(response);
     },
 
 // Also add booking methods if they're not already implemented
@@ -209,11 +397,10 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/bookings`, {
             method: 'POST',
-            headers: API_HEADERS,
+            headers: getHeaders(),
             body: JSON.stringify(bookingData)
         });
-        if (!response.ok) throw new Error('Failed to add booking');
-        return response.json();
+        return handleResponse(response);
     },
 
     updateBooking: async (bookingId, updates) => {
@@ -228,11 +415,10 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/bookings/${bookingId}`, {
             method: 'PUT',
-            headers: API_HEADERS,
+            headers: getHeaders(),
             body: JSON.stringify(updates)
         });
-        if (!response.ok) throw new Error('Failed to update booking');
-        return response.json();
+        return handleResponse(response);
     },
 
     deleteBooking: async (bookingId) => {
@@ -242,10 +428,9 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/bookings/${bookingId}`, {
             method: 'DELETE',
-            headers: API_HEADERS
+            headers: getHeaders()
         });
-        if (!response.ok) throw new Error('Failed to delete booking');
-        return response.json();
+        return handleResponse(response);
     },
 
 // Add availability methods
@@ -262,11 +447,10 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/availability`, {
             method: 'POST',
-            headers: API_HEADERS,
+            headers: getHeaders(),
             body: JSON.stringify(availabilityData)
         });
-        if (!response.ok) throw new Error('Failed to add availability');
-        return response.json();
+        return handleResponse(response);
     },
 
     updateAvailabilityItem: async (availabilityId, updates) => {
@@ -281,11 +465,10 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/availability/${availabilityId}`, {
             method: 'PUT',
-            headers: API_HEADERS,
+            headers: getHeaders(),
             body: JSON.stringify(updates)
         });
-        if (!response.ok) throw new Error('Failed to update availability');
-        return response.json();
+        return handleResponse(response);
     },
 
     deleteAvailability: async (availabilityId) => {
@@ -295,10 +478,9 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/availability/${availabilityId}`, {
             method: 'DELETE',
-            headers: API_HEADERS
+            headers: getHeaders()
         });
-        if (!response.ok) throw new Error('Failed to delete availability');
-        return response.json();
+        return handleResponse(response);
     },
 
 // Sync availability to platforms
@@ -315,10 +497,9 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/availability/sync`, {
             method: 'POST',
-            headers: API_HEADERS
+            headers: getHeaders()
         });
-        if (!response.ok) throw new Error('Failed to sync availability');
-        return response.json();
+        return handleResponse(response);
     },
 
     // Availability management endpoints
@@ -332,9 +513,8 @@ export const apiService = {
                 return Promise.resolve([]);
             }
         }
-        const response = await fetch(`${API_BASE_URL}/availability`, {headers: API_HEADERS});
-        if (!response.ok) throw new Error('Failed to fetch availability');
-        return response.json();
+        const response = await fetch(`${API_BASE_URL}/availability`, {headers: getHeaders()});
+        return handleResponse(response);
     },
 
     updateAvailability: async (availability) => {
@@ -344,7 +524,7 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/availability`, {
             method: 'PUT',
-            headers: API_HEADERS,
+            headers: getHeaders(),
             body: JSON.stringify(availability)
         });
         if (!response.ok) throw new Error('Failed to update availability');
@@ -367,9 +547,8 @@ export const apiService = {
                 return Promise.resolve([]);
             }
         }
-        const response = await fetch(`${API_BASE_URL}/platforms`, {headers: API_HEADERS});
-        if (!response.ok) throw new Error('Failed to fetch platforms');
-        return response.json();
+        const response = await fetch(`${API_BASE_URL}/platforms`, {headers: getHeaders()});
+        return handleResponse(response);
     },
 
     getPlatformDescription: (id, name) => {
@@ -432,11 +611,10 @@ export const apiService = {
 
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/connect`, {
             method: 'POST',
-            headers: API_HEADERS,
+            headers: getHeaders(),
             body: JSON.stringify(authData)
         });
-        if (!response.ok) throw new Error('Failed to connect platform');
-        return response.json();
+        return handleResponse(response);
     },
 
     disconnectPlatform: async (platformId) => {
@@ -454,10 +632,9 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/disconnect`, {
             method: 'POST',
-            headers: API_HEADERS
+            headers: getHeaders()
         });
-        if (!response.ok) throw new Error('Failed to disconnect platform');
-        return response.json();
+        return handleResponse(response);
     },
 
     updatePlatformSettings: async (platformId, settings) => {
@@ -470,11 +647,10 @@ export const apiService = {
         }
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/settings`, {
             method: 'PUT',
-            headers: API_HEADERS,
+            headers: getHeaders(),
             body: JSON.stringify(settings)
         });
-        if (!response.ok) throw new Error('Failed to update platform settings');
-        return response.json();
+        return handleResponse(response);
     },
 
     testPlatformConnection: async (platformId, credentials) => {
@@ -514,11 +690,10 @@ export const apiService = {
 
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/test`, {
             method: 'POST',
-            headers: API_HEADERS,
+            headers: getHeaders(),
             body: JSON.stringify(credentials)
         });
-        if (!response.ok) throw new Error('Failed to test platform connection');
-        return response.json();
+        return handleResponse(response);
     },
 
     syncToPlatform: async (platformId, dataTypes = ['profile', 'availability'], credentials) => {
@@ -565,11 +740,10 @@ export const apiService = {
 
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/sync`, {
             method: 'POST',
-            headers: API_HEADERS,
+            headers: getHeaders(),
             body: JSON.stringify({dataTypes, credentials})
         });
-        if (!response.ok) throw new Error('Failed to sync to platform');
-        return response.json();
+        return handleResponse(response);
     },
 
     bulkSyncToPlatforms: async (platformIds, dataTypes = ['profile', 'availability'], credentialsMap) => {
@@ -612,11 +786,10 @@ export const apiService = {
 
         const response = await fetch(`${API_BASE_URL}/platforms/bulk-sync`, {
             method: 'POST',
-            headers: API_HEADERS,
+            headers: getHeaders(),
             body: JSON.stringify({platformIds, dataTypes, credentialsMap})
         });
-        if (!response.ok) throw new Error('Failed to bulk sync platforms');
-        return response.json();
+        return handleResponse(response);
     },
 
     readProfileFromPlatform: async (platformId, credentials) => {
@@ -655,10 +828,9 @@ export const apiService = {
 
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/profile`, {
             method: 'GET',
-            headers: {...API_HEADERS, 'X-Platform-Credentials': btoa(JSON.stringify(credentials))}
+            headers: {...getHeaders(), 'X-Platform-Credentials': btoa(JSON.stringify(credentials))}
         });
-        if (!response.ok) throw new Error('Failed to read profile from platform');
-        return response.json();
+        return handleResponse(response);
     },
 
     checkAgentHealth: async () => {
@@ -689,9 +861,8 @@ export const apiService = {
             }
         }
 
-        const response = await fetch(`${API_BASE_URL}/agent/health`, {headers: API_HEADERS});
-        if (!response.ok) throw new Error('Failed to check agent health');
-        return response.json();
+        const response = await fetch(`${API_BASE_URL}/agent/health`, {headers: getHeaders()});
+        return handleResponse(response);
     },
 
     // OAuth flow endpoints
@@ -710,12 +881,14 @@ export const apiService = {
                 state: `${platformId}_${Date.now()}`
             });
         }
-        const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/oauth/init`, {
-            method: 'POST',
-            headers: API_HEADERS
+        const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/oauth/initiate`, {
+            headers: getHeaders()
         });
-        if (!response.ok) throw new Error('Failed to initiate OAuth');
-        return response.json();
+        const data = await handleResponse(response);
+        return {
+            authUrl: data.redirectUrl,
+            ...data
+        };
     },
 
     completeOAuth: async (platformId, authCode, state) => {
@@ -727,13 +900,10 @@ export const apiService = {
                 expiresIn: 3600
             });
         }
-        const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/oauth/complete`, {
-            method: 'POST',
-            headers: API_HEADERS,
-            body: JSON.stringify({code: authCode, state})
+        const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/oauth/callback?code=${authCode}&state=${state}`, {
+            headers: getHeaders()
         });
-        if (!response.ok) throw new Error('Failed to complete OAuth');
-        return response.json();
+        return handleResponse(response);
     }
 };
 

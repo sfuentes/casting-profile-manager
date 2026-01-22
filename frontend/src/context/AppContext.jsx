@@ -17,6 +17,8 @@ export const useAppContext = () => {
 
 // App Provider Component with API Integration
 export const AppProvider = ({children}) => {
+    const [user, setUser] = useState(null);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [profile, setProfile] = useState(initialProfile);
     const [bookings, setBookings] = useState([]);
     const [options, setOptions] = useState([]);
@@ -32,13 +34,40 @@ export const AppProvider = ({children}) => {
     const [error, setError] = useState(null);
     const [lastSaved, setLastSaved] = useState(null);
 
-    // Load initial data from API
+    // Check for token on mount
     useEffect(() => {
-        loadAllData();
+        const token = localStorage.getItem('token');
+        if (token && token !== 'undefined' && token !== 'null') {
+            checkAuth();
+        } else {
+            localStorage.removeItem('token'); // Clean up garbage values
+            setIsAuthenticated(false);
+            setLoading(false);
+        }
     }, []);
 
-    const loadAllData = async () => {
+    const checkAuth = async () => {
         setLoading(true);
+        try {
+            const userData = await apiService.getMe();
+            if (userData && (userData.id || userData._id)) {
+                setUser(userData);
+                setIsAuthenticated(true);
+                await loadAllData();
+            } else {
+                throw new Error('Ungültige Benutzerdaten erhalten.');
+            }
+        } catch (err) {
+            console.error('Auth check failed:', err);
+            localStorage.removeItem('token');
+            setUser(null);
+            setIsAuthenticated(false);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadAllData = async () => {
         setError(null);
 
         try {
@@ -58,17 +87,63 @@ export const AppProvider = ({children}) => {
 
         } catch (err) {
             console.error('Failed to load data:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Laden der Daten. Offline-Modus aktiv.');
+            if (!apiService.demoMode && isAuthenticated) {
+                setError('Fehler beim Laden der Daten.');
             }
-            setProfile(initialProfile);
-            setBookings(initialBookings);
-            setOptions(initialOptions);
-            setAvailability(initialAvailability);
-            setPlatforms(initialPlatforms);
+            if (!isAuthenticated) {
+                setProfile(initialProfile);
+                setBookings(initialBookings);
+                setOptions(initialOptions);
+                setAvailability(initialAvailability);
+                setPlatforms(initialPlatforms);
+            }
+        }
+    };
+
+    const login = async (email, password) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const data = await apiService.login(email, password);
+            if (data && data.user) {
+                setUser(data.user);
+                setIsAuthenticated(true);
+                await loadAllData();
+                return true;
+            } else {
+                throw new Error('Login erfolgreich, aber keine Benutzerdaten erhalten.');
+            }
+        } catch (err) {
+            setError(err.message);
+            throw err;
         } finally {
             setLoading(false);
         }
+    };
+
+    const register = async (userData) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const data = await apiService.register(userData);
+            return data;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const logout = async () => {
+        await apiService.logout();
+        setUser(null);
+        setIsAuthenticated(false);
+        setProfile(initialProfile);
+        setBookings([]);
+        setOptions([]);
+        setAvailability([]);
+        setPlatforms([]);
     };
 
     // Profile functions with API integration
@@ -716,7 +791,11 @@ export const AppProvider = ({children}) => {
 
     // Context value with all functions and state
     const value = {
-        // State data
+        user,
+        isAuthenticated,
+        login,
+        register,
+        logout,
         profile,
         bookings,
         options,

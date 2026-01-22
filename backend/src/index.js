@@ -22,6 +22,7 @@ import platformRoutes from './routes/platformRoutes.js';
 import bookingRoutes from './routes/bookingRoutes.js';
 import availabilityRoutes from './routes/availabilityRoutes.js';
 import optionRoutes from './routes/optionRoutes.js';
+import uploadRoutes from './routes/uploadRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -41,7 +42,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
+      imgSrc: ["'self'", 'data:', 'https:'],
     },
   },
 }));
@@ -63,8 +64,8 @@ app.use('/api', limiter);
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL 
+  origin: process.env.NODE_ENV === 'production'
+    ? process.env.FRONTEND_URL
     : ['http://localhost:3000', 'http://localhost:5173'],
   credentials: true,
   optionsSuccessStatus: 200,
@@ -108,6 +109,7 @@ app.use('/api/platforms', platformRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/availability', availabilityRoutes);
 app.use('/api/options', optionRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Welcome route
 app.get('/', (req, res) => {
@@ -132,20 +134,18 @@ app.use('*', (req, res) => {
 app.use(errorHandler);
 
 // Graceful shutdown function
-const gracefulShutdown = (server) => {
-  return (signal) => {
-    logger.info(`Received ${signal}. Starting graceful shutdown...`);
-    
-    server.close((err) => {
-      if (err) {
-        logger.error('Error during server shutdown:', err);
-        process.exit(1);
-      }
-      
-      logger.info('Server closed successfully');
-      process.exit(0);
-    });
-  };
+const gracefulShutdown = (server) => (signal) => {
+  logger.info(`Received ${signal}. Starting graceful shutdown...`);
+
+  server.close((err) => {
+    if (err) {
+      logger.error('Error during server shutdown:', err);
+      process.exit(1);
+    }
+
+    logger.info('Server closed successfully');
+    process.exit(0);
+  });
 };
 
 // Start server

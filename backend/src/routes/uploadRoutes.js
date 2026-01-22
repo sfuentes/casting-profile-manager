@@ -8,7 +8,7 @@ import {
   uploadSetcardPhoto,
   deleteSetcardPhoto,
 } from '../controllers/uploadController.js';
-import { demoAuth } from '../middleware/auth.js';
+import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -17,11 +17,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const storage = multer.diskStorage({
-  destination: function(req, file, cb) {
+  destination(req, file, cb) {
     const uploadDir = process.env.UPLOAD_DIR || join(__dirname, '../../uploads');
     cb(null, uploadDir);
   },
-  filename: function(req, file, cb) {
+  filename(req, file, cb) {
     const uniqueId = nanoid(10);
     const fileExt = file.originalname.split('.').pop();
     cb(null, `${Date.now()}-${uniqueId}.${fileExt}`);
@@ -46,7 +46,7 @@ const upload = multer({
 });
 
 // All routes are protected
-router.use(demoAuth);
+router.use(protect);
 
 router.post('/profile-photo', upload.single('photo'), uploadProfilePhoto);
 router.post('/setcard-photo/:photoId', upload.single('photo'), uploadSetcardPhoto);

@@ -3,132 +3,117 @@ import Platform from '../models/Platform.js';
 import { ApiError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 import platformAgent from '../services/platformAgent.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 // @desc    Get user profile
 // @route   GET /api/v1/profile
 // @access  Private
-export const getProfile = async (req, res, next) => {
-  try {
-    let profile = await Profile.findOne({ user: req.user.id });
+export const getProfile = asyncHandler(async (req, res, next) => {
+  let profile = await Profile.findOne({ user: req.user.id });
 
-    if (!profile) {
-      // Create a new profile if it doesn't exist
-      profile = await Profile.create({
-        user: req.user.id,
-        name: req.user.name,
-        lastUpdated: new Date()
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: profile
+  if (!profile) {
+    // Create a new profile if it doesn't exist
+    profile = await Profile.create({
+      user: req.user.id,
+      name: req.user.name,
+      lastUpdated: new Date()
     });
-  } catch (error) {
-    next(error);
   }
-};
+
+  res.status(200).json({
+    success: true,
+    data: profile
+  });
+});
 
 // @desc    Update user profile
 // @route   PUT /api/v1/profile
 // @access  Private
-export const updateProfile = async (req, res, next) => {
-  try {
-    let profile = await Profile.findOne({ user: req.user.id });
+export const updateProfile = asyncHandler(async (req, res, next) => {
+  let profile = await Profile.findOne({ user: req.user.id });
 
-    if (!profile) {
-      // Create a new profile if it doesn't exist
-      profile = await Profile.create({
-        user: req.user.id,
-        ...req.body,
-        lastUpdated: new Date()
-      });
-    } else {
-      // Update existing profile
-      profile = await Profile.findOneAndUpdate(
-        { user: req.user.id },
-        { ...req.body, lastUpdated: new Date() },
-        { new: true, runValidators: true }
-      );
-    }
-
-    res.status(200).json({
-      success: true,
-      data: profile
+  if (!profile) {
+    // Create a new profile if it doesn't exist
+    profile = await Profile.create({
+      user: req.user.id,
+      ...req.body,
+      lastUpdated: new Date()
     });
-  } catch (error) {
-    next(error);
+  } else {
+    // Update existing profile
+    profile = await Profile.findOneAndUpdate(
+      { user: req.user.id },
+      { ...req.body, lastUpdated: new Date() },
+      { new: true, runValidators: true }
+    );
   }
-};
+
+  res.status(200).json({
+    success: true,
+    data: profile
+  });
+});
 
 // @desc    Add work history item
 // @route   POST /api/v1/profile/work-history
 // @access  Private
-export const addWorkHistory = async (req, res, next) => {
-  try {
-    const profile = await Profile.findOne({ user: req.user.id });
+export const addWorkHistory = asyncHandler(async (req, res, next) => {
+  const profile = await Profile.findOne({ user: req.user.id });
 
-    if (!profile) {
-      throw new ApiError('Profile not found', 404);
-    }
-
-    // Create a unique ID for the work history item
-    const workItem = {
-      ...req.body,
-      id: `work-${Date.now()}`
-    };
-
-    profile.workHistory = [...(profile.workHistory || []), workItem];
-    profile.lastUpdated = new Date();
-
-    await profile.save();
-
-    res.status(201).json({
-      success: true,
-      data: workItem
-    });
-  } catch (error) {
-    next(error);
+  if (!profile) {
+    throw new ApiError('Profile not found', 404);
   }
-};
+
+  // Create a unique ID for the work history item
+  const workItem = {
+    ...req.body,
+    id: `work-${Date.now()}`
+  };
+
+  profile.workHistory = [...(profile.workHistory || []), workItem];
+  profile.lastUpdated = new Date();
+
+  await profile.save();
+
+  res.status(201).json({
+    success: true,
+    data: workItem
+  });
+});
 
 // @desc    Update work history item
 // @route   PUT /api/v1/profile/work-history/:id
 // @access  Private
-export const updateWorkHistory = async (req, res, next) => {
-  try {
-    const profile = await Profile.findOne({ user: req.user.id });
+export const updateWorkHistory = asyncHandler(async (req, res, next) => {
+  const profile = await Profile.findOne({ user: req.user.id });
 
-    if (!profile) {
-      throw new ApiError('Profile not found', 404);
-    }
-
-    // Find and update the work history item
-    const workHistoryIndex = profile.workHistory.findIndex(
-      item => item.id === req.params.id
-    );
-
-    if (workHistoryIndex === -1) {
-      throw new ApiError('Work history item not found', 404);
-    }
-
-    // Update the item
-    profile.workHistory[workHistoryIndex] = {
-      ...profile.workHistory[workHistoryIndex],
-      ...req.body
-    };
-
-    profile.lastUpdated = new Date();
-    await profile.save();
-
-    res.status(200).json({
-      success: true,
-      data: profile.workHistory[workHistoryIndex]
-    });
-  } catch (error) {
-    next(error);
+  if (!profile) {
+    throw new ApiError('Profile not found', 404);
   }
-};
+
+  // Find and update the work history item
+  const workHistoryIndex = profile.workHistory.findIndex(
+    (item) => item.id === req.params.id
+  );
+
+  if (workHistoryIndex === -1) {
+    throw new ApiError('Work history item not found', 404);
+  }
+
+  // Update the item
+  profile.workHistory[workHistoryIndex] = {
+    ...profile.workHistory[workHistoryIndex],
+    ...req.body
+  };
+
+  profile.lastUpdated = new Date();
+  await profile.save();
+
+  res.status(200).json({
+    success: true,
+    data: profile.workHistory[workHistoryIndex]
+  });
+});
 
 // @desc    Delete work history item
 // @route   DELETE /api/v1/profile/work-history/:id
@@ -143,7 +128,7 @@ export const deleteWorkHistory = async (req, res, next) => {
 
     // Filter out the work history item
     profile.workHistory = profile.workHistory.filter(
-      item => item.id !== req.params.id
+      (item) => item.id !== req.params.id
     );
 
     profile.lastUpdated = new Date();
@@ -203,7 +188,7 @@ export const updateEducation = async (req, res, next) => {
 
     // Find and update the education item
     const educationIndex = profile.education.findIndex(
-      item => item.id === req.params.id
+      (item) => item.id === req.params.id
     );
 
     if (educationIndex === -1) {
@@ -241,7 +226,7 @@ export const deleteEducation = async (req, res, next) => {
 
     // Filter out the education item
     profile.education = profile.education.filter(
-      item => item.id !== req.params.id
+      (item) => item.id !== req.params.id
     );
 
     profile.lastUpdated = new Date();

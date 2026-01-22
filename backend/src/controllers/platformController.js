@@ -1,5 +1,5 @@
 import Platform from '../models/Platform.js';
-import { catchAsync } from '../utils/errorHandler.js';
+import { asyncHandler as catchAsync } from '../middleware/asyncHandler.js';
 
 // Get all platforms for the current user
 export const getPlatforms = catchAsync(async (req, res) => {
@@ -13,9 +13,9 @@ export const getPlatforms = catchAsync(async (req, res) => {
 
 // Get single platform
 export const getPlatform = catchAsync(async (req, res) => {
-  const platform = await Platform.findOne({ 
+  const platform = await Platform.findOne({
     _id: req.params.id,
-    user: req.user.id 
+    user: req.user.id
   });
 
   if (!platform) {
@@ -36,9 +36,9 @@ export const connectPlatform = catchAsync(async (req, res) => {
   const { authData } = req.body;
 
   // Find the platform or create if doesn't exist
-  let platform = await Platform.findOne({ 
+  let platform = await Platform.findOne({
     platformId: req.params.id,
-    user: req.user.id 
+    user: req.user.id
   });
 
   if (!platform) {
@@ -48,7 +48,7 @@ export const connectPlatform = catchAsync(async (req, res) => {
       platformId: parseInt(req.params.id),
       name: req.body.name,
       authType: req.body.authType,
-      authData: authData,
+      authData,
       connected: true,
       lastSync: new Date(),
       meta: req.body.meta || {}
@@ -212,7 +212,7 @@ export const bulkSyncToPlatforms = catchAsync(async (req, res) => {
 
   // In a real implementation, this would sync data to each platform
   // For demo purposes, we'll just update the lastSync date
-  const updates = platforms.map(platform => ({
+  const updates = platforms.map((platform) => ({
     updateOne: {
       filter: { _id: platform._id },
       update: { lastSync: new Date() }
@@ -228,7 +228,7 @@ export const bulkSyncToPlatforms = catchAsync(async (req, res) => {
     message: `Sync completed for ${platforms.length} platforms`,
     data: {
       syncedCount: platforms.length,
-      platformIds: platforms.map(p => p._id)
+      platformIds: platforms.map((p) => p._id)
     }
   });
 });
