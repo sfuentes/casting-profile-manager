@@ -1,0 +1,22 @@
+{
+  "name": "casting-profile-manager",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "backend": "npm run dev --prefix backend",
+    "frontend": "npm run dev --prefix frontend",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "start": "npm run dev",
+    "install-all": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "seed": "npm run seed --prefix backend",
+    "docker:prod": "docker-compose up -d",
+    "docker:dev": "docker-compose -f docker-compose.dev.yml up",
+    "docker:build": "docker-compose build",
+    "docker:stop": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "docker:clean": "docker-compose down -v"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
