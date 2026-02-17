@@ -1,17 +1,5 @@
-import mongoose from 'mongoose';
-
-const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
-      // These options are no longer needed in Mongoose 6+, but kept for compatibility
-      // with older versions or custom configurations
-    });
-
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.error(`Error connecting to MongoDB: ${error.message}`);
-    process.exit(1);
-  }
-};
-
+// This file is deprecated. Use database.js instead.
+// Kept for backwards compatibility - re-exports from database.js
+import { connectDB } from './database.js';
 export default connectDB;
+export { connectDB };

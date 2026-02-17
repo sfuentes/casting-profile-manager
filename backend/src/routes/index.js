@@ -1,3 +1,11 @@
+/**
+ * @deprecated This file is not used. Routes are registered directly in src/index.js.
+ * Kept for reference only.
+ *
+ * Active route registration happens in backend/src/index.js under /api/*
+ * (not /api/v1/* as shown below).
+ */
+
 import authRoutes from './authRoutes.js';
 import profileRoutes from './profileRoutes.js';
 import bookingRoutes from './bookingRoutes.js';
@@ -5,38 +13,25 @@ import optionRoutes from './optionRoutes.js';
 import availabilityRoutes from './availabilityRoutes.js';
 import platformRoutes from './platformRoutes.js';
 import uploadRoutes from './uploadRoutes.js';
+import syncRoutes from './syncRoutes.js';
+import agentRoutes from './agentRoutes.js';
 import { notFound } from '../middleware/errorHandler.js';
 
 export const setupRoutes = (app) => {
   // API Routes
-  app.use('/api/v1/auth', authRoutes);
-  app.use('/api/v1/profile', profileRoutes);
-  app.use('/api/v1/bookings', bookingRoutes);
-  app.use('/api/v1/options', optionRoutes);
-  app.use('/api/v1/availability', availabilityRoutes);
-  app.use('/api/v1/platforms', platformRoutes);
-  app.use('/api/v1/upload', uploadRoutes);
+  app.use('/api/auth', authRoutes);
+  app.use('/api/profile', profileRoutes);
+  app.use('/api/bookings', bookingRoutes);
+  app.use('/api/options', optionRoutes);
+  app.use('/api/availability', availabilityRoutes);
+  app.use('/api/platforms', platformRoutes);
+  app.use('/api/upload', uploadRoutes);
+  app.use('/api/sync', syncRoutes);
+  app.use('/api/agent', agentRoutes);
 
   // Health check route
   app.get('/api/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
-  });
-
-  // API documentation route
-  app.get('/api/docs', (req, res) => {
-    res.status(200).json({
-      message: 'API Documentation',
-      version: '1.0.0',
-      endpoints: [
-        { path: '/api/v1/auth', description: 'Authentication endpoints' },
-        { path: '/api/v1/profile', description: 'Profile management' },
-        { path: '/api/v1/bookings', description: 'Booking management' },
-        { path: '/api/v1/options', description: 'Option management' },
-        { path: '/api/v1/availability', description: 'Availability management' },
-        { path: '/api/v1/platforms', description: 'Platform integration' },
-        { path: '/api/v1/upload', description: 'File upload endpoints' },
-      ]
-    });
   });
 
   // Handle 404 - Not Found
