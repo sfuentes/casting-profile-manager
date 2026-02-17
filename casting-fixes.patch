@@ -1,0 +1,496 @@
+diff --git a/backend/.env b/backend/.env
+index 32510bd..87ee86f 100644
+--- a/backend/.env
++++ b/backend/.env
+@@ -5,9 +5,13 @@ NODE_ENV=development
+ # MongoDB Connection
+ MONGO_URI=mongodb://127.0.0.1:27017/darsteller-manager?directConnection=true&serverSelectionTimeoutMS=5000
+ 
+-# JWT Secret for Authentication
+-JWT_SECRET=your-secret-key-here
++# JWT Secret for Authentication (change this in production!)
++JWT_SECRET=dev-c4st1ng-pr0f1l3-m4n4g3r-s3cr3t-k3y-2026
+ JWT_EXPIRES_IN=7d
++JWT_COOKIE_EXPIRE=7
++
++# Frontend URL (for CORS in production)
++FRONTEND_URL=http://localhost:5173
+ 
+ # File Storage Configuration
+ UPLOAD_DIR=./uploads
+@@ -16,7 +20,17 @@ MAX_FILE_SIZE=10
+ # Platform API Keys
+ FILMMAKERS_CLIENT_ID=your-client-id
+ FILMMAKERS_CLIENT_SECRET=your-client-secret
++CASTING_NETWORK_API_KEY=your-api-key
++SCHAUSPIELERVIDEOS_API_KEY=your-api-key
++ETALENTA_API_KEY=your-api-key
++JOBWORK_CLIENT_ID=your-client-id
++JOBWORK_CLIENT_SECRET=your-client-secret
++WANTED_CLIENT_ID=your-client-id
++WANTED_CLIENT_SECRET=your-client-secret
+ 
+ # API Rate Limiting
+-RATE_LIMIT_WINDOW_MS=600000 # 10 minutes
+-RATE_LIMIT_MAX=100 # 100 requests per window
++RATE_LIMIT_WINDOW_MS=600000
++RATE_LIMIT_MAX=100
++
++# Puppeteer Configuration (for local development without system Chromium)
++# PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+diff --git a/backend/.env.example b/backend/.env.example
+index 3c2cabf..855bd43 100644
+--- a/backend/.env.example
++++ b/backend/.env.example
+@@ -5,60 +5,40 @@ NODE_ENV=development
+ # MongoDB Connection
+ MONGO_URI=mongodb://127.0.0.1:27017/darsteller-manager
+ 
+-# JWT Secret for Authentication
++# JWT Secret for Authentication (CHANGE THIS IN PRODUCTION!)
+ JWT_SECRET=your-secret-key-here
+ JWT_EXPIRES_IN=7d
++JWT_COOKIE_EXPIRE=7
+ 
+-# File Storage Configuration
+-UPLOAD_DIR=./uploads
+-MAX_FILE_SIZE=10
+-
+-# Platform API Keys
+-FILMMAKERS_CLIENT_ID=your-client-id
+-FILMMAKERS_CLIENT_SECRET=your-client-secret
+-# Server Configuration
+-NODE_ENV=development
+-PORT=5000
+-
+-# MongoDB Connection
+-MONGO_URI=mongodb://127.0.0.1:27017/booking-platform
++# Frontend URL (for CORS in production)
++FRONTEND_URL=http://localhost:5173
+ 
+-# JWT Authentication
+-JWT_SECRET=your_jwt_secret_key_here
+-JWT_EXPIRE=30d
+-JWT_COOKIE_EXPIRE=30
+-
+-# Email Configuration
++# Email Configuration (optional)
+ SMTP_HOST=smtp.example.com
+ SMTP_PORT=587
+ SMTP_USER=your_email@example.com
+ SMTP_PASSWORD=your_password
+-FROM_EMAIL=noreply@bookingplatform.com
+-FROM_NAME=Booking Platform
++FROM_EMAIL=noreply@casting-manager.com
++FROM_NAME=Casting Profile Manager
+ 
+-# File Upload
+-MAX_FILE_UPLOAD=1000000 # 1MB in bytes
+-FILE_UPLOAD_PATH=./public/uploads
++# File Storage Configuration
++UPLOAD_DIR=./uploads
++MAX_FILE_SIZE=10
+ 
+ # API Rate Limiting
+-RATE_LIMIT_WINDOW_MS=600000 # 10 minutes
+-RATE_LIMIT_MAX=100 # 100 requests per window
++RATE_LIMIT_WINDOW_MS=600000
++RATE_LIMIT_MAX=100
+ 
+-# External Platform API Keys
+-# Airbnb
+-AIRBNB_API_KEY=your_airbnb_api_key
+-# Booking.com
+-BOOKING_API_KEY=your_booking_api_key
+-# VRBO
+-VRBO_API_KEY=your_vrbo_api_key
++# Platform API Keys
++FILMMAKERS_CLIENT_ID=your-client-id
++FILMMAKERS_CLIENT_SECRET=your-client-secret
+ CASTING_NETWORK_API_KEY=your-api-key
+-
+ SCHAUSPIELERVIDEOS_API_KEY=your-api-key
+-
+ ETALENTA_API_KEY=your-api-key
+-
+ JOBWORK_CLIENT_ID=your-client-id
+ JOBWORK_CLIENT_SECRET=your-client-secret
+-
+ WANTED_CLIENT_ID=your-client-id
+ WANTED_CLIENT_SECRET=your-client-secret
++
++# Puppeteer Configuration (set if Chromium is installed at a custom path)
++# PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+diff --git a/backend/Dockerfile b/backend/Dockerfile
+index c47db4d..b474abf 100644
+--- a/backend/Dockerfile
++++ b/backend/Dockerfile
+@@ -1,19 +1,32 @@
+ # Backend Dockerfile
+ FROM node:18-alpine
+ 
++# Install Chromium and dependencies for Puppeteer
++RUN apk add --no-cache \
++    chromium \
++    nss \
++    freetype \
++    harfbuzz \
++    ca-certificates \
++    ttf-freefont
++
++# Tell Puppeteer to use the installed Chromium instead of downloading its own
++ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
++    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
++
+ # Set working directory
+ WORKDIR /app
+ 
+ # Copy package files
+ COPY package*.json ./
+ 
+-# Install dependencies (use npm install since package-lock.json is excluded)
+-RUN npm install --omit=dev
++# Install dependencies - skip Puppeteer's bundled Chromium download
++RUN PUPPETEER_SKIP_DOWNLOAD=true npm install --omit=dev
+ 
+ # Copy application source
+ COPY . .
+ 
+-# Create uploads directory
++# Create uploads and logs directories
+ RUN mkdir -p uploads logs
+ 
+ # Expose port
+diff --git a/backend/package.json b/backend/package.json
+index f1b4c04..075a736 100644
+--- a/backend/package.json
++++ b/backend/package.json
+@@ -33,9 +33,9 @@
+     "dotenv": "^16.3.1",
+     "express": "^4.18.2",
+     "express-mongo-sanitize": "^2.2.0",
+-    "form-data": "^4.0.0",
+     "express-rate-limit": "^7.1.5",
+-    "express-validator": "^7.2.1",
++    "express-validator": "^7.3.1",
++    "form-data": "^4.0.0",
+     "helmet": "^7.1.0",
+     "jsonwebtoken": "^9.0.2",
+     "moment": "^2.29.4",
+@@ -43,12 +43,11 @@
+     "morgan": "^1.10.0",
+     "multer": "^1.4.5-lts.1",
+     "nanoid": "^5.0.4",
+-    "nodemailer": "^6.9.8",
++    "nodemailer": "^8.0.1",
+     "puppeteer": "^24.15.0",
+     "rate-limiter-flexible": "^5.0.3",
+-    "validator": "^13.11.0",
+-    "winston": "^3.11.0",
+-    "xss-clean": "^0.1.4"
++    "validator": "^13.15.26",
++    "winston": "^3.11.0"
+   },
+   "devDependencies": {
+     "@babel/core": "^7.23.5",
+diff --git a/backend/src/config/db.js b/backend/src/config/db.js
+index 475a306..f84bce3 100644
+--- a/backend/src/config/db.js
++++ b/backend/src/config/db.js
+@@ -1,17 +1,5 @@
+-import mongoose from 'mongoose';
+-
+-const connectDB = async () => {
+-  try {
+-    const conn = await mongoose.connect(process.env.MONGO_URI, {
+-      // These options are no longer needed in Mongoose 6+, but kept for compatibility
+-      // with older versions or custom configurations
+-    });
+-
+-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+-  } catch (error) {
+-    console.error(`Error connecting to MongoDB: ${error.message}`);
+-    process.exit(1);
+-  }
+-};
+-
++// This file is deprecated. Use database.js instead.
++// Kept for backwards compatibility - re-exports from database.js
++import { connectDB } from './database.js';
+ export default connectDB;
++export { connectDB };
+diff --git a/backend/src/index.js b/backend/src/index.js
+index ae1406a..df81772 100644
+--- a/backend/src/index.js
++++ b/backend/src/index.js
+@@ -6,7 +6,7 @@ import morgan from 'morgan';
+ import cookieParser from 'cookie-parser';
+ import rateLimit from 'express-rate-limit';
+ import mongoSanitize from 'express-mongo-sanitize';
+-import xss from 'xss-clean';
++import { xssSanitize } from './middleware/xssSanitize.js';
+ import path from 'path';
+ import { fileURLToPath } from 'url';
+ 
+@@ -24,6 +24,7 @@ import availabilityRoutes from './routes/availabilityRoutes.js';
+ import optionRoutes from './routes/optionRoutes.js';
+ import uploadRoutes from './routes/uploadRoutes.js';
+ import syncRoutes from './routes/syncRoutes.js';
++import agentRoutes from './routes/agentRoutes.js';
+ 
+ // Load environment variables
+ dotenv.config();
+@@ -79,7 +80,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+ app.use(cookieParser());
+ 
+ // Security middleware
+-app.use(xss()); // Prevent XSS attacks
++app.use(xssSanitize()); // Prevent XSS attacks
+ app.use(mongoSanitize()); // Prevent NoSQL injection
+ 
+ // Logging middleware
+@@ -112,6 +113,7 @@ app.use('/api/availability', availabilityRoutes);
+ app.use('/api/options', optionRoutes);
+ app.use('/api/upload', uploadRoutes);
+ app.use('/api/sync', syncRoutes);
++app.use('/api/agent', agentRoutes);
+ 
+ // Welcome route
+ app.get('/', (req, res) => {
+diff --git a/backend/src/middleware/xssSanitize.js b/backend/src/middleware/xssSanitize.js
+new file mode 100644
+index 0000000..b728231
+--- /dev/null
++++ b/backend/src/middleware/xssSanitize.js
+@@ -0,0 +1,42 @@
++/**
++ * XSS Sanitization Middleware
++ * Replaces the deprecated 'xss-clean' package.
++ * Recursively sanitizes req.body, req.query, and req.params
++ * by escaping dangerous HTML characters.
++ */
++
++const escapeHtml = (str) => {
++  if (typeof str !== 'string') return str;
++  return str
++    .replace(/&/g, '&amp;')
++    .replace(/</g, '&lt;')
++    .replace(/>/g, '&gt;')
++    .replace(/"/g, '&quot;')
++    .replace(/'/g, '&#x27;');
++};
++
++const sanitize = (data) => {
++  if (typeof data === 'string') {
++    return escapeHtml(data);
++  }
++  if (Array.isArray(data)) {
++    return data.map(sanitize);
++  }
++  if (data !== null && typeof data === 'object') {
++    const sanitized = {};
++    for (const [key, value] of Object.entries(data)) {
++      sanitized[key] = sanitize(value);
++    }
++    return sanitized;
++  }
++  return data;
++};
++
++export const xssSanitize = () => (req, _res, next) => {
++  if (req.body) req.body = sanitize(req.body);
++  if (req.query) req.query = sanitize(req.query);
++  if (req.params) req.params = sanitize(req.params);
++  next();
++};
++
++export default xssSanitize;
+diff --git a/backend/src/routes/index.js b/backend/src/routes/index.js
+index 3a2d61a..93bb078 100644
+--- a/backend/src/routes/index.js
++++ b/backend/src/routes/index.js
+@@ -1,3 +1,11 @@
++/**
++ * @deprecated This file is not used. Routes are registered directly in src/index.js.
++ * Kept for reference only.
++ *
++ * Active route registration happens in backend/src/index.js under /api/*
++ * (not /api/v1/* as shown below).
++ */
++
+ import authRoutes from './authRoutes.js';
+ import profileRoutes from './profileRoutes.js';
+ import bookingRoutes from './bookingRoutes.js';
+@@ -5,40 +13,27 @@ import optionRoutes from './optionRoutes.js';
+ import availabilityRoutes from './availabilityRoutes.js';
+ import platformRoutes from './platformRoutes.js';
+ import uploadRoutes from './uploadRoutes.js';
++import syncRoutes from './syncRoutes.js';
++import agentRoutes from './agentRoutes.js';
+ import { notFound } from '../middleware/errorHandler.js';
+ 
+ export const setupRoutes = (app) => {
+   // API Routes
+-  app.use('/api/v1/auth', authRoutes);
+-  app.use('/api/v1/profile', profileRoutes);
+-  app.use('/api/v1/bookings', bookingRoutes);
+-  app.use('/api/v1/options', optionRoutes);
+-  app.use('/api/v1/availability', availabilityRoutes);
+-  app.use('/api/v1/platforms', platformRoutes);
+-  app.use('/api/v1/upload', uploadRoutes);
++  app.use('/api/auth', authRoutes);
++  app.use('/api/profile', profileRoutes);
++  app.use('/api/bookings', bookingRoutes);
++  app.use('/api/options', optionRoutes);
++  app.use('/api/availability', availabilityRoutes);
++  app.use('/api/platforms', platformRoutes);
++  app.use('/api/upload', uploadRoutes);
++  app.use('/api/sync', syncRoutes);
++  app.use('/api/agent', agentRoutes);
+ 
+   // Health check route
+   app.get('/api/health', (req, res) => {
+     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+   });
+ 
+-  // API documentation route
+-  app.get('/api/docs', (req, res) => {
+-    res.status(200).json({
+-      message: 'API Documentation',
+-      version: '1.0.0',
+-      endpoints: [
+-        { path: '/api/v1/auth', description: 'Authentication endpoints' },
+-        { path: '/api/v1/profile', description: 'Profile management' },
+-        { path: '/api/v1/bookings', description: 'Booking management' },
+-        { path: '/api/v1/options', description: 'Option management' },
+-        { path: '/api/v1/availability', description: 'Availability management' },
+-        { path: '/api/v1/platforms', description: 'Platform integration' },
+-        { path: '/api/v1/upload', description: 'File upload endpoints' },
+-      ]
+-    });
+-  });
+-
+   // Handle 404 - Not Found
+   app.use(notFound);
+ };
+diff --git a/backend/src/services/platformAgent.js b/backend/src/services/platformAgent.js
+index 22b6e55..c20e83d 100644
+--- a/backend/src/services/platformAgent.js
++++ b/backend/src/services/platformAgent.js
+@@ -16,6 +16,7 @@ class PlatformAgent {
+     try {
+       if (!this.simulationMode) {
+         this.browser = await puppeteer.launch({
++          ...(process.env.PUPPETEER_EXECUTABLE_PATH && { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }),
+           headless: true,
+           args: ['--no-sandbox', '--disable-setuid-sandbox']
+         });
+diff --git a/backend/src/services/sync/adapters/CastingNetworkAdapter.js b/backend/src/services/sync/adapters/CastingNetworkAdapter.js
+index af02657..34572c7 100644
+--- a/backend/src/services/sync/adapters/CastingNetworkAdapter.js
++++ b/backend/src/services/sync/adapters/CastingNetworkAdapter.js
+@@ -42,6 +42,7 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
+ 
+       // Launch browser
+       this.browser = await puppeteer.launch({
++        ...(process.env.PUPPETEER_EXECUTABLE_PATH && { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }),
+         headless: true,
+         args: [
+           '--no-sandbox',
+diff --git a/backend/src/services/sync/adapters/FilmmakersAdapter.js b/backend/src/services/sync/adapters/FilmmakersAdapter.js
+index 9de2d9a..3695e55 100644
+--- a/backend/src/services/sync/adapters/FilmmakersAdapter.js
++++ b/backend/src/services/sync/adapters/FilmmakersAdapter.js
+@@ -43,6 +43,7 @@ export class FilmmakersAdapter extends BasePlatformAdapter {
+ 
+       // Launch browser
+       this.browser = await puppeteer.launch({
++        ...(process.env.PUPPETEER_EXECUTABLE_PATH && { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }),
+         headless: true,
+         args: [
+           '--no-sandbox',
+diff --git a/backend/src/services/sync/adapters/JobWorkAdapter.js b/backend/src/services/sync/adapters/JobWorkAdapter.js
+index a7b0710..1e59a0d 100644
+--- a/backend/src/services/sync/adapters/JobWorkAdapter.js
++++ b/backend/src/services/sync/adapters/JobWorkAdapter.js
+@@ -42,6 +42,7 @@ export class JobWorkAdapter extends BasePlatformAdapter {
+ 
+       // Launch browser
+       this.browser = await puppeteer.launch({
++        ...(process.env.PUPPETEER_EXECUTABLE_PATH && { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }),
+         headless: true,
+         args: [
+           '--no-sandbox',
+diff --git a/backend/src/services/sync/adapters/WantedAdapter.js b/backend/src/services/sync/adapters/WantedAdapter.js
+index 0f8de54..69f4ad8 100644
+--- a/backend/src/services/sync/adapters/WantedAdapter.js
++++ b/backend/src/services/sync/adapters/WantedAdapter.js
+@@ -42,6 +42,7 @@ export class WantedAdapter extends BasePlatformAdapter {
+ 
+       // Launch browser
+       this.browser = await puppeteer.launch({
++        ...(process.env.PUPPETEER_EXECUTABLE_PATH && { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }),
+         headless: true,
+         args: [
+           '--no-sandbox',
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 2b62772..7fac031 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -43,6 +43,8 @@ services:
+       RATE_LIMIT_MAX: 100
+       UPLOAD_DIR: ./uploads
+       MAX_FILE_SIZE: 10
++      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium-browser
++      FRONTEND_URL: http://localhost:5173
+     volumes:
+       - ./backend/uploads:/app/uploads
+       - ./backend/logs:/app/logs
+diff --git a/backend/src/middleware/xssSanitize.js b/backend/src/middleware/xssSanitize.js
+new file mode 100644
+index 0000000..b728231
+--- /dev/null
++++ b/backend/src/middleware/xssSanitize.js
+@@ -0,0 +1,42 @@
++/**
++ * XSS Sanitization Middleware
++ * Replaces the deprecated 'xss-clean' package.
++ * Recursively sanitizes req.body, req.query, and req.params
++ * by escaping dangerous HTML characters.
++ */
++
++const escapeHtml = (str) => {
++  if (typeof str !== 'string') return str;
++  return str
++    .replace(/&/g, '&amp;')
++    .replace(/</g, '&lt;')
++    .replace(/>/g, '&gt;')
++    .replace(/"/g, '&quot;')
++    .replace(/'/g, '&#x27;');
++};
++
++const sanitize = (data) => {
++  if (typeof data === 'string') {
++    return escapeHtml(data);
++  }
++  if (Array.isArray(data)) {
++    return data.map(sanitize);
++  }
++  if (data !== null && typeof data === 'object') {
++    const sanitized = {};
++    for (const [key, value] of Object.entries(data)) {
++      sanitized[key] = sanitize(value);
++    }
++    return sanitized;
++  }
++  return data;
++};
++
++export const xssSanitize = () => (req, _res, next) => {
++  if (req.body) req.body = sanitize(req.body);
++  if (req.query) req.query = sanitize(req.query);
++  if (req.params) req.params = sanitize(req.params);
++  next();
++};
++
++export default xssSanitize;
