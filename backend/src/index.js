@@ -6,7 +6,7 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import mongoSanitize from 'express-mongo-sanitize';
-import xss from 'xss-clean';
+import { xssSanitize } from './middleware/xssSanitize.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -24,6 +24,7 @@ import availabilityRoutes from './routes/availabilityRoutes.js';
 import optionRoutes from './routes/optionRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import syncRoutes from './routes/syncRoutes.js';
+import agentRoutes from './routes/agentRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -79,7 +80,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
 // Security middleware
-app.use(xss()); // Prevent XSS attacks
+app.use(xssSanitize()); // Prevent XSS attacks
 app.use(mongoSanitize()); // Prevent NoSQL injection
 
 // Logging middleware
@@ -112,6 +113,7 @@ app.use('/api/availability', availabilityRoutes);
 app.use('/api/options', optionRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/sync', syncRoutes);
+app.use('/api/agent', agentRoutes);
 
 // Welcome route
 app.get('/', (req, res) => {

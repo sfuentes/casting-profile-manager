@@ -1,19 +1,32 @@
 # Backend Dockerfile
 FROM node:18-alpine
 
+# Install Chromium and dependencies for Puppeteer
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
+
+# Tell Puppeteer to use the installed Chromium instead of downloading its own
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 # Set working directory
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (use npm install since package-lock.json is excluded)
-RUN npm install --omit=dev
+# Install dependencies - skip Puppeteer's bundled Chromium download
+RUN PUPPETEER_SKIP_DOWNLOAD=true npm install --omit=dev
 
 # Copy application source
 COPY . .
 
-# Create uploads directory
+# Create uploads and logs directories
 RUN mkdir -p uploads logs
 
 # Expose port

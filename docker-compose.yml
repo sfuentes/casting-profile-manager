@@ -43,6 +43,8 @@ services:
       RATE_LIMIT_MAX: 100
       UPLOAD_DIR: ./uploads
       MAX_FILE_SIZE: 10
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium-browser
+      FRONTEND_URL: http://localhost:5173
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/logs:/app/logs
