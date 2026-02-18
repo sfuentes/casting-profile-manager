@@ -184,7 +184,7 @@ export const retrySync = catchAsync(async (req, res) => {
  */
 export const bulkSync = catchAsync(async (req, res) => {
   const userId = req.user.id;
-  const { platformIds, dataTypes } = req.body;
+  const { platformIds, dataTypes = ['profile', 'availability'] } = req.body;
 
   if (!platformIds || !Array.isArray(platformIds) || platformIds.length === 0) {
     return res.status(400).json({

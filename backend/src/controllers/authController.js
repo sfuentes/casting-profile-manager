@@ -215,7 +215,7 @@ export const register = catchAsync(async (req, res, next) => {
   // Create verification url
   const verificationUrl = `${req.protocol}://${req.get(
     'host'
-  )}/api/auth/verifyemail/${verificationToken}`;
+  )}/api/auth/verify-email/${verificationToken}`;
 
   const message = `You are receiving this email because you need to verify your email address. Please make a GET request to: \n\n ${verificationUrl}`;
 
@@ -360,7 +360,7 @@ export const forgotPassword = catchAsync(async (req, res, next) => {
   // Create reset url
   const resetUrl = `${req.protocol}://${req.get(
     'host'
-  )}/api/auth/resetpassword/${resetToken}`;
+  )}/api/auth/reset-password/${resetToken}`;
 
   const message = `You are receiving this email because you (or someone else) has requested the reset of a password. Please make a PUT request to: \n\n ${resetUrl}`;
 
