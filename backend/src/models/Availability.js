@@ -48,8 +48,10 @@ const AvailabilitySchema = new mongoose.Schema({
   },
   syncedPlatforms: [{
     platformId: Number,
+    platformName: String,
     syncedAt: Date,
     status: String,
+    syncId: String,
   }],
 }, { timestamps: true });
 

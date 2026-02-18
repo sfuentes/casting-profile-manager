@@ -1,3 +1,5 @@
+import mongoose from 'mongoose';
+
 /**
  * Async handler middleware to wrap async route handlers and catch errors
  * This eliminates the need for try-catch blocks in every async controller
