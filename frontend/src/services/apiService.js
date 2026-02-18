@@ -1,7 +1,7 @@
 import platformAgent from './platformAgent';
 
-// API Configuration
-const API_BASE_URL = 'http://localhost:5000/api';
+// API Configuration — set VITE_API_URL at build time for production deployments
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const getHeaders = () => {
     const token = localStorage.getItem('token');
