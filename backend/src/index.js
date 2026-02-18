@@ -65,9 +65,15 @@ const limiter = rateLimit({
 app.use('/api', limiter);
 
 // CORS configuration
+// In production, FRONTEND_URL may be a single URL or a comma-separated list.
+// If FRONTEND_URL is not set, allow all origins so the app is not silently broken.
+const productionOrigin = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(',').map((u) => u.trim())
+  : true;
+
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production'
-    ? process.env.FRONTEND_URL
+    ? productionOrigin
     : ['http://localhost:3000', 'http://localhost:5173'],
   credentials: true,
   optionsSuccessStatus: 200,

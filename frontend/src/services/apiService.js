@@ -1,7 +1,9 @@
 import platformAgent from './platformAgent';
 
 // API Configuration
-const API_BASE_URL = 'http://localhost:5000/api';
+// Use VITE_API_URL env var for production (set in Railway dashboard).
+// Falls back to localhost for local development.
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const getHeaders = () => {
     const token = localStorage.getItem('token');
