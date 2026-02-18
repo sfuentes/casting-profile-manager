@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiService } from '../services/apiService';
+import { apiService, API_BASE_URL } from '../services/apiService';
 
 /**
  * SyncStatus Component
@@ -18,7 +18,7 @@ const SyncStatus = ({ platformId, platformName }) => {
   const loadSyncStatus = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:5000/api/sync/status/${platformId}`, {
+      const response = await fetch(`${API_BASE_URL}/sync/status/${platformId}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -40,7 +40,7 @@ const SyncStatus = ({ platformId, platformName }) => {
       setSyncing(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:5000/api/sync/availability/${platformId}`, {
+      const response = await fetch(`${API_BASE_URL}/sync/availability/${platformId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -68,7 +68,7 @@ const SyncStatus = ({ platformId, platformName }) => {
       setSyncing(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:5000/api/sync/profile/${platformId}`, {
+      const response = await fetch(`${API_BASE_URL}/sync/profile/${platformId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,

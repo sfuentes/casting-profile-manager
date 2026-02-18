@@ -1,0 +1,32 @@
+# Railway deployment configuration
+# https://docs.railway.app/reference/config-as-code
+
+[build]
+# Use the backend Dockerfile for the production image.
+# Set the Railway service root directory to "backend/" so the
+# Dockerfile's COPY commands resolve against the correct context.
+builder = "dockerfile"
+dockerfilePath = "backend/Dockerfile"
+
+[deploy]
+# The Dockerfile CMD already starts the server, but this makes it explicit.
+startCommand = "node src/index.js"
+healthcheckPath = "/health"
+healthcheckTimeout = 100
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
+
+# ---------------------------------------------------------------------------
+# Required environment variables (set these in the Railway dashboard):
+#
+#   MONGO_URI        - MongoDB connection string (e.g. from Railway MongoDB
+#                      plugin or MongoDB Atlas)
+#   JWT_SECRET       - Long random string used to sign JWT tokens
+#   NODE_ENV         - Set to "production"
+#   FRONTEND_URL     - URL of the deployed frontend (for CORS).
+#                      Accepts a comma-separated list for multiple origins.
+#
+# Optional:
+#   PORT             - Railway injects this automatically; do not override.
+#   FRONTEND_URL     - Leave unset to allow all origins (less secure).
+# ---------------------------------------------------------------------------

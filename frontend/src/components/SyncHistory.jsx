@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../services/apiService';
 
 /**
  * SyncHistory Component
@@ -16,7 +17,7 @@ const SyncHistory = () => {
   const loadHistory = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:5000/api/sync/history?limit=${limit}`, {
+      const response = await fetch(`${API_BASE_URL}/sync/history?limit=${limit}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
