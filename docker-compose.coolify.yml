@@ -18,7 +18,6 @@ services:
   # ─── MongoDB ────────────────────────────────────────────────────────────────
   mongodb:
     image: mongo:7.0
-    container_name: casting-mongodb
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
@@ -31,18 +30,17 @@ services:
     networks:
       - casting-network
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 15s
+      timeout: 10s
       retries: 5
-      start_period: 40s
+      start_period: 60s
 
   # ─── Backend API ─────────────────────────────────────────────────────────────
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: casting-backend
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -84,7 +82,6 @@ services:
         # This URL is baked into the JS bundle at build time by Vite.
         # It must be the publicly reachable URL of the backend API.
         VITE_API_URL: ${VITE_API_URL}
-    container_name: casting-frontend
     restart: unless-stopped
     depends_on:
       backend:
