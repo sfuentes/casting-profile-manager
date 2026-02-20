@@ -30,11 +30,11 @@ services:
     networks:
       - casting-network
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
-      interval: 15s
-      timeout: 10s
+      test: ["CMD-SHELL", "mongosh --eval 'quit(db.adminCommand({ping:1}).ok ? 0 : 2)' --quiet"]
+      interval: 20s
+      timeout: 15s
       retries: 5
-      start_period: 60s
+      start_period: 120s
 
   # ─── Backend API ─────────────────────────────────────────────────────────────
   backend:
