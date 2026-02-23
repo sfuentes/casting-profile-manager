@@ -14,7 +14,9 @@
     "docker:build": "docker-compose build",
     "docker:stop": "docker-compose down",
     "docker:logs": "docker-compose logs -f",
-    "docker:clean": "docker-compose down -v"
+    "docker:clean": "docker-compose down -v",
+    "validate:coolify": "node scripts/validate-coolify-env.js",
+    "validate:coolify:file": "node scripts/validate-coolify-env.js .env.coolify.example"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
