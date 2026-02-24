@@ -181,6 +181,45 @@ curl https://api.yourdomain.com/api/auth/register \
 
 ## 🐛 Troubleshooting
 
+### Issue 0: Deployment Fails — "mongodb Pulling" / Docker Hub Rate Limit
+
+**Symptoms (Coolify deployment log):**
+```
+Deployment failed: Command execution failed (exit code 1)
+Error:  mongodb Pulling
+```
+
+**Root cause:**
+Docker Hub limits anonymous image pulls to **100 per 6 hours per IP address**.
+Hetzner IPs are shared across many customers, so the quota is regularly exhausted
+before your pull ever starts.
+
+**Fix A — Pre-pull the image once on the Hetzner server (fastest):**
+```bash
+# SSH into your Hetzner server and pull the image manually
+ssh root@<your-server-ip>
+docker pull mongo:7.0
+```
+After the image is cached on the host Coolify will use `pull_policy: if_not_present`
+(already set in `docker-compose.coolify.yml`) and will **never pull it again**,
+even across redeployments.
+
+**Fix B — Authenticate with Docker Hub in Coolify (permanent, recommended):**
+1. Log in to [hub.docker.com](https://hub.docker.com) and create a free account if
+   you don't have one (free accounts get **200 pulls / 6 h** per authenticated user).
+2. In Coolify go to **Settings → Registries → Add Registry**
+3. Fill in:
+   - Registry URL: `https://registry.hub.docker.com` (or `https://index.docker.io`)
+   - Username: your Docker Hub username
+   - Password/Token: a Docker Hub **Access Token** (recommended) or your password
+4. Save and redeploy — Coolify will now authenticate every pull.
+
+**Why `pull_policy: if_not_present` helps:**
+Once the image is cached (after Fix A or a successful first pull), subsequent
+redeployments skip the pull entirely regardless of rate limits.
+
+---
+
 ### Issue 1: Backend Can't Connect to MongoDB
 
 **Symptoms:**

@@ -24,6 +24,12 @@ services:
   # ─── MongoDB ────────────────────────────────────────────────────────────────
   mongodb:
     image: mongo:7.0
+    # Only pull if the image is not already cached on the host.
+    # This avoids Docker Hub anonymous rate-limit errors (100 pulls/6 h per IP)
+    # on Hetzner/Coolify servers.  On a brand-new server, run once on the host:
+    #   docker pull mongo:7.0
+    # or configure Docker Hub credentials in Coolify → Settings → Registries.
+    pull_policy: if_not_present
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
