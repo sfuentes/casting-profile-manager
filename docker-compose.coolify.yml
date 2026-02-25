@@ -46,7 +46,9 @@ services:
       # Test with credentials so the healthcheck only passes once MongoDB is
       # actually accepting authenticated connections (not just responding to ping).
       # This prevents the backend from starting before auth is fully initialised.
-      test: ["CMD-SHELL", "mongosh --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'quit(db.adminCommand({ping:1}).ok ? 0 : 2)' --quiet"]
+      # $$ escapes the $ so Docker Compose does NOT interpolate at parse time;
+      # the running container's shell expands them as $MONGO_INITDB_ROOT_* instead.
+      test: ["CMD-SHELL", "mongosh --username \"$$MONGO_INITDB_ROOT_USERNAME\" --password \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'quit(db.adminCommand({ping:1}).ok ? 0 : 2)' --quiet"]
       interval: 20s
       timeout: 15s
       retries: 5
