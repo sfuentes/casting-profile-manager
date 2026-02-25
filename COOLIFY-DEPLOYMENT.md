@@ -26,8 +26,10 @@ openssl rand -hex 64
 
 **Generate MongoDB Password:**
 ```bash
-openssl rand -base64 32
+openssl rand -hex 32
 ```
+> **Important:** Use `-hex`, not `-base64`. Base64 output contains `/`, `+`, and `=`
+> which are URL-unsafe and will silently break the MongoDB connection string.
 
 **Required Variables:**
 - `JWT_SECRET` - Your generated JWT secret
