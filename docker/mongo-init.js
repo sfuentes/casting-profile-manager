@@ -30,9 +30,12 @@ db.createCollection('users', {
           bsonType: 'string',
           description: 'must be a string and is required'
         },
+        // NOTE: must stay in sync with the `role` enum in
+        // backend/src/models/User.js — this validator runs server-side and
+        // will reject writes that the Mongoose schema would otherwise allow.
         role: {
-          enum: ['user', 'admin'],
-          description: 'can only be user or admin'
+          enum: ['user', 'publisher', 'admin'],
+          description: 'can only be user, publisher or admin'
         }
       }
     }

@@ -1,5 +1,6 @@
 # Backend Dockerfile
-FROM node:18-alpine
+# Node 22 (LTS) — Node 18 reached end-of-life in April 2025.
+FROM node:22-alpine
 
 # Install Chromium and dependencies for Puppeteer
 RUN apk add --no-cache \
@@ -9,6 +10,16 @@ RUN apk add --no-cache \
     harfbuzz \
     ca-certificates \
     ttf-freefont
+
+# Alpine has shipped the Chromium binary under different names across releases
+# (/usr/bin/chromium vs /usr/bin/chromium-browser). Normalise on
+# chromium-browser so PUPPETEER_EXECUTABLE_PATH stays stable, and fail the
+# build early if neither exists rather than at sync time in production.
+RUN set -eux; \
+    if [ ! -e /usr/bin/chromium-browser ] && [ -e /usr/bin/chromium ]; then \
+      ln -s /usr/bin/chromium /usr/bin/chromium-browser; \
+    fi; \
+    test -e /usr/bin/chromium-browser
 
 # Tell Puppeteer to use the installed Chromium instead of downloading its own
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
