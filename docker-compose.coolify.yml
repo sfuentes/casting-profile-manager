@@ -144,7 +144,14 @@ services:
     expose:
       - "80"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      # 127.0.0.1, not localhost. nginx.conf declares only `listen 80` (IPv4),
+      # and the nginx entrypoint skips its listen-on-ipv6 patch because our
+      # config differs from the packaged one - so nothing binds [::]:80. busybox
+      # wget resolves localhost to ::1 first and gets ECONNREFUSED, marking the
+      # container unhealthy even though it serves fine over IPv4. Traefik then
+      # drops the unhealthy container from the router's server pool and answers
+      # public requests with 503.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
       interval: 30s
       timeout: 3s
       retries: 3
