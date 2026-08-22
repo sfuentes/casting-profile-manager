@@ -1,4 +1,3 @@
-import platformAgent from './platformAgent';
 
 // API Configuration
 // Use VITE_API_URL env var for production (set in Railway dashboard).
@@ -389,15 +388,22 @@ export const apiService = {
         const descriptions = {
             1: 'European film industry network - agent-based profile sync',
             2: 'Global casting platform - automated profile management',
-            3: 'German actor video database - API integration available',
-            4: 'European casting network - full API access',
-            5: 'German job platform - OAuth integration',
+            3: 'German actor video database - API key required',
+            4: 'European casting network - browser-based sync',
+            5: 'German job platform - browser-based sync',
             6: 'Traditional talent agency - manual coordination required',
-            7: 'Professional talent agency - API integration',
+            7: 'Professional talent agency - manual coordination required',
             8: 'Boutique talent agency - personal management',
             9: 'Entertainment job portal - automated sync available'
         };
         return descriptions[id] || `${name} platform integration`;
+    },
+
+    // What integrations exist and how each connects. Replaces the hard-coded
+    // list the client used to ship, which disagreed with the backend.
+    getPlatformCatalog: async () => {
+        const response = await fetch(`${API_BASE_URL}/platforms/catalog`, {headers: getHeaders()});
+        return handleResponse(response);
     },
 
     connectPlatform: async (platformId, authData) => {
@@ -463,25 +469,6 @@ export const apiService = {
 
     checkAgentHealth: async () => {
         const response = await fetch(`${API_BASE_URL}/agent/health`, {headers: getHeaders()});
-        return handleResponse(response);
-    },
-
-    // OAuth flow endpoints
-    initiateOAuth: async (platformId) => {
-        const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/oauth/initiate`, {
-            headers: getHeaders()
-        });
-        const data = await handleResponse(response);
-        return {
-            authUrl: data.redirectUrl,
-            ...data
-        };
-    },
-
-    completeOAuth: async (platformId, authCode, state) => {
-        const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/oauth/callback?code=${authCode}&state=${state}`, {
-            headers: getHeaders()
-        });
         return handleResponse(response);
     }
 };

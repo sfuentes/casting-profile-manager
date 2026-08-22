@@ -29,6 +29,22 @@ const findUserPlatform = async (id, userId) => {
  */
 const verifyPlatformCredentials = (platform) => connectorService.verify(platform);
 
+/**
+ * The platform catalogue: what integrations exist and how each one connects.
+ *
+ * The client used to carry its own hard-coded copy of this, which drifted -
+ * it offered OAuth for platforms that authenticate with a password and listed
+ * manual agencies as API integrations. Serving the connector manifests makes
+ * the backend the single source of truth: the UI renders whatever
+ * credentialFields say and offers only the declared capabilities.
+ */
+export const getPlatformCatalog = catchAsync(async (req, res) => {
+  res.status(200).json({
+    success: true,
+    data: connectorService.listPlatforms()
+  });
+});
+
 // Get all platforms for the current user
 export const getPlatforms = catchAsync(async (req, res) => {
   const platforms = await Platform.find({ user: req.user.id });
@@ -311,18 +327,3 @@ export const bulkSyncToPlatforms = catchAsync(async (req, res) => {
     data: { syncedCount, results }
   });
 });
-
-// OAuth is not available: every platform currently integrated is driven by
-// browser automation with the user's own credentials. The previous handlers
-// pointed at platform-oauth-mock.com - a domain that does not exist - and
-// minted fake tokens, which made the flow look implemented when it was not.
-const oauthUnavailable = (req, res) =>
-  res.status(501).json({
-    success: false,
-    message:
-      'OAuth is not available. These platforms are integrated with stored ' +
-      'credentials, not OAuth. Use POST /api/platforms/:id/connect instead.'
-  });
-
-export const initiateOAuth = catchAsync(oauthUnavailable);
-export const handleOAuthCallback = catchAsync(oauthUnavailable);

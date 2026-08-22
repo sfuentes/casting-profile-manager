@@ -8,8 +8,7 @@ import {
   testPlatformConnection,
   syncToPlatform,
   bulkSyncToPlatforms,
-  initiateOAuth,
-  handleOAuthCallback,
+  getPlatformCatalog,
 } from '../controllers/platformController.js';
 import { protect } from '../middleware/auth.js';
 
@@ -17,6 +16,10 @@ const router = express.Router();
 
 // All routes are protected
 router.use(protect);
+
+// Declared before '/:id' so it is not captured as an id.
+router.route('/catalog')
+  .get(getPlatformCatalog);
 
 router.route('/')
   .get(getPlatforms);
@@ -41,11 +44,5 @@ router.route('/:id/sync')
 
 router.route('/bulk-sync')
   .post(bulkSyncToPlatforms);
-
-router.route('/:id/oauth/initiate')
-  .get(initiateOAuth);
-
-router.route('/:id/oauth/callback')
-  .get(handleOAuthCallback);
 
 export default router;
