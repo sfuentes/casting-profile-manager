@@ -14,6 +14,9 @@ const logFormat = winston.format.printf(
 
 // Create the logger
 export const logger = winston.createLogger({
+  // A failing log file must never crash the app - winston's default is to
+  // emit an unhandled 'error' event on the logger.
+  exitOnError: false,
   level: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
   format: winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
@@ -43,17 +46,29 @@ export const logger = winston.createLogger({
   ]
 });
 
-// If we're not in production, also log to the console
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.combine(
+// Always log to the console.
+//
+// This used to be added only outside production, which meant the container's
+// stdout was empty and `docker logs` showed nothing at all - the logs existed
+// solely as files inside the container. In a container stdout IS the log
+// stream: it is what `docker logs`, Coolify's log view and any aggregator read.
+// Writing only to files hid every production error behind a `docker exec`.
+//
+// Colour is for humans at a terminal; in production the output is likely to be
+// parsed, so it is left plain there.
+logger.add(new winston.transports.Console({
+  format: process.env.NODE_ENV === 'production'
+    ? winston.format.combine(
+      winston.format.timestamp(),
+      logFormat
+    )
+    : winston.format.combine(
       winston.format.colorize(),
       winston.format.simple(),
       winston.format.timestamp(),
       logFormat
     )
-  }));
-}
+}));
 
 // Add a stream for Morgan
 export const stream = {
