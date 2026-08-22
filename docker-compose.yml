@@ -5,7 +5,10 @@ services:
     container_name: casting-mongodb
     restart: unless-stopped
     ports:
-      - "27017:27017"
+      # Bound to 127.0.0.1: this service uses the weak local-dev password
+      # above. Publishing it on 0.0.0.0 would expose it to the whole
+      # network the moment this file is run on a non-laptop host.
+      - "127.0.0.1:27017:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: admin123
@@ -66,7 +69,10 @@ services:
     container_name: casting-mongo-express
     restart: unless-stopped
     ports:
-      - "8081:8081"
+      # Bound to 127.0.0.1: this service uses the weak local-dev password
+      # above. Publishing it on 0.0.0.0 would expose it to the whole
+      # network the moment this file is run on a non-laptop host.
+      - "127.0.0.1:8081:8081"
     environment:
       ME_CONFIG_MONGODB_ADMINUSERNAME: admin
       ME_CONFIG_MONGODB_ADMINPASSWORD: admin123

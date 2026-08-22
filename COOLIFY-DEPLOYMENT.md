@@ -497,6 +497,29 @@ After deployment, verify:
 - ✅ File upload size is reasonable (default: 10MB)
 - ✅ MongoDB is not exposed publicly (internal only)
 - ✅ Environment variables are not logged
+- ✅ Production secrets differ from anything ever committed (see below)
+
+### Secrets and git history
+
+`backend/.env` was tracked in git until it was removed from the index. Untracking
+a file does **not** erase it: the development `JWT_SECRET` it contained is still
+readable in earlier commits, and will stay there unless the history is rewritten.
+
+Consequences to act on:
+
+- Treat that development secret as public. Never reuse it in any environment.
+- Production values must be set in the Coolify UI only. They are not in the repo
+  and must not be added to it.
+- If that secret was ever used by a deployed instance, rotate `JWT_SECRET` there
+  and expect all existing sessions to be invalidated by the change.
+
+Rewriting history (`git filter-repo`, BFG) would purge it, but rewrites every
+commit hash and breaks existing clones and open pull requests. For a development
+credential that is now unused, rotating and moving on is usually the better
+trade; for a production credential it would not be.
+
+`.env` files are now covered by `.gitignore` in the repository root and in both
+`backend/` and `frontend/`, so this cannot recur silently.
 
 ---
 
