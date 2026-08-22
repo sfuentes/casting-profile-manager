@@ -1,5 +1,7 @@
 # Stage 1: Build the React app with Vite
-FROM node:18-alpine AS build
+# Node 22 is required: Vite 7 declares engines ^20.19.0 || >=22.12.0 and will
+# not run on Node 18.
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
