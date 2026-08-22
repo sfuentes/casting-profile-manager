@@ -28,7 +28,9 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 
+# 127.0.0.1 rather than localhost: nginx binds IPv4 only here (see nginx.conf),
+# so a localhost lookup that returns ::1 first would fail the check.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost/ || exit 1
+  CMD wget -qO- http://127.0.0.1/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
