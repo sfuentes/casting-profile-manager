@@ -88,7 +88,12 @@ services:
       # shared string baked into this public repo (Compose does not evaluate
       # $(...)), so every deployment would sign tokens with the same key and
       # anyone could forge a session. Fail the deploy instead.
-      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set in Coolify environment variables - generate one with openssl rand -hex 64}"
+      #
+      # Keep this line unquoted and the message plain, matching the other :?
+      # vars below. Coolify's compose parser mis-reads a quoted ${VAR:?msg} and
+      # registers the whole expression as a secret name, failing the deploy with
+      # "secrets additional properties ... not allowed" before anything starts.
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in Coolify environment variables}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       JWT_COOKIE_EXPIRE: ${JWT_COOKIE_EXPIRE:-7}
       # CRITICAL: Set this to your public frontend domain for CORS
