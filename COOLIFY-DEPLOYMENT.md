@@ -498,6 +498,37 @@ After deployment, verify:
 - ✅ MongoDB is not exposed publicly (internal only)
 - ✅ Environment variables are not logged
 - ✅ Production secrets differ from anything ever committed (see below)
+- ✅ `CREDENTIAL_ENCRYPTION_KEY` is set and backed up off the server
+
+### Platform credential encryption
+
+Users' casting-platform passwords are encrypted at rest with AES-256-GCM using
+`CREDENTIAL_ENCRYPTION_KEY`. They cannot be hashed like the users' own account
+passwords, because the connectors have to replay them into a login form.
+
+Generate the key once:
+
+```bash
+openssl rand -hex 32
+```
+
+**Back it up somewhere other than the server.** The key is not recoverable and
+is not derived from anything else. Lose it and every stored platform credential
+becomes undecryptable - every user has to reconnect every platform. Changing it
+has exactly the same effect, so do not rotate it casually.
+
+The backend refuses to start in production without it, rather than accepting
+credentials it cannot protect.
+
+If you deployed before this existed, encrypt the rows already in the database:
+
+```bash
+docker exec <backend_container> npm run encrypt-credentials -- --dry-run   # preview
+docker exec <backend_container> npm run encrypt-credentials                # apply
+```
+
+Reading old rows keeps working either way - plaintext is passed through - but
+until the migration runs the plaintext is still sitting in MongoDB.
 
 ### Secrets and git history
 

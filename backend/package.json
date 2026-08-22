@@ -13,7 +13,8 @@
     "lint:check": "eslint src/**/*.js",
     "seed": "node src/utils/seeder.js",
     "seed:destroy": "node src/utils/seeder.js -d",
-    "add-platforms": "node src/utils/addPlatformsToExistingUsers.js"
+    "add-platforms": "node src/utils/addPlatformsToExistingUsers.js",
+    "encrypt-credentials": "node src/utils/encryptExistingCredentials.js"
   },
   "keywords": [
     "platform",

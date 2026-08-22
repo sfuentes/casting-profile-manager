@@ -23,6 +23,7 @@
 # REQUIRED ENV VARS (must be set in Coolify):
 #   - MONGO_ROOT_PASSWORD (no default - will fail without it)
 #   - JWT_SECRET (no default - will fail without it; openssl rand -hex 64)
+#   - CREDENTIAL_ENCRYPTION_KEY (no default; openssl rand -hex 32)
 #   - VITE_API_URL (no default - frontend will break without it)
 #   - FRONTEND_URL (no default - CORS will break without it)
 
@@ -94,6 +95,11 @@ services:
       # registers the whole expression as a secret name, failing the deploy with
       # "secrets additional properties ... not allowed" before anything starts.
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in Coolify environment variables}
+      # Encrypts platform credentials at rest. Required and without a default:
+      # losing or changing it makes every stored credential undecryptable, so it
+      # must be set deliberately and then left alone. Keep it separate from
+      # JWT_SECRET so rotating one does not force rotating the other.
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY must be set in Coolify environment variables}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       JWT_COOKIE_EXPIRE: ${JWT_COOKIE_EXPIRE:-7}
       # CRITICAL: Set this to your public frontend domain for CORS

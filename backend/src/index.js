@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 
 // Import utilities and config
 import { connectDB } from './config/database.js';
+import { isEncryptionConfigured } from './utils/crypto.js';
 import { logger, stream } from './utils/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -32,6 +33,21 @@ dotenv.config();
 // Get current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Credential encryption key
+// Platform credentials are encrypted at rest, so without this key the app can
+// neither store new ones nor read existing ones. Refuse to start in production
+// rather than failing later, per user, on the first sync attempt.
+if (!isEncryptionConfigured()) {
+  const message =
+    'CREDENTIAL_ENCRYPTION_KEY is missing or invalid. Platform credentials ' +
+    'cannot be encrypted. Generate one with: openssl rand -hex 32';
+  if (process.env.NODE_ENV === 'production') {
+    logger.error(message);
+    process.exit(1);
+  }
+  logger.warn(`${message} (continuing outside production)`);
+}
 
 // Initialize Express app
 const app = express();
