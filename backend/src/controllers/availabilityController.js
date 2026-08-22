@@ -2,7 +2,7 @@ import Availability from '../models/Availability.js';
 import Platform from '../models/Platform.js';
 import { ApiError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
-import platformAgent from '../services/platformAgent.js';
+import connectorService from '../connectors/ConnectorService.js';
 import { validateObjectId } from '../utils/validation.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
@@ -429,11 +429,12 @@ export const syncAvailabilityToPlatforms = asyncHandler(async (req, res) => {
         }))
       };
 
-      // Sync availability using platform agent
-      const result = await platformAgent.updateAvailability(
+      // Sync through the connector layer. This used to call platformAgent,
+      // which simulated the work and always reported success.
+      const result = await connectorService.syncAvailability(
+        req.user.id,
         platform.platformId,
-        platform.authData,
-        availabilityData
+        availabilitySlots
       );
 
       // Update sync status for availability slots
@@ -447,7 +448,7 @@ export const syncAvailabilityToPlatforms = asyncHandler(async (req, res) => {
               platformName: platform.name,
               syncedAt: timestamp,
               status: 'success',
-              syncId: result.syncId
+              syncId: result.syncLog?._id
             }
           }
         }

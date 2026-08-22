@@ -1,14 +1,10 @@
 import mongoose from 'mongoose';
 import Platform from '../models/Platform.js';
 import Profile from '../models/Profile.js';
-import syncService from '../services/sync/SyncService.js';
+import connectorService from '../connectors/ConnectorService.js';
+import { getConnector } from '../connectors/registry.js';
 import { logger } from '../utils/logger.js';
 import { asyncHandler as catchAsync } from '../middleware/asyncHandler.js';
-
-// Platforms 6-8 are agencies handled by hand; there is no site to automate
-// against, so "connected" for them records the user's own assertion that they
-// have an account rather than a verified login.
-const MANUAL_PLATFORM_IDS = [6, 7, 8];
 
 /**
  * Callers are inconsistent about which id they send: the Mongo _id of the
@@ -26,47 +22,12 @@ const findUserPlatform = async (id, userId) => {
 };
 
 /**
- * Attempt a real login against the platform using its sync adapter.
- * Returns a plain result object; never throws.
+ * Verify credentials through the connector layer.
+ *
+ * Whether a platform can be logged into at all, and what it supports, comes
+ * from its manifest - no ids are special-cased here any more.
  */
-const verifyPlatformCredentials = async (platform) => {
-  if (MANUAL_PLATFORM_IDS.includes(platform.platformId)) {
-    return {
-      success: true,
-      verified: false,
-      message: 'Manual platform - recorded, but there is nothing to log in to.'
-    };
-  }
-
-  const AdapterClass = syncService.getAdapter(platform.platformId);
-  if (!AdapterClass) {
-    return {
-      success: false,
-      verified: false,
-      message: `No integration is available for platform ${platform.platformId} yet.`
-    };
-  }
-
-  const adapter = new AdapterClass(platform, platform.authData);
-  try {
-    await adapter.authenticate();
-    return { success: true, verified: true, message: 'Login succeeded.' };
-  } catch (error) {
-    logger.warn('Platform credential verification failed', {
-      platformId: platform.platformId,
-      error: error.message
-    });
-    return { success: false, verified: false, message: error.message };
-  } finally {
-    // Adapters that drive a browser must release it even on failure, or the
-    // container leaks a Chromium process per attempt.
-    try {
-      await adapter.cleanup();
-    } catch (cleanupError) {
-      logger.warn('Adapter cleanup failed', { error: cleanupError.message });
-    }
-  }
-};
+const verifyPlatformCredentials = (platform) => connectorService.verify(platform);
 
 // Get all platforms for the current user
 export const getPlatforms = catchAsync(async (req, res) => {
@@ -134,19 +95,19 @@ export const connectPlatform = catchAsync(async (req, res) => {
   // never been tested.
   const result = await verifyPlatformCredentials(platform);
 
-  platform.connected = result.success;
+  platform.connected = result.ok;
   platform.testResult = {
-    success: result.success,
+    success: result.ok,
     message: result.message,
     timestamp: new Date()
   };
   platform.lastTested = new Date();
-  if (result.success) platform.lastSync = platform.lastSync || null;
+  if (result.ok) platform.lastSync = platform.lastSync || null;
 
   await platform.save();
 
-  res.status(result.success ? 200 : 400).json({
-    success: result.success,
+  res.status(result.ok ? 200 : 400).json({
+    success: result.ok,
     verified: result.verified,
     message: result.message,
     data: platform
@@ -222,18 +183,18 @@ export const testPlatformConnection = catchAsync(async (req, res) => {
   const result = await verifyPlatformCredentials(platform);
 
   platform.testResult = {
-    success: result.success,
+    success: result.ok,
     message: result.message,
     timestamp: new Date()
   };
   platform.lastTested = new Date();
   // A failed test means the stored credentials no longer work; stop reporting
   // the platform as connected until they are fixed.
-  if (!result.success) platform.connected = false;
+  if (!result.ok) platform.connected = false;
   await platform.save();
 
   res.status(200).json({
-    success: result.success,
+    success: result.ok,
     verified: result.verified,
     message: result.message,
     data: {
@@ -261,7 +222,7 @@ export const syncToPlatform = catchAsync(async (req, res) => {
     });
   }
 
-  if (!syncService.getAdapter(platform.platformId)) {
+  if (!getConnector(platform.platformId)) {
     return res.status(501).json({
       success: false,
       message: `No sync integration is available for platform ${platform.platformId} yet.`
@@ -277,7 +238,7 @@ export const syncToPlatform = catchAsync(async (req, res) => {
   }
 
   try {
-    const result = await syncService.syncProfile(
+    const result = await connectorService.syncProfile(
       req.user.id,
       platform.platformId,
       profile
@@ -325,7 +286,7 @@ export const bulkSyncToPlatforms = catchAsync(async (req, res) => {
       results.push({ platformId: id, success: false, message: 'Not connected' });
       continue;
     }
-    if (!syncService.getAdapter(platform.platformId)) {
+    if (!getConnector(platform.platformId)) {
       results.push({
         platformId: id,
         success: false,
@@ -335,7 +296,7 @@ export const bulkSyncToPlatforms = catchAsync(async (req, res) => {
     }
 
     try {
-      await syncService.syncProfile(req.user.id, platform.platformId, profile);
+      await connectorService.syncProfile(req.user.id, platform.platformId, profile);
       results.push({ platformId: id, success: true, message: 'Synced' });
     } catch (error) {
       results.push({ platformId: id, success: false, message: error.message });

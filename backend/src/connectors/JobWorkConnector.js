@@ -1,5 +1,6 @@
 import puppeteer from 'puppeteer';
-import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { PlatformConnector } from './PlatformConnector.js';
 
 /**
  * JobWork Platform Adapter
@@ -8,7 +9,34 @@ import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
  * Features: Profile, Jobs, Networking
  * Regions: DE, AT, CH
  */
-export class JobWorkAdapter extends BasePlatformAdapter {
+export class JobWorkConnector extends PlatformConnector {
+  static manifest = Object.freeze({
+    id: 5,
+    key: 'jobwork',
+    name: 'JobWork',
+    authType: 'credentials',
+    credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
+      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia']
+  });
+
+  // ---- unified interface ----
+  // The app calls these names on every connector; the platform-specific work
+  // stays in the methods below, which keep their original names.
+
+  async verify() {
+    await this.authenticate();
+    return { ok: true, message: 'Login succeeded.' };
+  }
+
+  async pushProfile(profile) {
+    return this.updateProfile(profile);
+  }
+
+  async close() {
+    if (typeof this.cleanup === 'function') await this.cleanup();
+  }
+
   constructor(platform, credentials) {
     super(platform, credentials);
 
@@ -22,7 +50,7 @@ export class JobWorkAdapter extends BasePlatformAdapter {
    * Initialize rate limiter with conservative limits
    */
   initRateLimiter() {
-    return new (require('rate-limiter-flexible').RateLimiterMemory)({
+    return new RateLimiterMemory({
       points: 10,
       duration: 60,
     });
@@ -426,4 +454,4 @@ export class JobWorkAdapter extends BasePlatformAdapter {
   }
 }
 
-export default JobWorkAdapter;
+export default JobWorkConnector;

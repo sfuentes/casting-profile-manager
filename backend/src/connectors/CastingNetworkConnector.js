@@ -1,5 +1,6 @@
 import puppeteer from 'puppeteer';
-import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { PlatformConnector } from './PlatformConnector.js';
 
 /**
  * Casting Network Platform Adapter
@@ -8,7 +9,34 @@ import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
  * Features: Profile, Photos, Submissions, Availability
  * Regions: US, CA, UK
  */
-export class CastingNetworkAdapter extends BasePlatformAdapter {
+export class CastingNetworkConnector extends PlatformConnector {
+  static manifest = Object.freeze({
+    id: 2,
+    key: 'casting-network',
+    name: 'Casting Network',
+    authType: 'credentials',
+    credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
+      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia']
+  });
+
+  // ---- unified interface ----
+  // The app calls these names on every connector; the platform-specific work
+  // stays in the methods below, which keep their original names.
+
+  async verify() {
+    await this.authenticate();
+    return { ok: true, message: 'Login succeeded.' };
+  }
+
+  async pushProfile(profile) {
+    return this.updateProfile(profile);
+  }
+
+  async close() {
+    if (typeof this.cleanup === 'function') await this.cleanup();
+  }
+
   constructor(platform, credentials) {
     super(platform, credentials);
 
@@ -22,7 +50,7 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
    * Initialize rate limiter with conservative limits for web scraping
    */
   initRateLimiter() {
-    return new (require('rate-limiter-flexible').RateLimiterMemory)({
+    return new RateLimiterMemory({
       points: 10, // Only 10 requests
       duration: 60, // Per minute
     });
@@ -450,4 +478,4 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
   }
 }
 
-export default CastingNetworkAdapter;
+export default CastingNetworkConnector;

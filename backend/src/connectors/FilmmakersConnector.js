@@ -1,5 +1,6 @@
 import puppeteer from 'puppeteer';
-import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { PlatformConnector } from './PlatformConnector.js';
 
 /**
  * Filmmakers Platform Adapter
@@ -8,7 +9,34 @@ import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
  * Features: Profile, Photos, Networking
  * Regions: EU, Global
  */
-export class FilmmakersAdapter extends BasePlatformAdapter {
+export class FilmmakersConnector extends PlatformConnector {
+  static manifest = Object.freeze({
+    id: 1,
+    key: 'filmmakers',
+    name: 'Filmmakers',
+    authType: 'credentials',
+    credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
+      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia']
+  });
+
+  // ---- unified interface ----
+  // The app calls these names on every connector; the platform-specific work
+  // stays in the methods below, which keep their original names.
+
+  async verify() {
+    await this.authenticate();
+    return { ok: true, message: 'Login succeeded.' };
+  }
+
+  async pushProfile(profile) {
+    return this.updateProfile(profile);
+  }
+
+  async close() {
+    if (typeof this.cleanup === 'function') await this.cleanup();
+  }
+
   constructor(platform, credentials) {
     super(platform, credentials);
 
@@ -23,7 +51,7 @@ export class FilmmakersAdapter extends BasePlatformAdapter {
    * Be respectful to the platform
    */
   initRateLimiter() {
-    return new (require('rate-limiter-flexible').RateLimiterMemory)({
+    return new RateLimiterMemory({
       points: 10, // Only 10 requests
       duration: 60, // Per minute
     });
@@ -437,4 +465,4 @@ export class FilmmakersAdapter extends BasePlatformAdapter {
   }
 }
 
-export default FilmmakersAdapter;
+export default FilmmakersConnector;
