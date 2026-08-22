@@ -7,8 +7,31 @@ import { RateLimiterMemory } from 'rate-limiter-flexible';
 export class BasePlatformAdapter {
   constructor(platform, credentials) {
     this.platform = platform;
-    this.credentials = credentials;
+    this.credentials = this.normaliseCredentials(credentials);
     this.rateLimiter = this.initRateLimiter();
+  }
+
+  /**
+   * Adapters read either `email` or `username` depending on what their
+   * platform's login form calls the field. Callers should not have to know
+   * which, so accept either and expose both.
+   * @param {Object} credentials - Raw credentials from Platform.authData
+   * @returns {Object} Credentials with email/username cross-filled
+   */
+  normaliseCredentials(credentials) {
+    const c = { ...(credentials || {}) };
+    if (!c.email && c.username) c.email = c.username;
+    if (!c.username && c.email) c.username = c.email;
+    return c;
+  }
+
+  /**
+   * Release any resources held by the adapter (browser instances, sockets).
+   * Subclasses that allocate them override this; the default is a no-op so a
+   * caller can always call cleanup() without knowing which kind it holds.
+   */
+  async cleanup() {
+    // nothing to release by default
   }
 
   /**
