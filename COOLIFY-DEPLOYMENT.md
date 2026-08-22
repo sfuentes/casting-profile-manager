@@ -259,6 +259,34 @@ data to keep.
 
 ---
 
+### Backend Crashes with `ValidationError: X-Forwarded-For ... trust proxy`
+
+**Symptoms:**
+```
+ValidationError: The 'X-Forwarded-For' header is set but the Express
+'trust proxy' setting is false (default).
+```
+
+**Cause:**
+
+Behind Coolify's Traefik proxy the real client IP arrives in `X-Forwarded-For`,
+not on the socket. With `trust proxy` unset, `express-rate-limit` cannot identify
+callers and raises this error; every request would otherwise be attributed to the
+proxy's own IP, putting all clients in a single shared rate-limit bucket.
+
+**Fix:**
+
+Already handled in `backend/src/index.js`, which trusts 1 hop when
+`NODE_ENV=production`. No configuration needed for a standard Coolify setup.
+
+Set `TRUST_PROXY_HOPS` only if you add another proxy in front of Coolify —
+Cloudflare in front of Traefik would make it `2`. Do not raise it beyond your
+actual proxy count, and never set it to trust everything: each extra trusted hop
+is one more `X-Forwarded-For` entry a client can forge to spoof their IP and
+bypass the rate limiter.
+
+---
+
 ### Issue 0: Deployment Fails — "mongodb Pulling" / Docker Hub Rate Limit
 
 **Symptoms (Coolify deployment log):**
@@ -588,6 +616,7 @@ docker exec casting-mongodb mongorestore -u admin -p PASSWORD --authenticationDa
 |---------|--------------|-----------|
 | `UserNotFound` for db "admin" | Stale `mongodb_data` volume from a failed deploy — init is skipped on a non-empty `/data/db` | Stop resource, `docker volume rm` the mongodb_data volume, redeploy |
 | Backend can't connect to MongoDB | MongoDB not ready or password wrong | Check MongoDB logs, verify MONGO_ROOT_PASSWORD |
+| `ValidationError` re `X-Forwarded-For` / `trust proxy` | Express not told it sits behind Traefik | Fixed in `backend/src/index.js`; set `TRUST_PROXY_HOPS` only for extra proxies |
 | Frontend shows "Network Error" | VITE_API_URL wrong or CORS issue | Rebuild with correct VITE_API_URL |
 | CORS errors in browser | FRONTEND_URL mismatch | Set correct FRONTEND_URL, redeploy backend |
 | Puppeteer crashes | Low RAM or Chromium install failed | Increase RAM or disable scraping platforms |
