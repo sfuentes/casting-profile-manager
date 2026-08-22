@@ -52,13 +52,23 @@ openssl rand -hex 32
    - Branch: `main` or `master`
    - Compose File: `docker-compose.coolify.yml`
 
-4. **Set Domains** (in Coolify UI)
-   - **Frontend Service**:
-     - Domain: `app.yourdomain.com` (or use Coolify-provided domain)
-     - Enable SSL/TLS
-   - **Backend Service**:
-     - Domain: `api.yourdomain.com` (or use Coolify-provided domain)
-     - Enable SSL/TLS
+4. **Set Domains**
+
+   `docker-compose.coolify.yml` declares two Coolify magic variables —
+   `SERVICE_FQDN_FRONTEND_80` and `SERVICE_FQDN_BACKEND_5000`. These are what
+   make Coolify allocate a domain and generate the Traefik routing labels that
+   publish each service; `expose:` on its own only opens the port on the
+   internal network, so without them the stack deploys successfully but is
+   unreachable from the internet.
+
+   Coolify populates both on first deploy using your wildcard subdomain. To use
+   your own domains, override them under **Environment Variables**:
+   - `SERVICE_FQDN_FRONTEND_80` → `app.yourdomain.com`
+   - `SERVICE_FQDN_BACKEND_5000` → `api.yourdomain.com`
+
+   Enable SSL/TLS for both. Whatever you settle on must match `VITE_API_URL` and
+   `FRONTEND_URL` below, or the frontend will call the wrong host and CORS will
+   reject it.
 
 ---
 
@@ -182,6 +192,72 @@ curl https://api.yourdomain.com/api/auth/register \
 ---
 
 ## 🐛 Troubleshooting
+
+### ⚠️ Most Common: MongoDB `UserNotFound` on Startup (Stale Volume)
+
+**Symptoms:**
+```
+UserNotFound: Could not find user "SuperSecretAdmin" for db "admin"
+```
+MongoDB never becomes healthy, and the backend never starts because it waits on
+`depends_on: condition: service_healthy`. The whole stack stalls.
+
+**Cause:**
+
+`MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD` are honoured **only
+when `/data/db` is empty**. The `mongo:7.0` entrypoint checks for existing
+database files and, if it finds any, skips initialisation entirely — no root user
+is created, and `docker/mongo-init.js` never runs either.
+
+The `mongodb_data` volume survives Coolify redeploys. So if any earlier deploy
+attempt created that volume — under a different username, or with no credentials
+at all because it failed before they were set — the volume is already
+"initialised". Every later deploy then reuses it and silently skips user
+creation, no matter what you put in the Coolify environment variables. The
+credentials you configured describe a user that only *would* have been created on
+a fresh volume.
+
+This is why the error persists across redeploys and why changing the password in
+the Coolify UI appears to have no effect.
+
+**Fix (no data to preserve — the normal case for a first deployment):**
+
+1. Stop the resource in Coolify.
+2. On the server, find and delete the volume. Coolify prefixes volume names with
+   the resource UUID, so match on the suffix rather than guessing the full name:
+   ```bash
+   docker volume ls | grep mongodb_data
+   docker volume rm <the_name_you_just_found>
+   ```
+3. Redeploy. Initialisation now runs against an empty `/data/db`: the root user
+   is created with your current credentials, and `mongo-init.js` executes.
+
+**Fix (existing data must be preserved):**
+
+Create the user by hand instead of wiping:
+
+```bash
+docker exec -it <mongo_container> mongosh
+```
+```javascript
+db.getSiblingDB('admin').createUser({
+  user: 'YOUR_MONGO_ROOT_USERNAME',
+  pwd:  'YOUR_MONGO_ROOT_PASSWORD',
+  roles: [ { role: 'root', db: 'admin' } ]
+})
+```
+
+If the volume was initialised with no credentials, mongod is running with auth
+disabled and this works unauthenticated. If it was initialised under a different
+username, authenticate as that user first.
+
+Note that `mongo-init.js` will still never have run on that volume, so the
+collection validators and the unique index on `users.email` will be missing.
+Mongoose creates collections on demand, so the app will function, but without
+those server-side guarantees. Prefer wiping the volume unless you genuinely have
+data to keep.
+
+---
 
 ### Issue 0: Deployment Fails — "mongodb Pulling" / Docker Hub Rate Limit
 
@@ -476,10 +552,11 @@ docker exec casting-mongodb mongosh -u admin -p PASSWORD --eval "db.serverStatus
 If deployment is completely broken:
 
 1. **Stop resource in Coolify**
-2. **Delete volumes**:
+2. **Delete volumes**. Coolify prefixes volume names with the resource UUID, not
+   the repository name, so list them first rather than assuming the prefix:
    ```bash
-   docker volume rm casting-profile-manager_mongodb_data
-   docker volume rm casting-profile-manager_backend_uploads
+   docker volume ls | grep -E 'mongodb_data|backend_uploads'
+   docker volume rm <mongodb_data_volume> <backend_uploads_volume>
    ```
 3. **Redeploy from scratch**
 
@@ -509,6 +586,7 @@ docker exec casting-mongodb mongorestore -u admin -p PASSWORD --authenticationDa
 
 | Symptom | Likely Cause | Quick Fix |
 |---------|--------------|-----------|
+| `UserNotFound` for db "admin" | Stale `mongodb_data` volume from a failed deploy — init is skipped on a non-empty `/data/db` | Stop resource, `docker volume rm` the mongodb_data volume, redeploy |
 | Backend can't connect to MongoDB | MongoDB not ready or password wrong | Check MongoDB logs, verify MONGO_ROOT_PASSWORD |
 | Frontend shows "Network Error" | VITE_API_URL wrong or CORS issue | Rebuild with correct VITE_API_URL |
 | CORS errors in browser | FRONTEND_URL mismatch | Set correct FRONTEND_URL, redeploy backend |

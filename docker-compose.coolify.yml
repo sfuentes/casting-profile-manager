@@ -6,17 +6,23 @@
 #   3. Set the required environment variables in the Coolify UI (see .env.coolify.example)
 #   4. Coolify will handle SSL termination via its built-in Traefik proxy
 #
-# PORTS:
-#   - Frontend (Nginx):  exposed on SERVICE_FQDN_FRONTEND (your app domain)
-#   - Backend API:       exposed on SERVICE_FQDN_BACKEND  (your API subdomain)
+# PORTS / ROUTING:
+#   - Frontend (Nginx):  published via SERVICE_FQDN_FRONTEND_80 (your app domain)
+#   - Backend API:       published via SERVICE_FQDN_BACKEND_5000 (your API subdomain)
 #   - MongoDB:           internal only (not exposed publicly)
+#
+#   Those SERVICE_FQDN_* entries are Coolify magic variables declared on the
+#   services below. They are what makes Coolify allocate a domain and emit the
+#   Traefik routing labels - `expose:` alone only opens the port on the internal
+#   network. Coolify populates them on deploy; set your own domains under
+#   Coolify -> Environment Variables to override.
 #
 # IMPORTANT: VITE_API_URL must be your public API URL (e.g. https://api.yourdomain.com/api)
 #            because it is compiled into the frontend bundle at build time.
 #
 # REQUIRED ENV VARS (must be set in Coolify):
 #   - MONGO_ROOT_PASSWORD (no default - will fail without it)
-#   - JWT_SECRET (defaults to weak value - MUST CHANGE)
+#   - JWT_SECRET (no default - will fail without it; openssl rand -hex 64)
 #   - VITE_API_URL (no default - frontend will break without it)
 #   - FRONTEND_URL (no default - CORS will break without it)
 
@@ -61,6 +67,13 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      # Coolify magic variable. Declaring it makes Coolify allocate a domain for
+      # this service and generate the Traefik labels that actually publish it;
+      # the _5000 suffix is the container port to route to. Without this, the
+      # service is only `expose`d on the internal network and is unreachable
+      # from the internet. Coolify fills in the value on deploy - override it
+      # under Coolify -> Environment Variables to use your own domain.
+      SERVICE_FQDN_BACKEND_5000: ""
       NODE_ENV: production
       PORT: 5000
       # Pass MongoDB credentials individually so the backend can safely
@@ -71,7 +84,11 @@ services:
       MONGO_HOST: mongodb
       MONGO_DB: darsteller-manager
       # CRITICAL: JWT_SECRET must be strong - generate with: openssl rand -hex 64
-      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_INSECURE_DEFAULT_$(openssl rand -hex 32 2>/dev/null || echo PLEASE_SET_JWT_SECRET)}
+      # Required, with no default on purpose. A default here would be a literal
+      # shared string baked into this public repo (Compose does not evaluate
+      # $(...)), so every deployment would sign tokens with the same key and
+      # anyone could forge a session. Fail the deploy instead.
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set in Coolify environment variables - generate one with openssl rand -hex 64}"
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       JWT_COOKIE_EXPIRE: ${JWT_COOKIE_EXPIRE:-7}
       # CRITICAL: Set this to your public frontend domain for CORS
@@ -110,6 +127,10 @@ services:
         # Example: https://api.yourdomain.com/api (must include /api)
         VITE_API_URL: ${VITE_API_URL:?VITE_API_URL must be set in Coolify environment variables}
     restart: unless-stopped
+    environment:
+      # Coolify magic variable - see the note on the backend service above.
+      # Routes the allocated domain to this container's port 80 (Nginx).
+      SERVICE_FQDN_FRONTEND_80: ""
     depends_on:
       backend:
         condition: service_healthy
