@@ -37,6 +37,29 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Proxy trust
+// In production the app runs behind Coolify's Traefik proxy, so the real client
+// IP arrives in the X-Forwarded-For header rather than on the socket. Without
+// this setting express-rate-limit throws a ValidationError, and every request
+// would be keyed to the proxy's own IP - collapsing all clients into a single
+// rate-limit bucket.
+//
+// Trust a hop COUNT, never `true`. With `true` Express believes the leftmost
+// X-Forwarded-For entry, which is supplied by the client and therefore
+// spoofable: anyone could forge an IP and bypass the rate limiter. A count
+// makes Express read the entry the proxy itself appended.
+//
+// Default: 1 hop in production (Traefik), disabled elsewhere so local
+// development and tests see the real socket address. Raise TRUST_PROXY_HOPS if
+// you put another proxy (e.g. Cloudflare) in front of Coolify.
+const trustProxyHops = parseInt(process.env.TRUST_PROXY_HOPS, 10);
+app.set(
+  'trust proxy',
+  Number.isInteger(trustProxyHops)
+    ? trustProxyHops
+    : process.env.NODE_ENV === 'production' ? 1 : false
+);
+
 // Security middleware
 app.use(helmet({
   contentSecurityPolicy: {
