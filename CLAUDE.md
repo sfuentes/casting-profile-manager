@@ -13,10 +13,20 @@ integrations, especially the things that are not visible from the code alone.
 
 ```
 backend/src/
-  connectors/        platform integrations + the interface the app talks to  [PENDING, see PR #17]
+  connectors/        platform integrations + the interface the app talks to
+    PlatformConnector.js  base class, manifest contract, capability checks
+    ConnectorService.js   the app's only entry point to any platform
+    registry.js           the one place that knows which platforms exist
+    errors.js             typed errors carrying `retryable`
+    selectors.js          label matching in JS, replacing jQuery `:contains()`
+    forensics.js          screenshot + HTML + URL captured on every failure
   controllers/       route handlers
   models/            Mongoose schemas
   utils/logger.js    winston
+  utils/crypto.js    AES-256-GCM for credentials at rest
+backend/scripts/
+  check-selectors.mjs       every selector is valid CSS (real Chromium)
+  check-text-selectors.mjs  the label-matching helpers behave
 frontend/src/
   context/AppContext.jsx     app-wide state, loads everything on auth
   services/apiService.js     every backend call
@@ -55,7 +65,24 @@ itself. A `docker exec coolify-proxy wget …` success is not evidence of routin
 
 **Chromium is available locally** at `/opt/pw-browsers/chromium*/chrome-linux/chrome`.
 Selector validity and scraper mechanics can be tested against fixture HTML
-without reaching any real site.
+without reaching any real site. `npm run check:connectors` in `backend/` does
+exactly that — 70 selectors parsed in real Chromium, plus 9 behavioural tests of
+the label matcher. Run it after touching any connector.
+
+**A large merge can leave the tree unbootable.** Landing the connector stack
+resolved `platformController.js` to an older revision that still imported the
+deleted `SyncService.js`, and resurrected the deleted `BasePlatformAdapter.js`.
+`master` could not start at all, while every file looked plausible in isolation.
+After any merge of size, boot from a real ESM entry before trusting it:
+
+```bash
+cd backend && cat > b.mjs <<'EOF'
+process.env.NODE_ENV='test'; process.env.JWT_SECRET='x';
+process.env.CREDENTIAL_ENCRYPTION_KEY='d'.repeat(64);
+await import('./src/index.js'); console.log('BOOTS OK');
+EOF
+node b.mjs
+```
 
 **Outbound network is restricted.** GitHub, npm and PyPI resolve; everything
 else, including the casting platforms and `coolify.io`, is blocked. Never claim
@@ -124,25 +151,30 @@ distinct from the site being down and is the failure to expect most often.
 
 ### Known broken, with evidence
 
-- **Six selectors are invalid CSS.** `button:contains("Add")` is jQuery syntax;
-  `querySelectorAll` throws `SyntaxError`. Confirmed in real Chromium. They sit
-  in the availability paths of Filmmakers, CastingNetwork, JobWork and Wanted,
-  and fail regardless of what the sites look like.
+- **The six invalid-CSS selectors are fixed.** `button:contains("Add")` was
+  jQuery syntax that made `querySelectorAll` throw, killing the whole selector
+  string and the valid alternatives listed beside it. Label matching now happens
+  in JavaScript via `selectors.js`. `npm run check:connectors` guards against it
+  returning.
 - **e-TALENTA and Schauspielervideos have zero selectors.** They are API
   adapters against APIs the project has no access to. They cannot work as
-  written.
+  written, and no amount of selector work changes that.
 - **No connector has ever run against a live platform.** Deeper selectors
   (`.upload-success`, `textarea[name="biography"]`, `[data-action="add-availability"]`)
-  are speculative. Login selectors are valid CSS and plausible; everything past
-  login probably is not.
+  remain speculative. Login selectors are valid CSS and plausible; everything
+  past login probably is not. Valid CSS only means the selector parses — it says
+  nothing about whether it matches the real page.
 
 ### Recommended next step
 
-Not "fix all six blind". Add failure forensics to the connector base —
-screenshot, HTML, final URL on every failure — plus a selector-validity test
-running against local Chromium, then fix the six invalid selectors. That turns a
-blind redeploy loop into one round trip. Then take **one** platform end to end
-with real credentials on the server.
+The groundwork is done: forensics capture and the selector checks are in, and
+the invalid selectors are fixed. What is left cannot be done from here.
+
+Take **one** platform end to end on the server with real credentials. Click
+test, then read what `forensics.js` captured — screenshot, HTML, final URL. That
+is the first real evidence about these sites that this project has ever had.
+Fix that platform's selectors against the captured DOM, then decide whether a
+second platform is worth it. Do not work on six at once.
 
 Scraping is an ongoing maintenance burden and likely breaches these platforms'
 terms; the downside lands on users as suspended accounts. Worth confirming the
@@ -170,19 +202,24 @@ project owner accepts that before expanding it.
 
 ## State
 
-Merged through PR #20. The deployment works.
+Everything described above is on `master`. The connector stack (#16, #17, #18,
+#21) was landed by the project owner in one merge, together with the connector
+forensics and selector work.
 
-Open, stacked — merge in order: **#16 → #17 → #18 → #21**
+That merge needed a repair: it resolved `platformController.js` to an older
+revision importing the deleted `SyncService.js`, and restored the deleted
+`BasePlatformAdapter.js`. The backend could not start. Both are fixed — see the
+merge trap above, and re-run the boot check after any large merge.
 
-| PR | Contents |
-|---|---|
-| #16 | connect/test/sync attempt real logins; `email`/`username` schema fix |
-| #17 | connector abstraction; fixes the `require()`-in-ESM bug; −1797 lines |
-| #18 | credential encryption at rest; API stops returning secrets |
-| #21 | UI renders from manifests; OAuth removed everywhere |
+Two transfer artefacts sit at the repository root and are no longer needed now
+that their contents are merged:
 
-`master` has moved on (#19, #20) since the stack was branched. If GitHub reports
-a conflict on `docker-compose.coolify.yml`, rebase the stack onto `master`.
+- `00-full-stack-onto-master.diff`
+- `01-connector-forensics-and-selectors.patch`
+
+They are the patches used to land the work, not source. `casting-fixes.patch`
+was removed for the same reason earlier; these are safe to delete once the merge
+is settled.
 
 ## Conventions
 
