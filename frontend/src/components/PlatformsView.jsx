@@ -50,8 +50,7 @@ const PlatformsView = () => {
         updatePlatformSettings,
         testPlatformConnection,
         syncToPlatform,
-        bulkSyncToPlatforms,
-        initiateOAuth
+        bulkSyncToPlatforms
     } = useAppContext();
 
     const [showModal, setShowModal] = useState(false);
@@ -98,18 +97,10 @@ const PlatformsView = () => {
 
     const handleConnect = async () => {
         try {
-            if (selectedPlatform.authType === 'oauth') {
-                await initiateOAuth(selectedPlatform.id);
-                // In a real app, OAuth callback would handle the connection
-                // For demo, we'll simulate successful connection
-                setTimeout(async () => {
-                    await connectPlatform(selectedPlatform.id, {token: 'oauth_token_demo'});
-                    setShowModal(false);
-                }, 2000);
-            } else {
-                await connectPlatform(selectedPlatform.id, formData);
-                setShowModal(false);
-            }
+            // Connecting now verifies the credentials against the platform, so
+            // it takes a few seconds and can legitimately fail.
+            await connectPlatform(selectedPlatform.id, formData);
+            setShowModal(false);
         } catch (err) {
             console.error('Connection failed:', err);
             alert(`Verbindung fehlgeschlagen: ${err.message}`);
@@ -207,16 +198,16 @@ const PlatformsView = () => {
     const getConnectionTypeIcon = (platform) => {
         if (platform.connectionType === 'agent') return Bot;
         if (platform.connectionType === 'api') return Cpu;
-        if (platform.authType === 'oauth') return Link;
-        if (platform.authType === 'api') return Cpu;
+        if (platform.authType === 'manual') return Link;
+        if (platform.authType === 'apiKey') return Cpu;
         return Key;
     };
 
     const getConnectionTypeText = (platform) => {
         if (platform.connectionType === 'agent') return 'Agent-basiert';
         if (platform.connectionType === 'api') return 'API-Integration';
-        if (platform.authType === 'oauth') return 'OAuth';
-        if (platform.authType === 'api') return 'API';
+        if (platform.authType === 'manual') return 'Manuell';
+        if (platform.authType === 'apiKey') return 'API-Key';
         return 'Standard';
     };
 
@@ -711,62 +702,46 @@ const PlatformsView = () => {
                         </div>
                     )}
 
-                    {selectedPlatform?.authType === 'oauth' ? (
+                    {selectedPlatform?.authType === 'manual' ? (
                         <div className="text-center space-y-4">
-                            <div className="p-4 bg-green-50 rounded-lg">
-                                <Shield className="w-12 h-12 text-green-600 mx-auto mb-2"/>
-                                <h3 className="font-semibold text-gray-900 mb-1">OAuth-Authentifizierung</h3>
+                            <div className="p-4 bg-gray-50 rounded-lg">
+                                <Shield className="w-12 h-12 text-gray-500 mx-auto mb-2"/>
+                                <h3 className="font-semibold text-gray-900 mb-1">Manuelle Verwaltung</h3>
                                 <p className="text-sm text-gray-600">
-                                    Sie werden zu {selectedPlatform.name} weitergeleitet, um die Verbindung zu autorisieren.
+                                    Für {selectedPlatform.name} gibt es keine automatische Anbindung.
+                                    Die Pflege erfolgt direkt bei der Agentur.
                                 </p>
                             </div>
                         </div>
-                    ) : selectedPlatform?.authType === 'credentials' ? (
+                    ) : (
                         <>
-                            <Input
-                                label="Benutzername/E-Mail"
-                                value={formData.username || ''}
-                                onChange={(e) => handleInputChange('username', e.target.value)}
-                                placeholder="Ihr Benutzername oder E-Mail-Adresse"
-                            />
-                            <div className="relative">
-                                <Input
-                                    label="Passwort"
-                                    type={showPassword.password ? 'text' : 'password'}
-                                    value={formData.password || ''}
-                                    onChange={(e) => handleInputChange('password', e.target.value)}
-                                    placeholder="Ihr Passwort"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => togglePasswordVisibility('password')}
-                                    className="absolute right-3 top-8 text-gray-400 hover:text-gray-600"
-                                >
-                                    {showPassword.password ? <EyeOff size={16}/> : <Eye size={16}/>}
-                                </button>
-                            </div>
+                            {/* Rendered from the connector manifest, so the form always
+                                matches what the platform actually asks for. */}
+                            {(selectedPlatform?.credentialFields || []).map((field) => (
+                                <div className="relative" key={field.name}>
+                                    <Input
+                                        label={field.label || field.name}
+                                        type={field.type === 'password' && !showPassword[field.name] ? 'password' : (field.type === 'email' ? 'email' : 'text')}
+                                        value={formData[field.name] || ''}
+                                        onChange={(e) => handleInputChange(field.name, e.target.value)}
+                                        placeholder={field.label || field.name}
+                                    />
+                                    {field.type === 'password' && (
+                                        <button
+                                            type="button"
+                                            onClick={() => togglePasswordVisibility(field.name)}
+                                            className="absolute right-3 top-8 text-gray-400 hover:text-gray-600"
+                                        >
+                                            {showPassword[field.name] ? <EyeOff size={16}/> : <Eye size={16}/>}
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
                             <div className="p-3 bg-gray-50 rounded text-xs text-gray-600">
                                 <Shield size={14} className="inline mr-1"/>
                                 Ihre Anmeldedaten werden verschlüsselt gespeichert und nur für die Synchronisation verwendet.
                             </div>
                         </>
-                    ) : (
-                        <div className="relative">
-                            <Input
-                                label="API-Schlüssel"
-                                type={showPassword.apiKey ? 'text' : 'password'}
-                                value={formData.apiKey || ''}
-                                onChange={(e) => handleInputChange('apiKey', e.target.value)}
-                                placeholder="Ihr API-Schlüssel"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => togglePasswordVisibility('apiKey')}
-                                className="absolute right-3 top-8 text-gray-400 hover:text-gray-600"
-                            >
-                                {showPassword.apiKey ? <EyeOff size={16}/> : <Eye size={16}/>}
-                            </button>
-                        </div>
                     )}
 
                     <div className="flex gap-3 pt-4">

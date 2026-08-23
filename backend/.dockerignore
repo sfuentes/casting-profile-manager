@@ -40,6 +40,11 @@ tests
 # Uploads (will be mounted as volume)
 uploads/*
 
+# Connector failure captures (mounted as a volume in production).
+# Never bake local captures into an image: they are third-party page HTML and
+# may carry session state that redaction did not anticipate.
+forensics/*
+
 # Temporary files
 tmp
 temp

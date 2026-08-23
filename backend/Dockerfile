@@ -31,14 +31,20 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies - skip Puppeteer's bundled Chromium download
-RUN PUPPETEER_SKIP_DOWNLOAD=true npm install --omit=dev
+# Install dependencies - skip Puppeteer's bundled Chromium download.
+# `npm ci` rather than `npm install`: it installs exactly what the lock file
+# pins and fails loudly when the lock has drifted from package.json, instead of
+# quietly resolving a different tree than anyone tested. The lock was out of
+# sync when this was written, which `npm install` had been papering over.
+RUN PUPPETEER_SKIP_DOWNLOAD=true npm ci --omit=dev
 
 # Copy application source
 COPY . .
 
-# Create uploads and logs directories
-RUN mkdir -p uploads logs
+# Create uploads, logs and connector-forensics directories. All three are
+# mounted as volumes in production; creating them here keeps local `docker run`
+# working too.
+RUN mkdir -p uploads logs forensics
 
 # Expose port
 EXPOSE 5000

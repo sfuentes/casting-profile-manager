@@ -1,18 +1,48 @@
 import puppeteer from 'puppeteer';
-import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { PlatformConnector } from './PlatformConnector.js';
+import { clickByCssOrText, findByCssOrText } from './selectors.js';
+import { PlatformChangedError } from './errors.js';
 
 /**
- * Casting Network Platform Adapter
- * Platform ID: 2
- * Type: Web scraping-based integration (no official public API)
- * Features: Profile, Photos, Submissions, Availability
- * Regions: US, CA, UK
+ * Filmmakers Platform Adapter
+ * Platform ID: 1
+ * Type: Web scraping-based integration (no official API)
+ * Features: Profile, Photos, Networking
+ * Regions: EU, Global
  */
-export class CastingNetworkAdapter extends BasePlatformAdapter {
+export class FilmmakersConnector extends PlatformConnector {
+  static manifest = Object.freeze({
+    id: 1,
+    key: 'filmmakers',
+    name: 'Filmmakers',
+    authType: 'credentials',
+    credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
+      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia']
+  });
+
+  // ---- unified interface ----
+  // The app calls these names on every connector; the platform-specific work
+  // stays in the methods below, which keep their original names.
+
+  async verify() {
+    await this.authenticate();
+    return { ok: true, message: 'Login succeeded.' };
+  }
+
+  async pushProfile(profile) {
+    return this.updateProfile(profile);
+  }
+
+  async close() {
+    if (typeof this.cleanup === 'function') await this.cleanup();
+  }
+
   constructor(platform, credentials) {
     super(platform, credentials);
 
-    this.baseUrl = 'https://home.castingnetworks.com';
+    this.baseUrl = 'https://www.filmmakers.eu';
     this.browser = null;
     this.page = null;
     this.isAuthenticated = false;
@@ -20,24 +50,25 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
 
   /**
    * Initialize rate limiter with conservative limits for web scraping
+   * Be respectful to the platform
    */
   initRateLimiter() {
-    return new (require('rate-limiter-flexible').RateLimiterMemory)({
+    return new RateLimiterMemory({
       points: 10, // Only 10 requests
       duration: 60, // Per minute
     });
   }
 
   /**
-   * Authenticate with Casting Network platform
+   * Authenticate with Filmmakers platform via web scraping
    * @returns {Promise<boolean>}
    */
   async authenticate() {
     try {
-      this.log('info', 'Authenticating with Casting Network via web automation');
+      this.log('info', 'Authenticating with Filmmakers via web automation');
 
       if (!this.credentials || !this.credentials.email || !this.credentials.password) {
-        throw new Error('Missing Casting Network credentials (email/password required)');
+        throw new Error('Missing Filmmakers credentials (email/password required)');
       }
 
       // Launch browser
@@ -55,7 +86,7 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
 
       this.page = await this.browser.newPage();
 
-      // Set user agent
+      // Set user agent to avoid bot detection
       await this.page.setUserAgent(
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       );
@@ -69,9 +100,9 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
       this.log('info', 'Loaded login page, entering credentials');
 
       // Fill in login form
-      await this.page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 10000 });
-      await this.page.type('input[type="email"], input[name="email"]', this.credentials.email);
-      await this.page.type('input[type="password"], input[name="password"]', this.credentials.password);
+      await this.page.waitForSelector('input[name="email"], input[type="email"]', { timeout: 10000 });
+      await this.page.type('input[name="email"], input[type="email"]', this.credentials.email);
+      await this.page.type('input[name="password"], input[type="password"]', this.credentials.password);
 
       // Submit form
       await Promise.all([
@@ -81,41 +112,43 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
 
       // Check if login was successful
       const currentUrl = this.page.url();
-      if (currentUrl.includes('/login') || currentUrl.includes('/signin')) {
+      if (currentUrl.includes('/login')) {
         throw new Error('Login failed - still on login page');
       }
 
       this.isAuthenticated = true;
-      this.log('info', 'Successfully authenticated with Casting Network');
+      this.log('info', 'Successfully authenticated with Filmmakers');
 
       return true;
 
     } catch (error) {
-      this.log('error', 'Casting Network authentication failed', {
+      this.log('error', 'Filmmakers authentication failed', {
         error: error.message
       });
 
+      // Clean up browser
       await this.cleanup();
-      throw new Error(`Casting Network authentication failed: ${error.message}`);
+
+      throw new Error(`Filmmakers authentication failed: ${error.message}`);
     }
   }
 
   /**
-   * Push availability data to Casting Network
+   * Push availability data to Filmmakers
    * @param {Array} availability
    * @returns {Promise<Object>}
    */
   async pushAvailability(availability) {
     return this.withRateLimit(async () => {
       return this.withRetry(async () => {
-        this.log('info', `Pushing ${availability.length} availability items to Casting Network`);
+        this.log('info', `Pushing ${availability.length} availability items to Filmmakers`);
 
         if (!this.isAuthenticated || !this.page) {
           throw new Error('Not authenticated. Call authenticate() first.');
         }
 
-        // Navigate to availability page
-        await this.page.goto(`${this.baseUrl}/talent/schedule`, {
+        // Navigate to availability management page
+        await this.page.goto(`${this.baseUrl}/profile/availability`, {
           waitUntil: 'networkidle2',
           timeout: 30000
         });
@@ -125,23 +158,33 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
         // Process each availability item
         for (const item of availability) {
           try {
-            // Look for "Add" or "New" button
-            await this.page.waitForSelector('[data-action="add"], .add-availability, button:contains("Add"), a:contains("Add")', {
+            // Structural selectors first, button label as the fallback. The
+            // label used to be written as `button:contains("Add")`, which is
+            // jQuery and made the whole selector string invalid CSS.
+            const added = await clickByCssOrText(this.page, {
+              css: ['[data-action="add-availability"]', '.add-availability-btn'],
+              texts: ['add availability', 'add', 'verfügbarkeit hinzufügen', 'hinzufügen', 'neu'],
               timeout: 5000
             });
 
-            await this.page.click('[data-action="add"], .add-availability');
+            if (!added) {
+              throw new PlatformChangedError('No "add availability" control found on the availability page', {
+                platform: 'filmmakers'
+              });
+            }
 
-            // Wait for form
-            await this.page.waitForSelector('input[name="start_date"], input[name="from_date"]', {
+            // Wait for form to appear
+            await this.page.waitForSelector('input[name="start_date"], input[name="from"]', {
               timeout: 5000
             });
 
             // Fill availability form
             await this.fillAvailabilityForm(item);
 
-            // Submit
-            await this.page.click('button[type="submit"], input[type="submit"]');
+            // Submit form
+            await this.page.click('button[type="submit"]');
+
+            // Wait for submission to complete
             await this.delay(1000);
 
             successCount++;
@@ -154,13 +197,13 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
           }
         }
 
-        this.log('info', `Successfully pushed ${successCount}/${availability.length} availability items`);
+        this.log('info', `Successfully pushed ${successCount}/${availability.length} availability items to Filmmakers`);
 
         return {
           success: true,
           count: successCount,
           total: availability.length,
-          externalIds: []
+          externalIds: [] // Filmmakers doesn't return IDs via scraping
         };
       });
     });
@@ -171,32 +214,24 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
    * @param {Object} item
    */
   async fillAvailabilityForm(item) {
-    const startDate = this.formatDateForInput(item.startDate);
-    const endDate = this.formatDateForInput(item.endDate);
-
     // Start date
+    const startDate = this.formatDateForInput(item.startDate);
     await this.page.evaluate((selector, value) => {
       const input = document.querySelector(selector);
       if (input) input.value = value;
-    }, 'input[name="start_date"], input[name="from_date"]', startDate);
+    }, 'input[name="start_date"], input[name="from"]', startDate);
 
     // End date
+    const endDate = this.formatDateForInput(item.endDate);
     await this.page.evaluate((selector, value) => {
       const input = document.querySelector(selector);
       if (input) input.value = value;
-    }, 'input[name="end_date"], input[name="to_date"]', endDate);
+    }, 'input[name="end_date"], input[name="to"]', endDate);
 
-    // Status
+    // Status/Type (if available)
     if (item.status) {
       try {
-        const statusMap = {
-          'available': 'available',
-          'unavailable': 'unavailable',
-          'booking': 'booked',
-          'option': 'option'
-        };
-        const mappedStatus = statusMap[item.status] || item.status;
-        await this.page.select('select[name="status"], select[name="availability_type"]', mappedStatus);
+        await this.page.select('select[name="status"], select[name="type"]', item.status);
       } catch (e) {
         // Status field might not exist
       }
@@ -213,14 +248,14 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
   }
 
   /**
-   * Push media (photos) to Casting Network
+   * Push media (photos) to Filmmakers
    * @param {Object} media
    * @returns {Promise<Object>}
    */
   async pushMedia(media) {
     return this.withRateLimit(async () => {
       return this.withRetry(async () => {
-        this.log('info', 'Uploading media to Casting Network', {
+        this.log('info', 'Uploading media to Filmmakers', {
           type: media.type,
           filename: media.filename
         });
@@ -230,7 +265,7 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
         }
 
         // Navigate to media upload page
-        await this.page.goto(`${this.baseUrl}/talent/photos`, {
+        await this.page.goto(`${this.baseUrl}/profile/photos`, {
           waitUntil: 'networkidle2',
           timeout: 30000
         });
@@ -241,7 +276,7 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
           throw new Error('Could not find file upload input');
         }
 
-        // Save media to temp file
+        // Save media buffer to temporary file
         const fs = await import('fs/promises');
         const path = await import('path');
         const os = await import('os');
@@ -254,16 +289,16 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
           // Upload file
           await uploadInput.uploadFile(tempFilePath);
 
-          // Wait for upload confirmation
-          await this.page.waitForSelector('.upload-success, .photo-uploaded, .success-message', {
+          // Wait for upload to complete
+          await this.page.waitForSelector('.upload-success, .photo-uploaded', {
             timeout: 60000
           });
 
-          this.log('info', 'Successfully uploaded media to Casting Network');
+          this.log('info', 'Successfully uploaded media to Filmmakers');
 
           return {
             success: true,
-            externalId: null,
+            externalId: null, // Can't get ID via scraping
             url: null
           };
 
@@ -280,32 +315,38 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
   }
 
   /**
-   * Update profile information on Casting Network
+   * Update profile information on Filmmakers
    * @param {Object} profile
    * @returns {Promise<Object>}
    */
   async updateProfile(profile) {
     return this.withRateLimit(async () => {
       return this.withRetry(async () => {
-        this.log('info', 'Updating profile on Casting Network');
+        this.log('info', 'Updating profile on Filmmakers');
 
         if (!this.isAuthenticated || !this.page) {
           throw new Error('Not authenticated. Call authenticate() first.');
         }
 
         // Navigate to profile edit page
-        await this.page.goto(`${this.baseUrl}/talent/profile/edit`, {
+        await this.page.goto(`${this.baseUrl}/profile/edit`, {
           waitUntil: 'networkidle2',
           timeout: 30000
         });
 
         const updatedFields = [];
 
-        // Update biography/about
+        // Update biography
         if (profile.biography) {
           try {
-            await this.page.waitForSelector('textarea[name="biography"], textarea[name="about"]', { timeout: 5000 });
-            await this.clearAndType('textarea[name="biography"], textarea[name="about"]', profile.biography);
+            await this.page.waitForSelector('textarea[name="biography"], textarea[name="bio"]', {
+              timeout: 5000
+            });
+            await this.page.evaluate((selector) => {
+              const textarea = document.querySelector(selector);
+              if (textarea) textarea.value = '';
+            }, 'textarea[name="biography"], textarea[name="bio"]');
+            await this.page.type('textarea[name="biography"], textarea[name="bio"]', profile.biography);
             updatedFields.push('biography');
           } catch (e) {
             this.log('warn', 'Could not update biography field');
@@ -317,15 +358,6 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
           try {
             await this.updateInputField('input[name="height"]', profile.height);
             updatedFields.push('height');
-          } catch (e) {
-            // Field might not exist
-          }
-        }
-
-        if (profile.weight) {
-          try {
-            await this.updateInputField('input[name="weight"]', profile.weight);
-            updatedFields.push('weight');
           } catch (e) {
             // Field might not exist
           }
@@ -357,7 +389,7 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
           // Form might auto-save
         }
 
-        this.log('info', 'Successfully updated profile on Casting Network', {
+        this.log('info', 'Successfully updated profile on Filmmakers', {
           updatedFields
         });
 
@@ -370,19 +402,6 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
   }
 
   /**
-   * Clear and type into a field
-   * @param {string} selector
-   * @param {string} value
-   */
-  async clearAndType(selector, value) {
-    await this.page.evaluate((sel) => {
-      const el = document.querySelector(sel);
-      if (el) el.value = '';
-    }, selector);
-    await this.page.type(selector, value);
-  }
-
-  /**
    * Update input field value
    * @param {string} selector
    * @param {string} value
@@ -390,7 +409,11 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
   async updateInputField(selector, value) {
     const element = await this.page.$(selector);
     if (element) {
-      await this.clearAndType(selector, String(value));
+      await this.page.evaluate((sel) => {
+        const input = document.querySelector(sel);
+        if (input) input.value = '';
+      }, selector);
+      await this.page.type(selector, String(value));
     }
   }
 
@@ -413,8 +436,10 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
    */
   formatDateForInput(date) {
     if (!date) return '';
+
     const d = new Date(date);
     if (isNaN(d.getTime())) return '';
+
     return d.toISOString().split('T')[0];
   }
 
@@ -450,4 +475,4 @@ export class CastingNetworkAdapter extends BasePlatformAdapter {
   }
 }
 
-export default CastingNetworkAdapter;
+export default FilmmakersConnector;

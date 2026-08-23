@@ -2,7 +2,7 @@ import Profile from '../models/Profile.js';
 import Platform from '../models/Platform.js';
 import { ApiError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
-import platformAgent from '../services/platformAgent.js';
+import connectorService from '../connectors/ConnectorService.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 // @desc    Get user profile
@@ -278,10 +278,12 @@ export const syncProfileToPlatforms = async (req, res, next) => {
     // Sync to each platform
     for (const platform of platforms) {
       try {
-        // Sync profile using platform agent
-        const result = await platformAgent.syncProfile(
+        // Sync through the connector layer. This used to call platformAgent,
+        // which only pretended to sync - it slept for a random interval and
+        // returned success without contacting anything.
+        const result = await connectorService.syncProfile(
+          req.user.id,
           platform.platformId,
-          platform.authData,
           profile
         );
 

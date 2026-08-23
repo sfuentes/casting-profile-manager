@@ -1,5 +1,6 @@
 import axios from 'axios';
-import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { PlatformConnector } from './PlatformConnector.js';
 
 /**
  * e-TALENTA Platform Adapter
@@ -8,7 +9,34 @@ import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
  * Features: Profile, Photos, Availability, Castings
  * Regions: EU, DE, AT, CH
  */
-export class ETalentaAdapter extends BasePlatformAdapter {
+export class ETalentaConnector extends PlatformConnector {
+  static manifest = Object.freeze({
+    id: 4,
+    key: 'e-talenta',
+    name: 'e-TALENTA',
+    authType: 'credentials',
+    credentialFields: [{ name: 'username', type: 'text', required: true, label: 'Benutzername' },
+      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia']
+  });
+
+  // ---- unified interface ----
+  // The app calls these names on every connector; the platform-specific work
+  // stays in the methods below, which keep their original names.
+
+  async verify() {
+    await this.authenticate();
+    return { ok: true, message: 'Login succeeded.' };
+  }
+
+  async pushProfile(profile) {
+    return this.updateProfile(profile);
+  }
+
+  async close() {
+    if (typeof this.cleanup === 'function') await this.cleanup();
+  }
+
   constructor(platform, credentials) {
     super(platform, credentials);
 
@@ -23,7 +51,7 @@ export class ETalentaAdapter extends BasePlatformAdapter {
    * e-TALENTA allows 100 requests per minute
    */
   initRateLimiter() {
-    return new (require('rate-limiter-flexible').RateLimiterMemory)({
+    return new RateLimiterMemory({
       points: 100,
       duration: 60,
     });
@@ -397,4 +425,4 @@ export class ETalentaAdapter extends BasePlatformAdapter {
   }
 }
 
-export default ETalentaAdapter;
+export default ETalentaConnector;

@@ -1,7 +1,7 @@
 import React, {useState, createContext, useContext, useEffect} from 'react';
 import {apiService} from '../services/apiService';
 import {initialProfile, initialBookings, initialOptions, initialAvailability} from '../data/initialData';
-import {initialPlatforms} from "../data/initialData.js";
+
 
 // App Context for State Management
 const AppContext = createContext();
@@ -24,6 +24,10 @@ export const AppProvider = ({children}) => {
     const [options, setOptions] = useState([]);
     const [availability, setAvailability] = useState([]);
     const [platforms, setPlatforms] = useState([]);
+    // Connector manifests from the backend: which integrations exist, how each
+    // authenticates, and what it can do. The UI renders from this instead of
+    // shipping its own copy.
+    const [platformCatalog, setPlatformCatalog] = useState([]);
     const [syncStatus, setSyncStatus] = useState({syncing: false, lastSync: null});
 
     // Loading and error states
@@ -83,7 +87,43 @@ export const AppProvider = ({children}) => {
             setBookings(bookingsData || initialBookings);
             setOptions(optionsData || initialOptions);
             setAvailability(availabilityData || initialAvailability);
-            setPlatforms(platformsData || initialPlatforms);
+            // Merge the user's saved platform records with the backend catalogue,
+            // so authType and credentialFields always come from the connector
+            // rather than from a stale client-side list.
+            let catalog = [];
+            try {
+                const response = await apiService.getPlatformCatalog();
+                catalog = response?.data || response || [];
+                setPlatformCatalog(catalog);
+            } catch (catalogError) {
+                console.error('Failed to load platform catalogue:', catalogError);
+            }
+
+            const byId = new Map(catalog.map((m) => [m.id, m]));
+            const merged = (platformsData || []).map((p) => {
+                const manifest = byId.get(p.platformId ?? p.id);
+                if (!manifest) return p;
+                // The record wins for anything the user owns - their own name for
+                // an agency, connection state, sync settings. The manifest wins
+                // for how the integration works, which is not the client's to
+                // decide.
+                return {
+                    ...p,
+                    authType: manifest.authType,
+                    credentialFields: manifest.credentialFields,
+                    capabilities: manifest.capabilities,
+                    name: p.name || manifest.name
+                };
+            });
+
+            // Platforms the user has not connected yet still belong in the list.
+            for (const manifest of catalog) {
+                if (!merged.some((p) => (p.platformId ?? p.id) === manifest.id)) {
+                    merged.push({...manifest, connected: false, authData: {}});
+                }
+            }
+
+            setPlatforms(merged);
 
         } catch (err) {
             console.error('Failed to load data:', err);
@@ -95,7 +135,7 @@ export const AppProvider = ({children}) => {
                 setBookings(initialBookings);
                 setOptions(initialOptions);
                 setAvailability(initialAvailability);
-                setPlatforms(initialPlatforms);
+                setPlatforms([]);
             }
         }
     };
@@ -774,20 +814,6 @@ export const AppProvider = ({children}) => {
         }
     };
 
-    const initiateOAuth = async (platformId) => {
-        try {
-            const result = await apiService.initiateOAuth(platformId);
-            // Open OAuth window
-            window.open(result.authUrl, '_blank', 'width=500,height=600');
-            return result;
-        } catch (err) {
-            console.error('Failed to initiate OAuth:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Starten der OAuth-Authentifizierung');
-            }
-            throw err;
-        }
-    };
 
     // Context value with all functions and state
     const value = {
@@ -847,10 +873,10 @@ export const AppProvider = ({children}) => {
         connectPlatform,
         disconnectPlatform,
         updatePlatformSettings,
+        platformCatalog,
         testPlatformConnection,
         syncToPlatform,
         bulkSyncToPlatforms,
-        initiateOAuth,
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

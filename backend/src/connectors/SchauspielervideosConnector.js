@@ -1,5 +1,6 @@
 import axios from 'axios';
-import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { PlatformConnector } from './PlatformConnector.js';
 
 /**
  * Schauspielervideos Platform Adapter
@@ -8,7 +9,33 @@ import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
  * Features: Profile, Videos, Photos, Showreel
  * Regions: DE, AT, CH
  */
-export class SchauspielerVideosAdapter extends BasePlatformAdapter {
+export class SchauspielervideosConnector extends PlatformConnector {
+  static manifest = Object.freeze({
+    id: 3,
+    key: 'schauspielervideos',
+    name: 'Schauspielervideos',
+    authType: 'apiKey',
+    credentialFields: [{ name: 'apiKey', type: 'password', required: true, label: 'API-Key' }],
+    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia']
+  });
+
+  // ---- unified interface ----
+  // The app calls these names on every connector; the platform-specific work
+  // stays in the methods below, which keep their original names.
+
+  async verify() {
+    await this.authenticate();
+    return { ok: true, message: 'Login succeeded.' };
+  }
+
+  async pushProfile(profile) {
+    return this.updateProfile(profile);
+  }
+
+  async close() {
+    if (typeof this.cleanup === 'function') await this.cleanup();
+  }
+
   constructor(platform, credentials) {
     super(platform, credentials);
 
@@ -23,7 +50,7 @@ export class SchauspielerVideosAdapter extends BasePlatformAdapter {
    * Schauspielervideos allows 50 requests per minute
    */
   initRateLimiter() {
-    return new (require('rate-limiter-flexible').RateLimiterMemory)({
+    return new RateLimiterMemory({
       points: 50,
       duration: 60,
     });
@@ -396,4 +423,4 @@ export class SchauspielerVideosAdapter extends BasePlatformAdapter {
   }
 }
 
-export default SchauspielerVideosAdapter;
+export default SchauspielervideosConnector;

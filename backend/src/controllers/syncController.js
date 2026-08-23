@@ -1,4 +1,4 @@
-import syncService from '../services/sync/SyncService.js';
+import connectorService from '../connectors/ConnectorService.js';
 import Availability from '../models/Availability.js';
 import Profile from '../models/Profile.js';
 import { asyncHandler as catchAsync } from '../middleware/asyncHandler.js';
@@ -24,7 +24,7 @@ export const syncAvailability = catchAsync(async (req, res) => {
   }
 
   try {
-    const result = await syncService.syncAvailability(
+    const result = await connectorService.syncAvailability(
       userId,
       parseInt(platformId),
       availability
@@ -96,7 +96,7 @@ export const syncProfile = catchAsync(async (req, res) => {
   }
 
   try {
-    const result = await syncService.syncProfile(
+    const result = await connectorService.syncProfile(
       userId,
       parseInt(platformId),
       profile
@@ -127,7 +127,7 @@ export const getSyncHistory = catchAsync(async (req, res) => {
   const userId = req.user.id;
   const limit = parseInt(req.query.limit) || 20;
 
-  const history = await syncService.getSyncHistory(userId, limit);
+  const history = await connectorService.getSyncHistory(userId, limit);
 
   res.status(200).json({
     success: true,
@@ -144,7 +144,7 @@ export const getSyncStatus = catchAsync(async (req, res) => {
   const { platformId } = req.params;
   const userId = req.user.id;
 
-  const status = await syncService.getSyncStatus(userId, parseInt(platformId));
+  const status = await connectorService.getSyncStatus(userId, parseInt(platformId));
 
   res.status(200).json({
     success: true,
@@ -160,7 +160,7 @@ export const retrySync = catchAsync(async (req, res) => {
   const { syncLogId } = req.params;
 
   try {
-    const result = await syncService.retrySync(syncLogId);
+    const result = await connectorService.retrySync(syncLogId);
 
     res.status(200).json({
       success: true,
@@ -204,7 +204,7 @@ export const bulkSync = catchAsync(async (req, res) => {
       if (dataTypes.includes('availability')) {
         const availability = await Availability.find({ user: userId }).lean();
         if (availability && availability.length > 0) {
-          const result = await syncService.syncAvailability(userId, platformId, availability);
+          const result = await connectorService.syncAvailability(userId, platformId, availability);
           results.push({ platformId, operation: 'availability', ...result });
         }
       }
@@ -212,7 +212,7 @@ export const bulkSync = catchAsync(async (req, res) => {
       if (dataTypes.includes('profile')) {
         const profile = await Profile.findOne({ user: userId }).lean();
         if (profile) {
-          const result = await syncService.syncProfile(userId, platformId, profile);
+          const result = await connectorService.syncProfile(userId, platformId, profile);
           results.push({ platformId, operation: 'profile', ...result });
         }
       }

@@ -1,5 +1,8 @@
 import puppeteer from 'puppeteer';
-import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { PlatformConnector } from './PlatformConnector.js';
+import { findByCssOrText } from './selectors.js';
+import { PlatformChangedError } from './errors.js';
 
 /**
  * JobWork Platform Adapter
@@ -8,7 +11,34 @@ import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
  * Features: Profile, Jobs, Networking
  * Regions: DE, AT, CH
  */
-export class JobWorkAdapter extends BasePlatformAdapter {
+export class JobWorkConnector extends PlatformConnector {
+  static manifest = Object.freeze({
+    id: 5,
+    key: 'jobwork',
+    name: 'JobWork',
+    authType: 'credentials',
+    credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
+      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia']
+  });
+
+  // ---- unified interface ----
+  // The app calls these names on every connector; the platform-specific work
+  // stays in the methods below, which keep their original names.
+
+  async verify() {
+    await this.authenticate();
+    return { ok: true, message: 'Login succeeded.' };
+  }
+
+  async pushProfile(profile) {
+    return this.updateProfile(profile);
+  }
+
+  async close() {
+    if (typeof this.cleanup === 'function') await this.cleanup();
+  }
+
   constructor(platform, credentials) {
     super(platform, credentials);
 
@@ -22,7 +52,7 @@ export class JobWorkAdapter extends BasePlatformAdapter {
    * Initialize rate limiter with conservative limits
    */
   initRateLimiter() {
-    return new (require('rate-limiter-flexible').RateLimiterMemory)({
+    return new RateLimiterMemory({
       points: 10,
       duration: 60,
     });
@@ -129,23 +159,45 @@ export class JobWorkAdapter extends BasePlatformAdapter {
         // Process each availability item
         for (const item of availability) {
           try {
-            // Look for add button
-            const addButton = await this.page.$('[data-action="add-availability"], .add-availability, button:contains("Hinzufügen")');
-            if (addButton) {
-              await addButton.click();
-              await this.delay(500);
+            // Structural selectors first, label as the fallback. This used to be
+            // `button:contains("Hinzufügen")` - jQuery, not CSS - so `page.$`
+            // threw and the `if (addButton)` guard quietly skipped every item.
+            const addButton = await findByCssOrText(this.page, {
+              css: ['[data-action="add-availability"]', '.add-availability'],
+              texts: ['verfügbarkeit hinzufügen', 'hinzufügen', 'neu', 'add'],
+              timeout: 5000
+            });
 
-              // Fill form
-              await this.fillAvailabilityForm(item);
-
-              // Submit
-              const submitButton = await this.page.$('button[type="submit"], input[type="submit"]');
-              if (submitButton) {
-                await submitButton.click();
-                await this.delay(1000);
-                successCount++;
-              }
+            if (!addButton) {
+              throw new PlatformChangedError('No "add availability" control found on the availability page', {
+                platform: 'jobwork'
+              });
             }
+
+            await addButton.click();
+            await addButton.dispose().catch(() => {});
+            await this.delay(500);
+
+            // Fill form
+            await this.fillAvailabilityForm(item);
+
+            // Submit
+            const submitButton = await findByCssOrText(this.page, {
+              css: ['button[type="submit"]', 'input[type="submit"]'],
+              texts: ['speichern', 'übernehmen', 'save'],
+              timeout: 5000
+            });
+
+            if (!submitButton) {
+              throw new PlatformChangedError('Availability form has no submit control', {
+                platform: 'jobwork'
+              });
+            }
+
+            await submitButton.click();
+            await submitButton.dispose().catch(() => {});
+            await this.delay(1000);
+            successCount++;
 
           } catch (itemError) {
             this.log('warn', 'Failed to add availability item', {
@@ -426,4 +478,4 @@ export class JobWorkAdapter extends BasePlatformAdapter {
   }
 }
 
-export default JobWorkAdapter;
+export default JobWorkConnector;

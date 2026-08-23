@@ -1,5 +1,8 @@
 import puppeteer from 'puppeteer';
-import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { PlatformConnector } from './PlatformConnector.js';
+import { findByCssOrText } from './selectors.js';
+import { PlatformChangedError } from './errors.js';
 
 /**
  * Wanted Platform Adapter
@@ -8,7 +11,34 @@ import { BasePlatformAdapter } from '../BasePlatformAdapter.js';
  * Features: Profile, Jobs, Availability
  * Regions: DE, AT, CH
  */
-export class WantedAdapter extends BasePlatformAdapter {
+export class WantedConnector extends PlatformConnector {
+  static manifest = Object.freeze({
+    id: 9,
+    key: 'wanted',
+    name: 'Wanted',
+    authType: 'credentials',
+    credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
+      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia']
+  });
+
+  // ---- unified interface ----
+  // The app calls these names on every connector; the platform-specific work
+  // stays in the methods below, which keep their original names.
+
+  async verify() {
+    await this.authenticate();
+    return { ok: true, message: 'Login succeeded.' };
+  }
+
+  async pushProfile(profile) {
+    return this.updateProfile(profile);
+  }
+
+  async close() {
+    if (typeof this.cleanup === 'function') await this.cleanup();
+  }
+
   constructor(platform, credentials) {
     super(platform, credentials);
 
@@ -22,7 +52,7 @@ export class WantedAdapter extends BasePlatformAdapter {
    * Initialize rate limiter with conservative limits
    */
   initRateLimiter() {
-    return new (require('rate-limiter-flexible').RateLimiterMemory)({
+    return new RateLimiterMemory({
       points: 10,
       duration: 60,
     });
@@ -125,24 +155,45 @@ export class WantedAdapter extends BasePlatformAdapter {
         // Process each availability item
         for (const item of availability) {
           try {
-            // Look for add button (German: Hinzufügen/Neu)
-            const addButton = await this.page.$('[data-action="add"], .add-availability, button:contains("Hinzufügen"), button:contains("Neu")');
+            // Structural selectors first, German labels as the fallback. These
+            // were `button:contains("Hinzufügen")` - jQuery, not CSS - so
+            // `page.$` threw and the guard quietly skipped every item.
+            const addButton = await findByCssOrText(this.page, {
+              css: ['[data-action="add"]', '.add-availability'],
+              texts: ['verfügbarkeit hinzufügen', 'hinzufügen', 'neu', 'add'],
+              timeout: 5000
+            });
 
-            if (addButton) {
-              await addButton.click();
-              await this.delay(500);
-
-              // Fill form
-              await this.fillAvailabilityForm(item);
-
-              // Submit
-              const submitButton = await this.page.$('button[type="submit"], input[type="submit"], button:contains("Speichern")');
-              if (submitButton) {
-                await submitButton.click();
-                await this.delay(1000);
-                successCount++;
-              }
+            if (!addButton) {
+              throw new PlatformChangedError('No "add availability" control found on the availability page', {
+                platform: 'wanted'
+              });
             }
+
+            await addButton.click();
+            await addButton.dispose().catch(() => {});
+            await this.delay(500);
+
+            // Fill form
+            await this.fillAvailabilityForm(item);
+
+            // Submit
+            const submitButton = await findByCssOrText(this.page, {
+              css: ['button[type="submit"]', 'input[type="submit"]'],
+              texts: ['speichern', 'übernehmen', 'save'],
+              timeout: 5000
+            });
+
+            if (!submitButton) {
+              throw new PlatformChangedError('Availability form has no submit control', {
+                platform: 'wanted'
+              });
+            }
+
+            await submitButton.click();
+            await submitButton.dispose().catch(() => {});
+            await this.delay(1000);
+            successCount++;
 
           } catch (itemError) {
             this.log('warn', 'Failed to add availability item', {
@@ -355,15 +406,24 @@ export class WantedAdapter extends BasePlatformAdapter {
         }
 
         // Submit (German: Speichern/Aktualisieren)
-        try {
-          const submitButton = await this.page.$('button[type="submit"], input[type="submit"], button:contains("Speichern")');
-          if (submitButton) {
-            await submitButton.click();
-            await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
-          }
-        } catch (e) {
-          // Form might auto-save
+        const submitButton = await findByCssOrText(this.page, {
+          css: ['button[type="submit"]', 'input[type="submit"]'],
+          texts: ['speichern', 'aktualisieren', 'übernehmen', 'save'],
+          timeout: 5000
+        });
+
+        if (!submitButton) {
+          // Previously swallowed as "the form might auto-save", which reported a
+          // successful profile push whether or not anything had been submitted.
+          throw new PlatformChangedError('Profile form has no submit control', { platform: 'wanted' });
         }
+
+        await submitButton.click();
+        await submitButton.dispose().catch(() => {});
+        // Some forms save without navigating; a timeout here is not a failure.
+        await this.page
+          .waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 })
+          .catch(() => {});
 
         this.log('info', 'Successfully updated profile on Wanted', {
           updatedFields
@@ -427,4 +487,4 @@ export class WantedAdapter extends BasePlatformAdapter {
   }
 }
 
-export default WantedAdapter;
+export default WantedConnector;
