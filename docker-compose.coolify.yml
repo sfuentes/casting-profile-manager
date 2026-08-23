@@ -11,6 +11,19 @@
 #   - Backend API:       published via SERVICE_FQDN_BACKEND_5000 (your API subdomain)
 #   - MongoDB:           internal only (not exposed publicly)
 #
+# NETWORKS: deliberately none.
+#
+#   Coolify puts every service of a compose resource on its own project network
+#   and attaches its Traefik proxy to that same network, so the services still
+#   reach each other by name (the backend still dials `mongodb`).
+#
+#   Do not add a custom network here. Doing so leaves each container on TWO
+#   networks, and Traefik's Docker provider then picks one itself from the
+#   Docker API. If it picks the custom network - which the proxy is not attached
+#   to - it forwards to an unroutable address and every public request ends in a
+#   504 Gateway Timeout, while the containers look perfectly healthy and can
+#   still reach each other. That was the symptom this file previously produced.
+#
 #   Those SERVICE_FQDN_* entries are Coolify magic variables declared on the
 #   services below. They are what makes Coolify allocate a domain and emit the
 #   Traefik routing labels - `expose:` alone only opens the port on the internal
@@ -46,8 +59,6 @@ services:
       - mongodb_data:/data/db
       - mongodb_config:/data/configdb
       - ./docker/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
-    networks:
-      - casting-network
     healthcheck:
       # Test with credentials so the healthcheck only passes once MongoDB is
       # actually accepting authenticated connections (not just responding to ping).
@@ -110,8 +121,6 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
-    networks:
-      - casting-network
     expose:
       - "5000"
     healthcheck:
@@ -139,12 +148,17 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    networks:
-      - casting-network
     expose:
       - "80"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      # 127.0.0.1, not localhost. nginx.conf declares only `listen 80` (IPv4),
+      # and the nginx entrypoint skips its listen-on-ipv6 patch because our
+      # config differs from the packaged one - so nothing binds [::]:80. busybox
+      # wget resolves localhost to ::1 first and gets ECONNREFUSED, marking the
+      # container unhealthy even though it serves fine over IPv4. Traefik then
+      # drops the unhealthy container from the router's server pool and answers
+      # public requests with 503.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -159,7 +173,3 @@ volumes:
     driver: local
   backend_logs:
     driver: local
-
-networks:
-  casting-network:
-    driver: bridge

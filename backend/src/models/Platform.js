@@ -38,6 +38,11 @@ const PlatformSchema = new mongoose.Schema({
     token: String,
     refreshToken: String,
     expiresAt: Date,
+    // Most platforms log in with an email address; a few use a username.
+    // Both are declared because Mongoose silently drops undeclared paths -
+    // an incoming `email` used to vanish on save, leaving the scraping
+    // adapters to type `undefined` into the login form.
+    email: String,
     username: String,
     password: String,
     apiKey: String,
