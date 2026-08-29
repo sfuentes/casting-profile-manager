@@ -34,3 +34,8 @@ dist-ssr
 
 # JetBrains project files
 *.iml
+
+# Connector failure captures: screenshots and page HTML from live platforms.
+# Never commit these - they are third-party page content and may contain
+# session state that redaction did not anticipate.
+forensics/
