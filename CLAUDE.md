@@ -13,7 +13,9 @@ integrations, especially the things that are not visible from the code alone.
 
 ```
 backend/src/
-  connectors/        platform integrations + the interface the app talks to  [PENDING, see PR #17]
+  connectors/        platform integrations + the interface the app talks to
+  connectors/forensics.js    screenshot/HTML/URL capture on every failure
+  scripts/check-*.mjs        selector validity, run against local Chromium
   controllers/       route handlers
   models/            Mongoose schemas
   utils/logger.js    winston
@@ -41,6 +43,28 @@ cd backend && cat > check.mjs <<'EOF'
 const m = await import('./src/whatever.js');
 EOF
 node check.mjs
+```
+
+**A patch series can apply partially and commit clean.** The stack was
+flattened onto `master` with **12 of its 47 files silently skipped**, and the
+result was committed. `git status` was clean, the tree looked plausible, and the
+backend could not start: `platformController.js` kept importing a `SyncService.js`
+that the same commit deleted. After applying a diff, compare the files it touches
+against the files the commit actually changed:
+
+```bash
+grep '^diff --git' the.diff | sed 's|diff --git a/||; s| b/.*||' | sort -u > /tmp/want
+git show --name-only --format= HEAD | sort -u > /tmp/got
+comm -23 /tmp/want /tmp/got     # anything printed here did not land
+```
+
+**Import every module before believing the app starts.** A missing file or a
+missing named export is a link-time failure that nothing short of loading the
+module reveals — no linter, no build, no `git status`:
+
+```bash
+cd backend && node -e '0' # NO. see the CommonJS trap above
+# walk src/**/*.js and `await import()` each one from a .mjs entry point
 ```
 
 **`docker compose config` does not validate what Coolify accepts.**
@@ -124,10 +148,12 @@ distinct from the site being down and is the failure to expect most often.
 
 ### Known broken, with evidence
 
-- **Six selectors are invalid CSS.** `button:contains("Add")` is jQuery syntax;
-  `querySelectorAll` throws `SyntaxError`. Confirmed in real Chromium. They sit
-  in the availability paths of Filmmakers, CastingNetwork, JobWork and Wanted,
-  and fail regardless of what the sites look like.
+- **The six invalid CSS selectors are fixed.** `button:contains("Add")` was
+  jQuery syntax; `querySelectorAll` throws `SyntaxError` on it and rejects the
+  whole selector string. They are now structural selectors with a text fallback
+  matched in JavaScript (`findByCssOrText`). `npm run check:connectors` runs all
+  70 selectors through real Chromium and 9 checks against fixture markup; both
+  pass. Valid CSS is not a match on a live page.
 - **e-TALENTA and Schauspielervideos have zero selectors.** They are API
   adapters against APIs the project has no access to. They cannot work as
   written.
@@ -138,11 +164,12 @@ distinct from the site being down and is the failure to expect most often.
 
 ### Recommended next step
 
-Not "fix all six blind". Add failure forensics to the connector base —
-screenshot, HTML, final URL on every failure — plus a selector-validity test
-running against local Chromium, then fix the six invalid selectors. That turns a
-blind redeploy loop into one round trip. Then take **one** platform end to end
-with real credentials on the server.
+Forensics and the selector checks are in, and the six selectors are fixed. What
+remains is the part that cannot be done from here: take **one** platform end to
+end with real credentials on the server, and read
+`SyncLog.metadata.forensics` — **the final URL first**. A redirect back to
+`/login` means the session died, which looks identical to a missing selector at
+the call site and is a completely different problem.
 
 Scraping is an ongoing maintenance burden and likely breaches these platforms'
 terms; the downside lands on users as suspended accounts. Worth confirming the
@@ -170,19 +197,32 @@ project owner accepts that before expanding it.
 
 ## State
 
-Merged through PR #20. The deployment works.
+`master` carries everything: the connector abstraction, credential encryption,
+failure forensics, the selector fixes and the manifest-driven UI. PRs #16–#22
+are merged.
 
-Open, stacked — merge in order: **#16 → #17 → #18 → #21**
+**The flatten-onto-master commit (`493b5fc`) dropped 12 of the 47 files in its
+own diff, and the merge after it (`ec4cbe3`) resolved two more files to the
+wrong side.** The backend did not start for either reason. What was repaired:
 
-| PR | Contents |
+| Broken | Consequence |
 |---|---|
-| #16 | connect/test/sync attempt real logins; `email`/`username` schema fix |
-| #17 | connector abstraction; fixes the `require()`-in-ESM bug; −1797 lines |
-| #18 | credential encryption at rest; API stops returning secrets |
-| #21 | UI renders from manifests; OAuth removed everywhere |
+| `platformController.js` never rewritten | imported the deleted `SyncService.js` → `ERR_MODULE_NOT_FOUND` at boot |
+| `platformRoutes.js` was rewritten | imported `getPlatformCatalog`, which that controller did not export |
+| `Platform.js` never got the #18 setters | credentials stored in plaintext; `toJSON` still sent the password to the browser — while `index.js` refused to start without `CREDENTIAL_ENCRYPTION_KEY` |
+| `docker-compose.coolify.yml` skipped | no `CREDENTIAL_ENCRYPTION_KEY` passed to the backend → `process.exit(1)` in production |
+| `BasePlatformAdapter.js` resurrected by the merge | dead code, nothing imported it |
+| `agentController.js` health endpoint | hard-coded platform list reporting `status: 'healthy'`, `mode: 'production'` and six features it never checked |
 
-`master` has moved on (#19, #20) since the stack was branched. If GitHub reports
-a conflict on `docker-compose.coolify.yml`, rebase the stack onto `master`.
+`/api/agent/health` now derives from `listManifests()` and reports whether the
+Chromium binary at `PUPPETEER_EXECUTABLE_PATH` exists. It still cannot tell you
+a sync would succeed.
+
+Verified after the repair: all 55 backend modules import from a real `.mjs`
+entry point; the Platform model encrypts at rest and `toJSON` emits
+`hasPassword`/`hasApiKey` instead of values; `npm run check:connectors` passes;
+the frontend builds. **Not verified: anything involving a live platform, and
+anything on the server.**
 
 ## Conventions
 

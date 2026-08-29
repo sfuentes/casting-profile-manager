@@ -1,43 +1,50 @@
+import { existsSync } from 'fs';
 import { asyncHandler as catchAsync } from '../middleware/asyncHandler.js';
+import { listManifests } from '../connectors/registry.js';
 
 /**
  * Check agent health status
  * GET /api/agent/health
  *
- * This endpoint provides status information about the platform sync agents
+ * Everything reported here is derived from the connector registry or read off
+ * this machine. It used to be a hard-coded platform list next to a literal
+ * `status: 'healthy'` and a list of features nobody checked, which stayed green
+ * while the connectors underneath it could not run at all.
+ *
+ * Note what this endpoint still cannot tell you: no connector has ever reached
+ * a live platform from here, so "browser available" means the binary exists,
+ * not that a sync would succeed.
  */
 export const checkAgentHealth = catchAsync(async (req, res) => {
-  // Count available adapters
-  const availableAdapters = {
-    1: 'Filmmakers (Web Scraping)',
-    2: 'Casting Network (Web Scraping)',
-    3: 'Schauspielervideos (API)',
-    4: 'e-TALENTA (API)',
-    5: 'JobWork (Web Scraping)',
-    9: 'Wanted (Web Scraping)'
-  };
+  const manifests = listManifests();
+  const automated = manifests.filter((m) => m.authType !== 'manual');
 
-  const totalPlatforms = 9;
-  const implementedPlatforms = Object.keys(availableAdapters).length;
+  // Browser connectors drive puppeteer; without the executable they throw on
+  // launch. This is the one part of the pipeline we can actually verify here.
+  const browserPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  const browserAvailable = Boolean(browserPath) && existsSync(browserPath);
+
+  const healthy = automated.length > 0 && browserAvailable;
 
   res.status(200).json({
     success: true,
-    status: 'healthy',
-    message: `Platform sync agents operational - ${implementedPlatforms}/${totalPlatforms} platforms supported`,
+    status: healthy ? 'healthy' : 'degraded',
+    message: healthy
+      ? `${automated.length} of ${manifests.length} platforms have a connector; browser available.`
+      : `${automated.length} of ${manifests.length} platforms have a connector; browser not available at ${browserPath || '(PUPPETEER_EXECUTABLE_PATH unset)'}.`,
     timestamp: new Date().toISOString(),
     data: {
-      supportedPlatforms: implementedPlatforms,
-      totalPlatforms: totalPlatforms,
-      availableAdapters: availableAdapters,
-      mode: 'production',
-      features: [
-        'push_availability',
-        'push_profile',
-        'push_media',
-        'rate_limiting',
-        'retry_logic',
-        'error_handling'
-      ]
+      totalPlatforms: manifests.length,
+      automatedPlatforms: automated.length,
+      manualPlatforms: manifests.length - automated.length,
+      browserAvailable,
+      platforms: manifests.map((m) => ({
+        id: m.id,
+        key: m.key,
+        name: m.name,
+        authType: m.authType,
+        capabilities: m.capabilities
+      }))
     }
   });
 });
