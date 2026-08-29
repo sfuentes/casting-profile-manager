@@ -36,7 +36,32 @@ const getKey = () => {
     );
   }
 
-  const key = Buffer.from(raw.trim(), 'hex');
+  const trimmed = raw.trim();
+
+  // Buffer.from(x, 'hex') is lenient: it decodes up to the first character that
+  // is not a hex digit and returns the prefix, with no error. A quoted value, a
+  // base64 key, or a single typo therefore all arrive here as "wrong length"
+  // and used to surface as the same unhelpful "missing or invalid". Find the
+  // offending character first so the message can name the actual problem.
+  const badIndex = trimmed.search(/[^0-9a-fA-F]/);
+  if (badIndex !== -1) {
+    throw new Error(
+      `CREDENTIAL_ENCRYPTION_KEY contains a non-hexadecimal character at ` +
+      `position ${badIndex + 1} of ${trimmed.length}. Expected ${KEY_BYTES * 2} ` +
+      'hex characters (0-9, a-f) and nothing else - no quotes, no whitespace, ' +
+      'not base64. Generate one with: openssl rand -hex 32'
+    );
+  }
+
+  if (trimmed.length !== KEY_BYTES * 2) {
+    throw new Error(
+      `CREDENTIAL_ENCRYPTION_KEY is ${trimmed.length} hex characters; ` +
+      `expected exactly ${KEY_BYTES * 2} (${KEY_BYTES} bytes). ` +
+      'Generate one with: openssl rand -hex 32'
+    );
+  }
+
+  const key = Buffer.from(trimmed, 'hex');
   if (key.length !== KEY_BYTES) {
     throw new Error(
       `CREDENTIAL_ENCRYPTION_KEY must be ${KEY_BYTES} bytes as hex ` +
@@ -55,12 +80,21 @@ export const resetKeyCache = () => {
 };
 
 /** True once a usable key is configured. Never throws. */
-export const isEncryptionConfigured = () => {
+export const isEncryptionConfigured = () => getKeyProblem() === null;
+
+/**
+ * Why the key is unusable, or null when it is fine. Never throws.
+ *
+ * The value itself is never included: the message reports lengths and a
+ * position so a misconfiguration is diagnosable from the container log without
+ * printing the key into it.
+ */
+export const getKeyProblem = () => {
   try {
     getKey();
-    return true;
-  } catch {
-    return false;
+    return null;
+  } catch (error) {
+    return error.message;
   }
 };
 

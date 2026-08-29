@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 
 // Import utilities and config
 import { connectDB } from './config/database.js';
-import { isEncryptionConfigured } from './utils/crypto.js';
+import { getKeyProblem } from './utils/crypto.js';
 import { logger, stream } from './utils/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -38,10 +38,12 @@ const __dirname = path.dirname(__filename);
 // Platform credentials are encrypted at rest, so without this key the app can
 // neither store new ones nor read existing ones. Refuse to start in production
 // rather than failing later, per user, on the first sync attempt.
-if (!isEncryptionConfigured()) {
-  const message =
-    'CREDENTIAL_ENCRYPTION_KEY is missing or invalid. Platform credentials ' +
-    'cannot be encrypted. Generate one with: openssl rand -hex 32';
+const keyProblem = getKeyProblem();
+if (keyProblem) {
+  // Report what is actually wrong with the value, not just that something is.
+  // "missing or invalid" sent someone hunting for an unset variable when the
+  // variable was set and the value was simply the wrong shape.
+  const message = `Platform credentials cannot be encrypted. ${keyProblem}`;
   if (process.env.NODE_ENV === 'production') {
     logger.error(message);
     process.exit(1);
