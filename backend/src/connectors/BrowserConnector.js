@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { PlatformConnector } from './PlatformConnector.js';
 import { findByCssOrText } from './selectors.js';
-import { AuthError, PlatformChangedError } from './errors.js';
+import { AuthError, NotSupportedError, PlatformChangedError } from './errors.js';
 
 /**
  * Everything a browser-driven connector does that is not specific to one
@@ -508,6 +508,128 @@ export class BrowserConnector extends PlatformConnector {
   /** Where this platform's profile form lives. Overridden where it is dynamic. */
   async profileEditUrl() {
     return this.url(this.site.paths.profileEdit);
+  }
+
+  /**
+   * Read a profile from a form the descriptor describes.
+   *
+   * Filmmakers and JobWork each needed their own reader - one discovers a slug
+   * and parses a vita list, the other listens to GraphQL. A platform whose
+   * profile is simply a form, possibly spread over several pages, needs no code
+   * at all: it declares where to look and what each control means.
+   *
+   *   profileRead: {
+   *     pages: [{
+   *       path: '/external/extras',
+   *       fields: [
+   *         { field: 'firstName', selector: '#first_name' },
+   *         { field: 'gender', selector: '#sex', kind: 'selected' },
+   *         { field: 'languages', selector: '#mother_tongue_id', kind: 'nativeLanguage' },
+   *         { field: 'skills', selector: '#dialect', kind: 'list' }
+   *       ]
+   *     }]
+   *   }
+   *
+   * Values are passed on exactly as the platform words them. Turning "braun"
+   * or "männlich" into this app's vocabulary is the normaliser's job, and what
+   * it cannot map becomes a question for the user rather than a guess here.
+   */
+  async readDeclaredProfile() {
+    const { profileRead } = this.site;
+    if (!profileRead?.pages?.length) {
+      throw new NotSupportedError(
+        `${this.manifest.name} declares no profileRead descriptor`,
+        { platform: this.manifest.key }
+      );
+    }
+
+    const fields = {};
+    const sources = {};
+    const missing = [];
+
+    const add = (field, value, source) => {
+      const empty = value === null || value === undefined || value === ''
+        || (Array.isArray(value) && value.length === 0);
+      if (empty) {
+        missing.push(field);
+        return;
+      }
+
+      // Several controls can feed one field - dialects, instruments and
+      // hobbies are all just skills here.
+      if (Array.isArray(value) && Array.isArray(fields[field])) {
+        fields[field] = [...fields[field], ...value];
+      } else if (field.includes('.')) {
+        const [head, tail] = field.split('.');
+        fields[head] = { ...(fields[head] || {}), [tail]: value };
+      } else {
+        fields[field] = value;
+      }
+      sources[field] = source;
+    };
+
+    for (const page of profileRead.pages) {
+      const url = page.path.startsWith('http') ? page.path : this.url(page.path);
+      // eslint-disable-next-line no-await-in-loop
+      await this.openPage(url);
+
+      for (const descriptor of page.fields) {
+        const { field, selector, kind = 'value' } = descriptor;
+        let value;
+
+        /* eslint-disable no-await-in-loop */
+        if (kind === 'selected') {
+          [value] = await this.readSelected(selector);
+        } else if (kind === 'selectedList') {
+          value = await this.readSelected(selector);
+        } else if (kind === 'nativeLanguage') {
+          const [language] = await this.readSelected(selector);
+          value = language ? [{ language, level: 'Muttersprache' }] : [];
+        } else if (kind === 'list') {
+          const raw = await this.readValue(selector);
+          value = (raw || '').split(/[,;]/).map((part) => part.trim()).filter(Boolean);
+        } else {
+          value = await this.readValue(selector);
+        }
+        /* eslint-enable no-await-in-loop */
+
+        add(field, value, `${page.path} ${selector}`);
+      }
+    }
+
+    if (Object.keys(fields).length === 0) {
+      throw new PlatformChangedError(
+        `None of the declared profile fields were found on ${this.manifest.name}`,
+        { platform: this.manifest.key }
+      );
+    }
+
+    this.log('info', `Read profile from ${this.manifest.name}`, {
+      found: Object.keys(fields),
+      missing
+    });
+
+    // One field can be fed by several controls, so the same name can land in
+    // `missing` more than once - report it once.
+    const missingOnce = [...new Set(missing)].filter((field) => !(field in fields));
+
+    return {
+      success: true,
+      fields,
+      sources,
+      missing: missingOnce,
+      details: { found: Object.keys(fields), missing: missingOnce }
+    };
+  }
+
+  /** Declarative by default; connectors with a stranger source override this. */
+  async pullProfile() {
+    return this.withRateLimit(() => this.withRetry(async () => {
+      if (!this.isAuthenticated || !this.page) {
+        throw new Error('Not authenticated. Call authenticate() first.');
+      }
+      return this.readDeclaredProfile();
+    }));
   }
 
   async pushProfile(profile) {

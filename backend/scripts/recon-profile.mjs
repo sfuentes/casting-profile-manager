@@ -181,11 +181,28 @@ try {
   // Follow what matched, href or label. Filtering the candidates by href again
   // dropped JobWork's profile link on the floor: it is `/you`, and only its
   // text says "Profil".
-  const base = new URL(connector.page.url()).origin;
-  const candidates = [...new Set(interesting
+  const here = new URL(connector.page.url());
+  const base = here.origin;
+  const absolute = (href) => (href.startsWith('http') ? href : new URL(href, base).href);
+
+  // Sibling pages of wherever the login landed. A profile is often a numbered
+  // form spread over several pages - IM OFF puts the physique under
+  // /external/extras/look and the skills under .../skills, and neither the URL
+  // nor the label says "profile", so matching on those words alone finds the
+  // first page and misses the rest.
+  const siblings = links
     .map((l) => l.href)
     .filter((href) => !href.startsWith('#') && !href.startsWith('mailto:'))
-    .map((href) => (href.startsWith('http') ? href : new URL(href, base).href)))].slice(0, 8);
+    .map(absolute)
+    .filter((href) => href.startsWith(`${base}${here.pathname.replace(/\/$/, '')}/`));
+
+  const candidates = [...new Set([
+    ...interesting
+      .map((l) => l.href)
+      .filter((href) => !href.startsWith('#') && !href.startsWith('mailto:'))
+      .map(absolute),
+    ...siblings
+  ])].slice(0, 12);
 
   console.log('\nfollowing:', candidates.length ? candidates.join('\n           ') : '(nothing looked like a profile link)');
   for (const [index, url] of candidates.entries()) {

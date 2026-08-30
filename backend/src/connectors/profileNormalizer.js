@@ -28,6 +28,27 @@ export const VOCABULARY = Object.freeze({
 
 /** Platform spellings that mean one of our values. Lower-cased on both sides. */
 const SYNONYMS = Object.freeze({
+  /**
+   * The app is German and so are the platforms, but the stored values are
+   * English enum keys. Without this, "Männlich" - which IM OFF states plainly -
+   * came back as a question for the user.
+   */
+  gender: {
+    männlich: 'male',
+    maennlich: 'male',
+    mann: 'male',
+    herr: 'male',
+    male: 'male',
+    weiblich: 'female',
+    frau: 'female',
+    female: 'female',
+    divers: 'diverse',
+    'nicht-binär': 'diverse',
+    'non-binary': 'diverse',
+    diverse: 'diverse',
+    'keine angabe': 'not_specified',
+    'k.a.': 'not_specified'
+  },
   eyeColor: {
     'blau-grau': 'grau-blau',
     blaugrau: 'grau-blau',
