@@ -234,7 +234,11 @@ export class BrowserConnector extends PlatformConnector {
   async submitLogin() {
     const { login } = this.site;
 
-    if (await this.submitFormOwning(login.password)) return true;
+    // `submitBy: 'text'` when the form holds more than one submit button and
+    // picking the wrong one does something the user did not ask for. Filmpool
+    // and UFA Base put "Einloggen" and "Sende mir einen Login-Link" in the same
+    // form: clicking blindly would mail the account holder a login link.
+    if (login.submitBy !== 'text' && await this.submitFormOwning(login.password)) return true;
 
     const button = await findByCssOrText(this.page, {
       css: ['button[type="submit"]', 'input[type="submit"]'],

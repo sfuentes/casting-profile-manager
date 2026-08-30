@@ -3,136 +3,23 @@ import { connectDB } from '../config/database.js';
 import User from '../models/User.js';
 import Platform from '../models/Platform.js';
 import { logger } from './logger.js';
+import { listManifests } from '../connectors/registry.js';
 
-// Default platforms to add for all users
-const DEFAULT_PLATFORMS = [
-  {
-    platformId: 1,
-    name: 'Filmmakers',
-    authType: 'credentials',
-    connected: false,
-    meta: {
-      hasAPI: false,
-      agentCapable: true,
-      connectionType: 'scraping',
-      features: ['profile', 'media', 'bookings'],
-      regions: ['EU', 'Global'],
-      description: 'European film industry network'
-    }
-  },
-  {
-    platformId: 2,
-    name: 'Casting Network',
-    authType: 'credentials',
-    connected: false,
-    meta: {
-      hasAPI: false,
-      agentCapable: true,
-      connectionType: 'scraping',
-      features: ['profile', 'media', 'bookings', 'recommendations'],
-      regions: ['US', 'UK', 'CA', 'AU'],
-      description: 'International casting platform for professional actors'
-    }
-  },
-  {
-    platformId: 3,
-    name: 'Schauspielervideos',
-    authType: 'api',
-    connected: false,
-    meta: {
-      hasAPI: true,
-      agentCapable: true,
-      connectionType: 'api_key',
-      features: ['profile', 'videos', 'photos', 'showreel'],
-      regions: ['DE', 'AT', 'CH'],
-      description: 'German actor video platform'
-    }
-  },
-  {
-    platformId: 4,
-    name: 'e-TALENTA',
-    authType: 'api',
-    connected: false,
-    meta: {
-      hasAPI: true,
-      agentCapable: true,
-      connectionType: 'api_key',
-      features: ['profile', 'photos', 'availability', 'castings'],
-      regions: ['EU', 'DE', 'AT', 'CH'],
-      description: 'European casting network'
-    }
-  },
-  {
-    platformId: 5,
-    name: 'JobWork',
-    authType: 'credentials',
-    connected: false,
-    meta: {
-      hasAPI: false,
-      agentCapable: true,
-      connectionType: 'scraping',
-      features: ['profile', 'jobs', 'networking'],
-      regions: ['DE', 'AT', 'CH'],
-      description: 'German platform for commercial and model castings'
-    }
-  },
-  {
-    platformId: 6,
-    name: 'Agentur Iris Müller',
-    authType: 'credentials',
-    connected: false,
-    meta: {
-      hasAPI: false,
-      agentCapable: false,
-      connectionType: 'manual',
-      features: ['profile', 'representation'],
-      regions: ['DE'],
-      description: 'Traditional talent agency'
-    }
-  },
-  {
-    platformId: 7,
-    name: 'Agentur Connection',
-    authType: 'api',
-    connected: false,
-    meta: {
-      hasAPI: true,
-      agentCapable: false,
-      connectionType: 'api',
-      features: ['profile', 'representation', 'bookings'],
-      regions: ['DE', 'AT'],
-      description: 'Professional talent agency'
-    }
-  },
-  {
-    platformId: 8,
-    name: 'Agentur Sarah Weiss',
-    authType: 'credentials',
-    connected: false,
-    meta: {
-      hasAPI: false,
-      agentCapable: false,
-      connectionType: 'manual',
-      features: ['profile', 'representation'],
-      regions: ['DE'],
-      description: 'Boutique talent agency'
-    }
-  },
-  {
-    platformId: 9,
-    name: 'Wanted',
-    authType: 'credentials',
-    connected: false,
-    meta: {
-      hasAPI: false,
-      agentCapable: true,
-      connectionType: 'scraping',
-      features: ['profile', 'jobs', 'availability'],
-      regions: ['DE', 'AT', 'CH'],
-      description: 'German entertainment job portal'
-    }
-  }
-];
+/**
+ * Every platform the app knows, taken from the connector registry.
+ *
+ * This was a third hand-maintained copy of the same list (the other two were
+ * in authController and in the client), and all three had drifted apart. A
+ * list of platforms that lives anywhere except the registry is a list that
+ * will be wrong the next time a connector is added.
+ */
+const knownPlatforms = () => listManifests().map((manifest) => ({
+  platformId: manifest.id,
+  name: manifest.name,
+  authType: manifest.authType,
+  connected: false,
+  meta: { description: manifest.name }
+}));
 
 const addPlatformsToExistingUsers = async () => {
   try {
@@ -163,7 +50,7 @@ const addPlatformsToExistingUsers = async () => {
       console.log(`  - Existing platforms: ${existingPlatformIds.length} (IDs: ${existingPlatformIds.join(', ') || 'none'})`);
 
       // Filter out platforms that already exist
-      const platformsToAdd = DEFAULT_PLATFORMS.filter(
+      const platformsToAdd = knownPlatforms().filter(
         platform => !existingPlatformIds.includes(platform.platformId)
       );
 

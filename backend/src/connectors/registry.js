@@ -4,6 +4,10 @@ import { SchauspielervideosConnector } from './SchauspielervideosConnector.js';
 import { ETalentaConnector } from './ETalentaConnector.js';
 import { JobWorkConnector } from './JobWorkConnector.js';
 import { WantedConnector } from './WantedConnector.js';
+import { SarahWeissConnector } from './SarahWeissConnector.js';
+import { FilmpoolConnector } from './FilmpoolConnector.js';
+import { UfaBaseConnector } from './UfaBaseConnector.js';
+import { ImOffConnector } from './ImOffConnector.js';
 import { ManualConnector } from './ManualConnector.js';
 
 /**
@@ -21,9 +25,14 @@ const CONNECTORS = [
   ETalentaConnector,
   JobWorkConnector,
   WantedConnector,
+  // Sarah Weiß Casting was a manual entry until its login turned out to be a
+  // real one, on the same platform agentur wanted uses.
+  SarahWeissConnector,
+  FilmpoolConnector,
+  UfaBaseConnector,
+  ImOffConnector,
   ManualConnector.forPlatform(6, 'Agentur (manuell)'),
-  ManualConnector.forPlatform(7, 'Agentur (manuell)'),
-  ManualConnector.forPlatform(8, 'Agentur (manuell)')
+  ManualConnector.forPlatform(7, 'Agentur (manuell)')
 ];
 
 const byId = new Map();
