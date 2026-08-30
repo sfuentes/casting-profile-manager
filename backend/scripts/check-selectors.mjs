@@ -67,6 +67,14 @@ const CALLS = [
   '.clearAndType('
 ];
 
+/**
+ * Descriptor keys whose value is a selector. Connectors declare their
+ * platform-specific selectors in a `site` object rather than passing them
+ * straight to puppeteer, and an unchecked selector is exactly the bug this
+ * script exists to catch.
+ */
+const DESCRIPTOR_KEYS = /(?:^|[\s{,])(?:selector|user|password)\s*:\s*$/;
+
 const QUOTES = new Set(["'", '"', '`']);
 
 /** Read the string literal starting at `i`; returns its value and end index. */
@@ -152,8 +160,12 @@ const collect = (rawSource) => {
 
       const before = source.slice(Math.max(0, i - 20), i).trimEnd();
       const isCallArgument = CALLS.some((call) => before.endsWith(call));
+      // Selectors in a connector's `site` descriptor are values, not call
+      // arguments: `user: 'input[name="identifier"]'`. They are still selectors
+      // and still have to be valid CSS, so they are collected by their key.
+      const isDescriptorValue = DESCRIPTOR_KEYS.test(before);
 
-      if (isCallArgument || cssArrayDepth > 0) found.push(str.value);
+      if (isCallArgument || isDescriptorValue || cssArrayDepth > 0) found.push(str.value);
       i = str.end;
       continue;
     }

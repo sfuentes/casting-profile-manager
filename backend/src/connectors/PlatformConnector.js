@@ -123,66 +123,6 @@ export class PlatformConnector {
   }
 
   /**
-   * Click the submit control of the form that owns `selector`.
-   *
-   * A bare `button[type="submit"], input[type="submit"]` is not safe: on
-   * filmmakers.eu the header carries one submit form per interface language, so
-   * that selector matches 36 elements and `page.click` takes the first in the
-   * DOM - the "English" button. The connector would navigate away and report a
-   * submitted form that was never submitted. Scoping to the form that actually
-   * holds the field we filled is the only reliable way to hit the right button.
-   *
-   * @returns {Promise<boolean>} false when there is no such form or no submit
-   *   control in it - the caller must not treat that as a submission.
-   */
-  async submitFormOwning(selector) {
-    if (!this.page) return false;
-
-    // A visible control is clicked like a person would. JobWork's login form
-    // carries a hidden button[type="submit"] and does its work from a visible
-    // "Weiter" button with no type attribute, so taking the first match in DOM
-    // order would pick the hidden one - and puppeteer refuses to click that.
-    const handle = await this.page.evaluateHandle((sel) => {
-      const field = document.querySelector(sel);
-      const form = field && field.closest('form');
-      if (!form) return null;
-
-      const isVisible = (el) => {
-        const style = getComputedStyle(el);
-        const box = el.getBoundingClientRect();
-        return style.display !== 'none' && style.visibility !== 'hidden'
-          && box.width > 0 && box.height > 0;
-      };
-
-      return [...form.querySelectorAll(
-        'input[type="submit"], button[type="submit"], button:not([type])'
-      )].find(isVisible) || null;
-    }, selector);
-
-    const element = handle.asElement();
-    if (element) {
-      await element.click();
-      await element.dispose();
-      return true;
-    }
-    await handle.dispose();
-
-    // Nothing visible to click. A form whose only submit control is hidden is
-    // still meant to be submitted - that is what the hidden button is for - so
-    // ask the form itself, which fires the same submit event a click would.
-    return this.page.evaluate((sel) => {
-      const field = document.querySelector(sel);
-      const form = field && field.closest('form');
-      if (!form) return false;
-
-      const submitter = form.querySelector('input[type="submit"], button[type="submit"]');
-      if (typeof form.requestSubmit === 'function') form.requestSubmit(submitter || undefined);
-      else form.submit();
-      return true;
-    }, selector);
-  }
-
-  /**
    * Map a raw browser or transport failure onto a typed error, filling in this
    * connector's identity. Connectors call this in their catch blocks so that
    * "wrong password" and "site is down" stay distinguishable at the caller.
