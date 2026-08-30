@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { PlatformConnector } from './PlatformConnector.js';
 import { findByCssOrText } from './selectors.js';
-import { PlatformChangedError } from './errors.js';
+import { AuthError, PlatformChangedError } from './errors.js';
 
 /**
  * Wanted Platform Adapter
@@ -43,6 +43,11 @@ export class WantedConnector extends PlatformConnector {
     super(platform, credentials);
 
     this.baseUrl = 'https://www.wanted.de';
+    // NOT verified against the live site: unlike Filmmakers (whose /login turned
+    // out to be a 404), nobody has loaded this path from a machine that can
+    // reach the platform. Treat a PlatformChangedError from the login step as a
+    // sign that this is wrong before assuming the selectors are.
+    this.loginPath = '/login';
     this.browser = null;
     this.page = null;
     this.isAuthenticated = false;
@@ -67,7 +72,9 @@ export class WantedConnector extends PlatformConnector {
       this.log('info', 'Authenticating with Wanted via web automation');
 
       if (!this.credentials || !this.credentials.email || !this.credentials.password) {
-        throw new Error('Missing Wanted credentials (email/password required)');
+        throw new AuthError('Missing Wanted credentials (email/password required)', {
+          platform: 'wanted'
+        });
       }
 
       // Launch browser
@@ -91,7 +98,8 @@ export class WantedConnector extends PlatformConnector {
       );
 
       // Navigate to login page
-      await this.page.goto(`${this.baseUrl}/login`, {
+      const loginUrl = `${this.baseUrl}${this.loginPath}`;
+      await this.page.goto(loginUrl, {
         waitUntil: 'networkidle2',
         timeout: 30000
       });
@@ -103,16 +111,34 @@ export class WantedConnector extends PlatformConnector {
       await this.page.type('input[type="email"], input[name="email"], input[name="benutzername"]', this.credentials.email);
       await this.page.type('input[type="password"], input[name="password"], input[name="passwort"]', this.credentials.password);
 
-      // Submit form
-      await Promise.all([
-        this.page.click('button[type="submit"], input[type="submit"], .login-button'),
-        this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
-      ]);
+      // Submit the login form itself, not the first submit control on the page:
+      // a page-wide selector can hit an unrelated form in the header (on
+      // Filmmakers it matched 36 language-switcher buttons).
+      const submitted = await this.submitFormOwning('input[type="password"], input[name="password"], input[name="passwort"]');
+      if (!submitted) {
+        throw new PlatformChangedError(
+          'The login form has no submit control',
+          { platform: 'wanted' }
+        );
+      }
+      await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
 
-      // Check if login was successful
+      // Check if login was successful. Compare against the URL we navigated to
+      // rather than looking for "/login" in it: a platform that re-renders its
+      // sign-in page under a different path (Filmmakers does) would otherwise
+      // have every rejected password reported as a successful login.
       const currentUrl = this.page.url();
-      if (currentUrl.includes('/login') || currentUrl.includes('/anmelden')) {
-        throw new Error('Login failed - still on login page');
+      const passwordStillVisible = Boolean(await this.page.$('input[type="password"]'));
+      if (currentUrl.startsWith(loginUrl) || passwordStillVisible) {
+        // Rejected credentials and a changed login form look identical from
+        // here. AuthError is the common case and the one the user can act on;
+        // the caller's forensics capture holds the final URL and a screenshot,
+        // which is what actually tells the two apart.
+        throw new AuthError(
+          `Login failed: still on the login page after submitting (${currentUrl}). `
+          + 'The credentials were rejected, or the login form changed.',
+          { platform: 'wanted' }
+        );
       }
 
       this.isAuthenticated = true;
@@ -121,12 +147,18 @@ export class WantedConnector extends PlatformConnector {
       return true;
 
     } catch (error) {
+      const failure = this.classifyFailure(error);
       this.log('error', 'Wanted authentication failed', {
-        error: error.message
+        error: failure.message,
+        type: failure.name
       });
 
-      await this.cleanup();
-      throw new Error(`Wanted authentication failed: ${error.message}`);
+      // Leave the page open and let the caller photograph it. Tearing the
+      // browser down here - as this used to - left the caller's forensics call
+      // capturing a page that no longer existed: url null, screenshot absent,
+      // every login failure indistinguishable from every other. The caller
+      // captures and then closes in a `finally`.
+      throw failure;
     }
   }
 
@@ -151,6 +183,7 @@ export class WantedConnector extends PlatformConnector {
         });
 
         let successCount = 0;
+        let firstItemError = null;
 
         // Process each availability item
         for (const item of availability) {
@@ -196,6 +229,7 @@ export class WantedConnector extends PlatformConnector {
             successCount++;
 
           } catch (itemError) {
+            firstItemError = firstItemError || itemError;
             this.log('warn', 'Failed to add availability item', {
               item,
               error: itemError.message
@@ -203,13 +237,23 @@ export class WantedConnector extends PlatformConnector {
           }
         }
 
-        this.log('info', `Successfully pushed ${successCount}/${availability.length} availability items to Wanted`);
+        // Every item failed: keeping going is right for one bad date, wrong
+        // when nothing worked - the caller would log a successful sync of zero.
+        if (successCount === 0 && availability.length > 0) {
+          throw firstItemError || new PlatformChangedError(
+            'No availability item could be added on Wanted',
+            { platform: 'wanted' }
+          );
+        }
+
+        this.log('info', `Pushed ${successCount}/${availability.length} availability items to Wanted`);
 
         return {
           success: true,
           count: successCount,
           total: availability.length,
-          externalIds: []
+          externalIds: [],
+          details: { added: successCount, total: availability.length }
         };
       });
     });
@@ -351,87 +395,119 @@ export class WantedConnector extends PlatformConnector {
           timeout: 30000
         });
 
+        // What we were asked to write, what landed, and what was not found.
+        const requestedFields = [];
         const updatedFields = [];
+        const missingFields = [];
+
+        // The selector of a field that actually landed, so the submit below can
+        // be scoped to the form that owns it rather than to the whole page.
+        let updatedSelector = null;
+
+        const applyField = async (field, selector, apply) => {
+          requestedFields.push(field);
+          try {
+            if (await apply()) {
+              updatedFields.push(field);
+              updatedSelector = updatedSelector || selector;
+            } else {
+              missingFields.push(field);
+            }
+          } catch (error) {
+            this.log('warn', `Could not update ${field}`, { error: error.message });
+            missingFields.push(field);
+          }
+        };
 
         // Biography (Biografie/Über mich)
         if (profile.biography) {
-          try {
+          await applyField('biography', 'textarea[name="biography"], textarea[name="biografie"], textarea[name="ueber_mich"]', async () => {
             const bioTextarea = await this.page.$('textarea[name="biography"], textarea[name="biografie"], textarea[name="ueber_mich"]');
-            if (bioTextarea) {
-              await this.page.evaluate(el => { el.value = ''; }, bioTextarea);
-              await bioTextarea.type(profile.biography);
-              updatedFields.push('biography');
-            }
-          } catch (e) {
-            this.log('warn', 'Could not update biography');
-          }
+            if (!bioTextarea) return false;
+            await this.page.evaluate(el => { el.value = ''; }, bioTextarea);
+            await bioTextarea.type(profile.biography);
+            return true;
+          });
         }
 
         // Physical attributes (German labels)
         if (profile.height) {
-          try {
+          await applyField('height', 'input[name="height"], input[name="groesse"], input[name="koerpergroesse"]', async () => {
             const heightInput = await this.page.$('input[name="height"], input[name="groesse"], input[name="koerpergroesse"]');
-            if (heightInput) {
-              await this.page.evaluate(el => { el.value = ''; }, heightInput);
-              await heightInput.type(profile.height);
-              updatedFields.push('height');
-            }
-          } catch (e) {
-            // Field might not exist
-          }
+            if (!heightInput) return false;
+            await this.page.evaluate(el => { el.value = ''; }, heightInput);
+            await heightInput.type(String(profile.height));
+            return true;
+          });
         }
 
         if (profile.eyeColor) {
-          try {
-            const eyeColorSelect = await this.page.$('select[name="eye_color"], select[name="augenfarbe"]');
-            if (eyeColorSelect) {
-              await this.page.select('select[name="eye_color"], select[name="augenfarbe"]', profile.eyeColor.toLowerCase());
-              updatedFields.push('eyeColor');
-            }
-          } catch (e) {
-            // Field might not exist
-          }
+          await applyField('eyeColor', 'select[name="eye_color"], select[name="augenfarbe"]', async () => {
+            if (!await this.page.$('select[name="eye_color"], select[name="augenfarbe"]')) return false;
+            await this.page.select('select[name="eye_color"], select[name="augenfarbe"]', profile.eyeColor.toLowerCase());
+            return true;
+          });
         }
 
         if (profile.hairColor) {
-          try {
-            const hairColorSelect = await this.page.$('select[name="hair_color"], select[name="haarfarbe"]');
-            if (hairColorSelect) {
-              await this.page.select('select[name="hair_color"], select[name="haarfarbe"]', profile.hairColor.toLowerCase());
-              updatedFields.push('hairColor');
-            }
-          } catch (e) {
-            // Field might not exist
+          await applyField('hairColor', 'select[name="hair_color"], select[name="haarfarbe"]', async () => {
+            if (!await this.page.$('select[name="hair_color"], select[name="haarfarbe"]')) return false;
+            await this.page.select('select[name="hair_color"], select[name="haarfarbe"]', profile.hairColor.toLowerCase());
+            return true;
+          });
+        }
+
+        // Nothing landed: this is not the page the connector was written
+        // against. Fail before submitting an untouched form.
+        if (requestedFields.length > 0 && updatedFields.length === 0) {
+          throw new PlatformChangedError(
+            'No profile field was found on the Wanted edit page '
+            + `(looked for: ${requestedFields.join(', ')})`,
+            { platform: 'wanted' }
+          );
+        }
+
+        // Submit (German: Speichern/Aktualisieren).
+        //
+        // The form that owns an edited field first: a page-wide submit selector
+        // can hit an unrelated form elsewhere on the page. The label lookup
+        // stays as the fallback for forms whose button sits outside the form
+        // element.
+        let submittedByForm = await this.submitFormOwning(updatedSelector);
+
+        if (!submittedByForm) {
+          const submitButton = await findByCssOrText(this.page, {
+            css: ['button[type="submit"]', 'input[type="submit"]'],
+            texts: ['speichern', 'aktualisieren', 'übernehmen', 'save'],
+            timeout: 5000
+          });
+
+          if (!submitButton) {
+            // Previously swallowed as "the form might auto-save", which reported a
+            // successful profile push whether or not anything had been submitted.
+            throw new PlatformChangedError('Profile form has no submit control', { platform: 'wanted' });
           }
+
+          await submitButton.click();
+          await submitButton.dispose().catch(() => {});
+          submittedByForm = true;
         }
-
-        // Submit (German: Speichern/Aktualisieren)
-        const submitButton = await findByCssOrText(this.page, {
-          css: ['button[type="submit"]', 'input[type="submit"]'],
-          texts: ['speichern', 'aktualisieren', 'übernehmen', 'save'],
-          timeout: 5000
-        });
-
-        if (!submitButton) {
-          // Previously swallowed as "the form might auto-save", which reported a
-          // successful profile push whether or not anything had been submitted.
-          throw new PlatformChangedError('Profile form has no submit control', { platform: 'wanted' });
-        }
-
-        await submitButton.click();
-        await submitButton.dispose().catch(() => {});
         // Some forms save without navigating; a timeout here is not a failure.
         await this.page
           .waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 })
           .catch(() => {});
 
-        this.log('info', 'Successfully updated profile on Wanted', {
-          updatedFields
+        this.log('info', 'Updated profile on Wanted', {
+          updatedFields,
+          missingFields
         });
 
         return {
           success: true,
-          updatedFields
+          updatedFields,
+          missingFields,
+          submitted: true,
+          details: { updatedFields, missingFields, submitted: true }
         };
       });
     });
@@ -475,14 +551,15 @@ export class WantedConnector extends PlatformConnector {
   }
 
   /**
-   * Override to ensure cleanup on errors
+   * Give every failure a typed error, but leave the browser open: the caller
+   * captures forensics from the live page and closes in a `finally`. Closing
+   * here made every sync failure capture an empty page.
    */
   async withRetry(fn, maxRetries = 3) {
     try {
       return await super.withRetry(fn, maxRetries);
     } catch (error) {
-      await this.cleanup();
-      throw error;
+      throw this.classifyFailure(error);
     }
   }
 }

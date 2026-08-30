@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import Platform from '../models/Platform.js';
 import Profile from '../models/Profile.js';
+import SyncLog from '../models/SyncLog.js';
 import connectorService from '../connectors/ConnectorService.js';
 import { getConnector } from '../connectors/registry.js';
 import { logger } from '../utils/logger.js';
@@ -325,5 +326,94 @@ export const bulkSyncToPlatforms = catchAsync(async (req, res) => {
     success: syncedCount > 0,
     message: `Synced ${syncedCount} of ${results.length} platforms`,
     data: { syncedCount, results }
+  });
+});
+
+/**
+ * Read the profile from a platform - GET /api/platforms/:id/profile
+ *
+ * Read-only. It contacts the platform, returns what it found, and writes
+ * nothing to the user's profile: the values come from a scraper, and a scraper
+ * that silently overwrites a profile is a data-loss bug waiting to happen. The
+ * client shows the result and posts back which fields to keep.
+ */
+export const importPlatformProfile = catchAsync(async (req, res) => {
+  const platform = await findUserPlatform(req.params.id, req.user.id);
+
+  if (!platform) {
+    return res.status(404).json({ success: false, message: 'Platform not found' });
+  }
+
+  const result = await connectorService.importProfile(req.user.id, platform.platformId);
+
+  res.status(200).json({
+    success: true,
+    message: `Read ${Object.keys(result.fields).length} fields from ${platform.name}`,
+    data: result
+  });
+});
+
+/**
+ * Apply an earlier import - POST /api/platforms/:id/profile/apply
+ *
+ * Takes the id of the import log and the field names the user picked. The
+ * values are read back from that log rather than from the request body, so what
+ * lands in the profile is what the server actually read off the platform.
+ */
+export const applyImportedProfile = catchAsync(async (req, res) => {
+  const { syncLogId, keys } = req.body;
+
+  if (!syncLogId || !Array.isArray(keys) || keys.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'syncLogId and a non-empty keys array are required'
+    });
+  }
+
+  const syncLog = await SyncLog.findOne({
+    _id: mongoose.isValidObjectId(syncLogId) ? syncLogId : null,
+    user: req.user.id,
+    operation: 'pull_profile',
+    status: 'success'
+  });
+
+  if (!syncLog) {
+    return res.status(404).json({ success: false, message: 'Import not found' });
+  }
+
+  const imported = syncLog.metadata?.fields || {};
+  const profile = await Profile.findOne({ user: req.user.id });
+
+  if (!profile) {
+    return res.status(404).json({ success: false, message: 'Profile not found' });
+  }
+
+  const applied = [];
+  const skipped = [];
+
+  for (const key of keys) {
+    if (!(key in imported)) {
+      skipped.push(key);
+      continue;
+    }
+    const value = imported[key];
+    // socialMedia and contact are nested objects on the profile; the import
+    // fills single keys inside them, so merging beats replacing - otherwise
+    // importing an Instagram handle would wipe a stored website.
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      profile[key] = { ...(profile[key]?.toObject?.() ?? profile[key] ?? {}), ...value };
+    } else {
+      profile[key] = value;
+    }
+    applied.push(key);
+  }
+
+  profile.lastUpdated = new Date();
+  await profile.save();
+
+  res.status(200).json({
+    success: true,
+    message: `Applied ${applied.length} field(s) to your profile`,
+    data: { applied, skipped, profile }
   });
 });

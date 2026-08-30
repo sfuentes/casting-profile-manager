@@ -217,20 +217,20 @@ export const register = catchAsync(async (req, res, next) => {
     'host'
   )}/api/auth/verify-email/${verificationToken}`;
 
-  const message = `You are receiving this email because you need to verify your email address. Please make a GET request to: \n\n ${verificationUrl}`;
-
   try {
-    // In a real implementation, we would send an email here
-    // await sendEmail({
-    //   email: user.email,
-    //   subject: 'Email verification',
-    //   message
-    // });
+    // No mail is sent yet - there is no SMTP transport wired up. Say that
+    // rather than claiming a mail went out: the previous response reported
+    // "Email verification token sent to email" while sending nothing.
+    logger.info('Registered user; email verification link generated', { user: user.id });
 
     res.status(200).json({
       success: true,
-      message: 'Email verification token sent to email',
-      verificationUrl // Only included for development testing
+      message: 'Registration complete. Email delivery is not configured yet, '
+        + 'so the verification link is not sent by mail.',
+      // The token verifies ownership of the address, so it must never leave
+      // the server in production - anyone holding it can verify an address
+      // they do not control. Development keeps it so the flow is testable.
+      ...(process.env.NODE_ENV === 'production' ? {} : { verificationUrl })
     });
   } catch (err) {
     user.emailVerificationToken = undefined;
