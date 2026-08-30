@@ -81,7 +81,8 @@ const IMPORT_FIELD_LABELS = {
     socialMedia: 'Social Media',
     contact: 'Kontakt',
     workHistory: 'Vita / Engagements',
-    education: 'Ausbildung'
+    education: 'Ausbildung',
+    languageLevel: 'Sprachniveau'
 };
 
 const PlatformsView = () => {
@@ -110,6 +111,9 @@ const PlatformsView = () => {
     const [agentStatus, setAgentStatus] = useState(null);
     const [importResults, setImportResults] = useState({});
     const [importSelection, setImportSelection] = useState([]);
+    // The user's answers to values the normaliser could not map, keyed by the
+    // question's path (e.g. "eyeColor", "languages.0.level").
+    const [importResolutions, setImportResolutions] = useState({});
     const [importing, setImporting] = useState(false);
 
     // Check agent health on component mount
@@ -241,6 +245,7 @@ const PlatformsView = () => {
             // Everything that was found is preselected; the user unticks what
             // they would rather keep as it is.
             setImportSelection(Object.keys(result.fields || {}));
+            setImportResolutions({});
             setSelectedPlatform(platform);
             setModalType('import');
             setShowModal(true);
@@ -267,7 +272,8 @@ const PlatformsView = () => {
             const applied = await apiService.applyImportedProfile(
                 selectedPlatform.id,
                 result.syncLogId,
-                importSelection
+                importSelection,
+                importResolutions
             );
             setShowModal(false);
             // The profile view reads from context, so reload it rather than
@@ -974,6 +980,38 @@ const PlatformsView = () => {
                                 Ausgewählte Felder überschreiben die entsprechenden Werte in Ihrem
                                 Profil. Nicht ausgewählte Felder bleiben unverändert.
                             </div>
+
+                            {result.unmapped?.length > 0 && (
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded space-y-3">
+                                    <p className="text-xs text-amber-900">
+                                        <AlertTriangle size={14} className="inline mr-1"/>
+                                        Diese Werte von {selectedPlatform?.name} lassen sich keinem
+                                        Wert dieser App zuordnen. Bitte auswählen - ohne Auswahl
+                                        werden sie nicht übernommen.
+                                    </p>
+                                    {result.unmapped.map((question) => (
+                                        <div key={question.path} className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-xs text-gray-700 min-w-0">
+                                                <strong>{IMPORT_FIELD_LABELS[question.field] || question.field}</strong>
+                                                {question.context ? ` (${question.context})` : ''}: „{String(question.value)}"
+                                            </span>
+                                            <select
+                                                className="text-xs border border-gray-300 rounded px-2 py-1"
+                                                value={importResolutions[question.path] || ''}
+                                                onChange={(e) => setImportResolutions(prev => ({
+                                                    ...prev, [question.path]: e.target.value
+                                                }))}
+                                            >
+                                                <option value="">nicht übernehmen</option>
+                                                {question.options.map((option) => (
+                                                    <option key={option} value={option}>{option}</option>
+                                                ))}
+                                                <option value="__keep__">Original übernehmen</option>
+                                            </select>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
 
                             <div className="divide-y divide-gray-100">
                                 {keys.map((key) => (

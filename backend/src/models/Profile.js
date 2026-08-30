@@ -44,11 +44,24 @@ const ProfileSchema = new mongoose.Schema({
   citizenship: {
     type: String,
   },
+  // Spielalter, e.g. "30-40". The profile form has always had this field; the
+  // schema did not, so Mongoose dropped it on every save.
+  actingAge: {
+    type: String,
+  },
   languages: [{
     language: String,
     level: String,
   }],
   skills: [String],
+  specialSkills: [String],
+  // Agency representation. Same story as actingAge: the form collects it, the
+  // schema had nowhere to put it.
+  agent: {
+    name: String,
+    email: String,
+    phone: String,
+  },
   avatar: {
     type: String,
   },

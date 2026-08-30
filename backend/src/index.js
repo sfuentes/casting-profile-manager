@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 
 // Import utilities and config
 import { connectDB } from './config/database.js';
-import { isEncryptionConfigured } from './utils/crypto.js';
+import { describeKeyProblem } from './utils/crypto.js';
 import { logger, stream } from './utils/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -38,10 +38,13 @@ const __dirname = path.dirname(__filename);
 // Platform credentials are encrypted at rest, so without this key the app can
 // neither store new ones nor read existing ones. Refuse to start in production
 // rather than failing later, per user, on the first sync attempt.
-if (!isEncryptionConfigured()) {
-  const message =
-    'CREDENTIAL_ENCRYPTION_KEY is missing or invalid. Platform credentials ' +
-    'cannot be encrypted. Generate one with: openssl rand -hex 32';
+// The exact problem, not just "missing or invalid": this process is about to
+// exit, so this line is all the evidence the deploy leaves behind, and "the
+// variable is absent" and "the variable is the wrong format" are fixed in
+// different places.
+const encryptionKeyProblem = describeKeyProblem();
+if (encryptionKeyProblem) {
+  const message = `${encryptionKeyProblem} Generate a key with: openssl rand -hex 32`;
   if (process.env.NODE_ENV === 'production') {
     logger.error(message);
     process.exit(1);
