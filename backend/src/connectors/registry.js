@@ -8,6 +8,7 @@ import { SarahWeissConnector } from './SarahWeissConnector.js';
 import { FilmpoolConnector } from './FilmpoolConnector.js';
 import { UfaBaseConnector } from './UfaBaseConnector.js';
 import { ImOffConnector } from './ImOffConnector.js';
+import { CastingNetworkDeConnector } from './CastingNetworkDeConnector.js';
 import { ManualConnector } from './ManualConnector.js';
 
 /**
@@ -31,6 +32,9 @@ const CONNECTORS = [
   FilmpoolConnector,
   UfaBaseConnector,
   ImOffConnector,
+  // casting-network.de - the German site, not the international
+  // castingnetworks.com that CastingNetworkConnector drives.
+  CastingNetworkDeConnector,
   ManualConnector.forPlatform(6, 'Agentur (manuell)'),
   ManualConnector.forPlatform(7, 'Agentur (manuell)')
 ];
