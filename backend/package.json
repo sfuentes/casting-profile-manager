@@ -19,6 +19,7 @@
     "check:text-selectors": "node scripts/check-text-selectors.mjs",
     "check:normalizer": "node scripts/check-normalizer.mjs",
     "check:submit": "node scripts/check-submit.mjs",
+    "check:login-pages": "node scripts/check-login-pages.mjs",
     "check:connectors": "npm run check:selectors && npm run check:text-selectors && npm run check:submit && npm run check:normalizer"
   },
   "keywords": [

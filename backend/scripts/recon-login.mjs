@@ -36,6 +36,54 @@ const inspect = async (page) => {
   return forms;
 };
 
+/**
+ * Inspect one URL that is already known to be a login page.
+ * @returns {Promise<boolean>} whether a login form was found there
+ */
+const inspectLoginUrl = async (page, url) => {
+  let response;
+  try {
+    response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 45000 });
+  } catch (error) {
+    console.log(`  ${url} -> unreachable: ${error.message.slice(0, 70)}`);
+    return false;
+  }
+
+  // Single-page apps ship no form in their HTML; it appears once the bundle
+  // has run. Concluding "no login form here" from the initial DOM is wrong.
+  await page.waitForSelector('input[type="password"]', { timeout: 10000 }).catch(() => {});
+
+  console.log(`  ${response?.status()} ${page.url()} | ${await page.title()}`);
+
+  const forms = await inspect(page);
+  if (forms.length === 0) {
+    const inputs = await page.$$eval('input', (els) => els
+      .filter((el) => el.type !== 'hidden')
+      .map((el) => ({ type: el.type, name: el.name, id: el.id, placeholder: el.placeholder })));
+    console.log('  no form with a password field. Visible inputs:', JSON.stringify(inputs));
+    return false;
+  }
+
+  for (const form of forms) {
+    console.log(`  form action=${form.action} method=${form.method}`);
+    for (const field of form.fields) console.log('   ', JSON.stringify(field));
+  }
+
+  // What the submit control looks like decides how the connector clicks it.
+  const buttons = await page.$$eval('button, input[type="submit"]', (els) => els.map((el) => {
+    const style = getComputedStyle(el);
+    const box = el.getBoundingClientRect();
+    return {
+      tag: el.tagName.toLowerCase(),
+      type: el.getAttribute('type'),
+      text: (el.innerText || el.value || '').trim().slice(0, 22),
+      visible: style.display !== 'none' && style.visibility !== 'hidden' && box.width > 0 && box.height > 0
+    };
+  }).filter((b) => b.text || b.type === 'submit'));
+  console.log('  buttons:', JSON.stringify(buttons));
+  return true;
+};
+
 const run = async (baseUrl) => {
   const browser = await puppeteer.launch({
     ...(process.env.PUPPETEER_EXECUTABLE_PATH && { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }),
@@ -48,6 +96,10 @@ const run = async (baseUrl) => {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
     console.log(`\n================ ${baseUrl} ================`);
+
+    // A URL that is already a login page needs no searching. Probing paths
+    // around it would be exactly the guesswork this script replaces.
+    if (await inspectLoginUrl(page, baseUrl)) return;
 
     let home;
     try {

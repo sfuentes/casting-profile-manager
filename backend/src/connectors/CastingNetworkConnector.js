@@ -21,6 +21,26 @@ export class CastingNetworkConnector extends BrowserConnector {
   });
 
   /**
+   * Verified against the live login page on 2026-08-30 (URL supplied by the
+   * project owner).
+   *
+   * The login is not on home.castingnetworks.com - that host redirects to the
+   * marketing site. It lives in the app at app.castingnetworks.com/login/,
+   * which is a single-page app: its form is not in the delivered HTML and only
+   * exists once the bundle has run. The account field is `email` but carries
+   * type="text", so a type-based selector alone would miss it.
+   */
+  static site = Object.freeze({
+    baseUrl: 'https://app.castingnetworks.com',
+    loginPath: '/login/',
+    login: {
+      user: 'input[name="email"], input[id="email"]',
+      password: 'input[name="password"], input[type="password"]',
+      submitTexts: ['log in', 'login', 'sign in']
+    },
+    paths: {
+      // NOT verified: reaching these needs an account, and nobody has logged
+      // in. They are the paths the connector was originally written with.
    * NOT verified. home.castingnetworks.com redirects to
    * www.castingnetworks.com, whose "Log In" link points at
    * app.castingnetworks.com - a single-page app whose form is not in the
@@ -41,6 +61,7 @@ export class CastingNetworkConnector extends BrowserConnector {
       availability: '/talent/schedule',
       media: '/talent/photos'
     },
+    // NOT verified either - see above.
     profileFields: [
       { field: 'biography', selector: 'textarea[name="biography"], textarea[name="about"]', kind: 'text', wait: true },
       { field: 'height', selector: 'input[name="height"]', kind: 'text' },

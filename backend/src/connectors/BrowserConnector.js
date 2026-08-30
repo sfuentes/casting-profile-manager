@@ -47,6 +47,29 @@ import { AuthError, PlatformChangedError } from './errors.js';
  * descriptor's selectors are checked like any other.
  */
 export class BrowserConnector extends PlatformConnector {
+  /**
+   * Labels that decline a consent banner, lower-cased and matched exactly.
+   * Ordered by preference: refusing outright beats saving a set of switches
+   * that some banners pre-tick. Nothing here accepts anything.
+   */
+  static DECLINE_TEXTS = Object.freeze([
+    'ablehnen',
+    'alle ablehnen',
+    'alles ablehnen',
+    'nur notwendige',
+    'nur notwendige cookies',
+    'nur essenzielle',
+    'nur erforderliche',
+    'reject all',
+    'decline',
+    'decline all',
+    'only necessary',
+    'necessary only',
+    'reject',
+    'weiter ohne einwilligung',
+    'continue without agreeing'
+  ]);
+
   /** @returns {object} the platform's descriptor */
   static get site() {
     throw new Error(`${this.name} must declare a static site descriptor`);
@@ -178,6 +201,7 @@ export class BrowserConnector extends PlatformConnector {
       await this.launch();
 
       const loginUrl = this.url(this.loginPath);
+      await this.openPage(loginUrl);
       await this.page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 30000 });
       this.log('info', 'Loaded login page, entering credentials');
 
@@ -186,6 +210,7 @@ export class BrowserConnector extends PlatformConnector {
       await this.page.type(login.password, this.credentials.password);
 
       await this.submitLogin();
+      await this.waitForLoginOutcome(loginUrl);
       await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
 
       const currentUrl = this.page.url();
@@ -218,6 +243,36 @@ export class BrowserConnector extends PlatformConnector {
   }
 
   /**
+   * Wait for the login to resolve one way or the other.
+   *
+   * `waitForNavigation` alone is wrong twice over. A single-page app never
+   * fires one, so waiting for it times out after a successful login - which is
+   * how JobWork reported "could not be reached" while logging in perfectly
+   * well. And when it does fire, it can resolve while the app is still
+   * client-side routing: JobWork had already torn its form down and had not yet
+   * changed the URL, so judging at that instant called a good login a rejected
+   * one.
+   *
+   * What settles it either way is the URL leaving the login page. This waits
+   * for that, and gives up quietly - the caller decides what a still-unchanged
+   * URL means.
+   */
+  async waitForLoginOutcome(loginUrl, timeoutMs = 20000) {
+    // A classic form post navigates; take that when it happens.
+    await this.page
+      .waitForNavigation({ waitUntil: 'networkidle2', timeout: 8000 })
+      .catch(() => {});
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (!this.page.url().startsWith(loginUrl)) return true;
+      // eslint-disable-next-line no-await-in-loop
+      await this.delay(500);
+    }
+    return false;
+  }
+
+  /**
    * The account field's value. Most platforms want the email address; a
    * connector whose manifest asks for a username overrides this.
    */
@@ -234,6 +289,12 @@ export class BrowserConnector extends PlatformConnector {
   async submitLogin() {
     const { login } = this.site;
 
+    // `submitBy: 'text'` when the form holds more than one submit button and
+    // picking the wrong one does something the user did not ask for. Filmpool
+    // and UFA Base put "Einloggen" and "Sende mir einen Login-Link" in the same
+    // form: clicking blindly would mail the account holder a login link.
+    const labels = login.submitTexts || ['anmelden', 'einloggen', 'login', 'sign in'];
+    if (login.submitBy !== 'text' && await this.submitFormOwning(login.password, labels)) return true;
     if (await this.submitFormOwning(login.password)) return true;
 
     const button = await findByCssOrText(this.page, {
@@ -255,6 +316,70 @@ export class BrowserConnector extends PlatformConnector {
 
   // ---- reading the page ----------------------------------------------------
 
+  /** Navigate, waiting for the page to settle, then clear any consent overlay. */
+  async openPage(url) {
+    await this.page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+    await this.dismissConsentBanner();
+  }
+
+  /**
+   * Decline a cookie banner if one is covering the page.
+   *
+   * JobWork's login sat behind a Usercentrics banner. The fields underneath it
+   * were in the DOM and could be typed into, so the connector filled them in,
+   * clicked "Weiter", and waited thirty seconds for a navigation that could
+   * never happen because the overlay swallowed the click. The failure read
+   * "JobWork could not be reached", which is not what was wrong at all - only
+   * the forensics screenshot showed the banner.
+   *
+   * Two details make this awkward, and both are why a plain selector does not
+   * work: the banner renders inside a shadow root, so it is invisible to
+   * document.querySelector and absent from page.content(); and its buttons are
+   * identified only by their labels.
+   *
+   * It always declines. "Alles akzeptieren" is right there and would be one
+   * word shorter to match, but consenting to tracking on someone's behalf is
+   * not this code's decision to make.
+   */
+  async dismissConsentBanner() {
+    const declined = await this.page.evaluate((texts) => {
+      const buttons = [];
+      const visit = (root, depth) => {
+        if (!root || depth > 12) return;
+        for (const element of root.querySelectorAll('*')) {
+          const tag = element.tagName.toLowerCase();
+          const role = element.getAttribute && element.getAttribute('role');
+          if (tag === 'button' || role === 'button' || tag === 'a') buttons.push(element);
+          if (element.shadowRoot) visit(element.shadowRoot, depth + 1);
+        }
+      };
+      visit(document, 0);
+
+      const visible = (el) => {
+        const style = getComputedStyle(el);
+        const box = el.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden'
+          && box.width > 0 && box.height > 0;
+      };
+
+      for (const wanted of texts) {
+        const match = buttons.find((el) => visible(el)
+          && (el.innerText || el.textContent || '').trim().toLowerCase() === wanted);
+        if (match) {
+          match.click();
+          return match.innerText.trim();
+        }
+      }
+      return null;
+    }, this.site.consent?.declineTexts || BrowserConnector.DECLINE_TEXTS);
+
+    if (declined) {
+      this.log('info', `Declined a consent banner ("${declined}")`);
+      // The overlay unmounts asynchronously; give it a moment before anything
+      // tries to click what it was covering.
+      await this.delay(500);
+    }
+    return Boolean(declined);
   /** Navigate, waiting for the page to settle. */
   async openPage(url) {
     await this.page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
@@ -427,6 +552,7 @@ export class BrowserConnector extends PlatformConnector {
       if (updatedFields.length > 0) {
         // The form that owns an edited field, never a page-wide submit
         // selector: that can hit an unrelated form elsewhere on the page.
+        submitted = await this.submitFormOwning(updatedSelector, this.site.saveTexts || ['speichern', 'save', 'übernehmen', 'aktualisieren']);
         submitted = await this.submitFormOwning(updatedSelector);
         if (!submitted) {
           throw new PlatformChangedError(
@@ -468,6 +594,22 @@ export class BrowserConnector extends PlatformConnector {
    * @returns {Promise<boolean>} false when there is no such form or no submit
    *   control in it - the caller must not treat that as a submission.
    */
+  async submitFormOwning(selector, labels = []) {
+    if (!this.page || !selector) return false;
+
+    // Which control to click, in order of how sure we can be about it.
+    //
+    // "First visible candidate" is not good enough. JobWork's login form holds
+    // a hidden button[type="submit"], then a typeless icon button that reveals
+    // the password, then the typeless "Weiter" button that actually submits.
+    // Clicking the first visible one clicked the eye: no login, and the
+    // password rendered in clear - which the forensics screenshot then stored.
+    //
+    // So: a real submit button first; then a labelled button matching what the
+    // caller expects; then any labelled button. A button with no text at all is
+    // never clicked - that is an icon, and icons in a login form do things like
+    // reveal passwords.
+    const handle = await this.page.evaluateHandle((sel, wanted) => {
   async submitFormOwning(selector) {
     if (!this.page || !selector) return false;
 
@@ -486,6 +628,20 @@ export class BrowserConnector extends PlatformConnector {
         return style.display !== 'none' && style.visibility !== 'hidden'
           && box.width > 0 && box.height > 0;
       };
+      const labelOf = (el) => (el.innerText || el.value || '').trim().toLowerCase();
+
+      const typed = [...form.querySelectorAll('input[type="submit"], button[type="submit"]')]
+        .filter(isVisible);
+      if (typed.length > 0) return typed[0];
+
+      const bare = [...form.querySelectorAll('button:not([type])')]
+        .filter((el) => isVisible(el) && labelOf(el).length > 0);
+
+      const expected = bare.find((el) => wanted.some((text) => labelOf(el) === text
+        || labelOf(el).includes(text)));
+
+      return expected || bare[0] || null;
+    }, selector, labels.map((text) => text.toLowerCase()));
 
       return [...form.querySelectorAll(
         'input[type="submit"], button[type="submit"], button:not([type])'
