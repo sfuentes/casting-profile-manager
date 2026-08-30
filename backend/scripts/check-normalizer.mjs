@@ -59,6 +59,37 @@ check('duplicate skills are collapsed',
   normalizeProfileFields({ skills: ['Reiten', ' Reiten ', 'Fechten'] }).fields.skills,
   ['Reiten', 'Fechten']);
 
+// ---- pictures and videos --------------------------------------------------
+const setcard = normalizeProfileFields({
+  setcard: { photos: [
+    { url: 'https://example.com/a.jpg', type: 'Porträt' },
+    { url: 'https://example.com/a.jpg', type: 'portrait' },
+    { url: 'https://example.com/b.jpg', type: 'Ganzkörper' },
+    { url: 'https://example.com/c.jpg', type: 'irgendwas' },
+    { url: 'nicht-mal-eine-url', type: 'portrait' }
+  ] }
+}).fields.setcard.photos;
+
+check('the same picture twice is kept once',
+  setcard.length, 3);
+check('a German category maps to the setcard vocabulary',
+  setcard.map((p) => p.type), ['portrait', 'fullbody', 'other']);
+check('exactly one picture is the primary one',
+  setcard.filter((p) => p.isPrimary).length, 1);
+check('the portrait is the one chosen',
+  setcard.findIndex((p) => p.isPrimary), 0);
+
+check('a video category maps too, and an unknown one becomes other',
+  normalizeProfileFields({ videos: [
+    { url: 'https://example.com/reel.mp4', type: 'Demoband' },
+    { url: 'https://example.com/x.mp4', type: 'Hochzeitsvideo' }
+  ] }).fields.videos.map((v) => v.type),
+  ['showreel', 'other']);
+
+check('an avatar that is not a URL is dropped rather than rendered broken',
+  normalizeProfileFields({ avatar: 'front1_medium.jpg' }).fields.avatar,
+  undefined);
+
 // ---- values that must NOT be guessed -------------------------------------
 const unknownEye = normalizeProfileFields({ eyeColor: 'irisblau-meliert' });
 check('an unrecognised eye colour is not stored',

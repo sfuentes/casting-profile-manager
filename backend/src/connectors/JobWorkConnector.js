@@ -128,6 +128,7 @@ export class JobWorkConnector extends BrowserConnector {
       const media = this.constructor.readMedia(profile);
       if (media.photos.length) set('setcard', { photos: media.photos }, 'graphql:profile.mediaItems');
       if (media.avatar) set('avatar', media.avatar, 'graphql:profile.mediaItems');
+      if (media.videos.length) set('videos', media.videos, 'graphql:profile.mediaItems');
       if (media.showreel) set('showreel', media.showreel, 'graphql:profile.mediaItems');
 
       set('languages', this.constructor.readLanguages(profile), 'graphql:profileLanguageRepeater');
@@ -304,8 +305,10 @@ export class JobWorkConnector extends BrowserConnector {
     const items = (profile.mediaItems || []).filter((item) => item.uuid);
     const url = (item) => `${this.MEDIA_BASE}/${item.convertedUuid || item.uuid}/`;
 
+    const isVideo = (item) => item.type === 'VIDEO' || (item.mimeType || '').startsWith('video');
+
     const photos = items
-      .filter((item) => (item.mimeType || '').startsWith('image') && !item.isShowReel)
+      .filter((item) => !isVideo(item))
       .map((item) => ({
         url: url(item),
         title: item.title || item.name || '',
@@ -313,13 +316,24 @@ export class JobWorkConnector extends BrowserConnector {
         isPrimary: Boolean(item.isPortrait)
       }));
 
-    const reel = items.find((item) => item.isShowReel);
+    // Videos are found by their own type, not by the isShowReel flag. This
+    // account's reel is called NewReel25_Short.mov and has isShowReel false -
+    // going by the flag dropped it entirely, and the import looked complete.
+    const videos = items.filter(isVideo).map((item) => ({
+      url: url(item),
+      title: item.title || item.name || '',
+      type: item.isShowReel ? 'showreel' : 'other',
+      platform: 'JobWork'
+    }));
+
     const portrait = photos.find((photo) => photo.isPrimary) || photos[0];
+    const reel = videos.find((video) => video.type === 'showreel') || videos[0];
 
     return {
       photos,
+      videos,
       avatar: portrait?.url || null,
-      showreel: reel ? { url: url(reel), platform: 'JobWork', description: reel.title || '' } : null
+      showreel: reel ? { url: reel.url, platform: 'JobWork', description: reel.title } : null
     };
   }
 

@@ -23,7 +23,12 @@ export const VOCABULARY = Object.freeze({
   eyeColor: ['blau', 'braun', 'grün', 'grau', 'grau-blau', 'grün-braun', 'bernstein', 'schwarz'],
   hairColor: ['blond', 'dunkelblond', 'hellbraun', 'braun', 'dunkelbraun', 'schwarz', 'rot', 'grau', 'weiß', 'gefärbt'],
   languageLevel: ['Muttersprache', 'Verhandlungssicher', 'Fließend', 'Gute Kenntnisse', 'Grundkenntnisse'],
-  workType: ['tv', 'film', 'theater', 'commercial', 'other']
+  workType: ['tv', 'film', 'theater', 'commercial', 'other'],
+  // The setcard's own categories, and what a video can be. Both are enums the
+  // Profile schema enforces: a value outside them is rejected on save, so an
+  // unmapped one has to become 'other' rather than reach the database.
+  photoType: ['portrait', 'fullbody', 'character', 'scene', 'other'],
+  videoType: ['showreel', 'scene', 'selftape', 'other']
 });
 
 /** Platform spellings that mean one of our values. Lower-cased on both sides. */
@@ -77,6 +82,33 @@ const SYNONYMS = Object.freeze({
     gray: 'grau',
     white: 'weiß',
     dyed: 'gefärbt'
+  },
+  photoType: {
+    portrait: 'portrait',
+    portraet: 'portrait',
+    porträt: 'portrait',
+    headshot: 'portrait',
+    kopf: 'portrait',
+    front: 'portrait',
+    fullbody: 'fullbody',
+    ganzkörper: 'fullbody',
+    ganzkoerper: 'fullbody',
+    full: 'fullbody',
+    character: 'character',
+    charakter: 'character',
+    rolle: 'character',
+    scene: 'scene',
+    szene: 'scene'
+  },
+  videoType: {
+    showreel: 'showreel',
+    reel: 'showreel',
+    demoreel: 'showreel',
+    demoband: 'showreel',
+    scene: 'scene',
+    szene: 'scene',
+    selftape: 'selftape',
+    'self-tape': 'selftape'
   },
   languageLevel: {
     muttersprache: 'Muttersprache',
@@ -246,6 +278,54 @@ export const normalizeProfileFields = (fields = {}) => {
       return { language, level: level || '' };
     }).filter((entry) => entry.language);
   }
+
+  // ---- pictures and videos ----
+  //
+  // Media went through untouched until now, which meant a platform's own
+  // wording for a category reached a schema that only accepts five, and the
+  // same picture could arrive twice from a page that shows it large and small.
+  //
+  // A type that cannot be mapped becomes 'other' rather than a question: the
+  // schema has that catch-all for exactly this, and asking someone to classify
+  // forty thumbnails one by one would be worse than filing them as
+  // unclassified.
+  const media = (items, kind) => {
+    const seen = new Set();
+    return items
+      .filter((item) => typeof item?.url === 'string' && /^https?:\/\//i.test(item.url))
+      .filter((item) => !seen.has(item.url) && seen.add(item.url))
+      .map((item) => ({
+        ...item,
+        url: item.url.trim(),
+        title: clean(item.title) || '',
+        type: toVocabulary(kind, item.type) || 'other'
+      }));
+  };
+
+  if (out.setcard?.photos) {
+    const photos = media(out.setcard.photos, 'photoType');
+
+    // Exactly one primary. Platforms disagree about how they mark it, and a
+    // setcard with three "main" pictures - or none - is not a setcard.
+    const primary = photos.findIndex((photo) => photo.isPrimary);
+    const lead = primary === -1
+      ? photos.findIndex((photo) => photo.type === 'portrait')
+      : primary;
+    photos.forEach((photo, index) => { photo.isPrimary = index === lead; });
+
+    out.setcard = { ...out.setcard, photos };
+  }
+
+  if (Array.isArray(out.videos)) out.videos = media(out.videos, 'videoType');
+
+  if (out.showreel?.url) {
+    out.showreel = { ...out.showreel, url: String(out.showreel.url).trim() };
+  } else {
+    delete out.showreel;
+  }
+
+  // An avatar has to be a URL; anything else would render as a broken image.
+  if (out.avatar && !/^https?:\/\//i.test(String(out.avatar))) delete out.avatar;
 
   // ---- skills: trim, drop blanks, drop duplicates ----
   for (const key of ['skills', 'specialSkills']) {
