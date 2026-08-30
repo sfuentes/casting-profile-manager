@@ -67,6 +67,21 @@ export class ImOffConnector extends BrowserConnector {
           ]
         },
         {
+          // Seven named slots, one picture each, all image/jpeg. The names say
+          // what they are, which is what makes the setcard types honest here
+          // rather than guessed.
+          path: '/external/extras/photos',
+          fields: [
+            { field: 'setcard.photos', selector: 'img[src*="front1"]', kind: 'images', type: 'portrait', primary: true },
+            { field: 'setcard.photos', selector: 'img[src*="front2"]', kind: 'images', type: 'portrait' },
+            { field: 'setcard.photos', selector: 'img[src*="front3"]', kind: 'images', type: 'portrait' },
+            { field: 'setcard.photos', selector: 'img[src*="full"]', kind: 'images', type: 'fullbody' },
+            { field: 'setcard.photos', selector: 'img[src*="left"]', kind: 'images', type: 'character' },
+            { field: 'setcard.photos', selector: 'img[src*="right"]', kind: 'images', type: 'character' },
+            { field: 'setcard.photos', selector: 'img[src*="hands"]', kind: 'images', type: 'other' }
+          ]
+        },
+        {
           path: '/external/extras/skills',
           fields: [
             // The native language is a select; the app stores languages as

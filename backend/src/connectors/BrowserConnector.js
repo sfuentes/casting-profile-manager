@@ -403,6 +403,38 @@ export class BrowserConnector extends PlatformConnector {
   }
 
   /**
+   * Collect the pictures a page shows, as setcard entries.
+   *
+   * A profile page is full of images that are not the actor: logos, app-store
+   * badges, other people's thumbnails. So the caller names a container, and
+   * only what is inside it counts - never "every img on the page".
+   *
+   * Only references are taken, never the files. The picture stays on the
+   * platform that hosts it; copying someone's media library into this app
+   * would be a decision about storage and rights that reading a profile does
+   * not include.
+   *
+   * @param {string} selector  images inside the gallery, e.g. '.sedcard-media-pictures--item img'
+   * @param {object} options   type, primary, limit, titles
+   */
+  async readImages(selector, { type = 'other', primary = false, limit = 24 } = {}) {
+    const urls = await this.page
+      .$$eval(selector, (els) => els
+        .map((el) => el.currentSrc || el.src)
+        .filter((src) => src && !src.startsWith('data:')))
+      .catch(() => []);
+
+    // The same picture often appears twice - once large, once as a thumbnail.
+    const unique = [...new Set(urls)].slice(0, limit);
+
+    return unique.map((url, index) => ({
+      url,
+      type,
+      isPrimary: primary && index === 0
+    }));
+  }
+
+  /**
    * Read a tag widget: chosen values sit in repeated hidden inputs as
    * "code#level", and the code is only readable through the options of the
    * widget's own select.
@@ -668,12 +700,19 @@ export class BrowserConnector extends PlatformConnector {
       }
 
       // Several controls can feed one field - dialects, instruments and
-      // hobbies are all just skills here.
-      if (Array.isArray(value) && Array.isArray(fields[field])) {
-        fields[field] = [...fields[field], ...value];
-      } else if (field.includes('.')) {
+      // hobbies are all just skills here, and IM OFF's seven picture slots are
+      // all one setcard. Nested targets merge too: writing setcard.photos once
+      // per slot used to replace the list each time, so seven pictures arrived
+      // as one and the count looked like an almost empty profile.
+      if (field.includes('.')) {
         const [head, tail] = field.split('.');
-        fields[head] = { ...(fields[head] || {}), [tail]: value };
+        const current = fields[head]?.[tail];
+        const merged = Array.isArray(value) && Array.isArray(current)
+          ? [...current, ...value]
+          : value;
+        fields[head] = { ...(fields[head] || {}), [tail]: merged };
+      } else if (Array.isArray(value) && Array.isArray(fields[field])) {
+        fields[field] = [...fields[field], ...value];
       } else {
         fields[field] = value;
       }
@@ -701,6 +740,8 @@ export class BrowserConnector extends PlatformConnector {
         } else if (kind === 'list') {
           const raw = await this.readValue(selector);
           value = (raw || '').split(/[,;]/).map((part) => part.trim()).filter(Boolean);
+        } else if (kind === 'images') {
+          value = await this.readImages(selector, descriptor);
         } else if (kind === 'join') {
           // One value of ours spread over several of theirs: an address is a
           // street, a postal code and a town in three separate inputs.
@@ -735,6 +776,15 @@ export class BrowserConnector extends PlatformConnector {
       found: Object.keys(fields),
       missing
     });
+
+    // The picture a platform marks as the main one is what this profile calls
+    // the avatar. Derived rather than declared, because it is the same
+    // convention everywhere and a descriptor should not have to repeat it.
+    const primary = (fields.setcard?.photos || []).find((photo) => photo.isPrimary);
+    if (primary && !fields.avatar) {
+      fields.avatar = primary.url;
+      sources.avatar = sources.setcard;
+    }
 
     // One field can be fed by several controls, so the same name can land in
     // `missing` more than once - report it once.

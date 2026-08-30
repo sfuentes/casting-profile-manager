@@ -125,6 +125,11 @@ export class JobWorkConnector extends BrowserConnector {
         set(field, this.constructor.metaValue(profile, fieldName), `graphql:${fieldName}`);
       }
 
+      const media = this.constructor.readMedia(profile);
+      if (media.photos.length) set('setcard', { photos: media.photos }, 'graphql:profile.mediaItems');
+      if (media.avatar) set('avatar', media.avatar, 'graphql:profile.mediaItems');
+      if (media.showreel) set('showreel', media.showreel, 'graphql:profile.mediaItems');
+
       set('languages', this.constructor.readLanguages(profile), 'graphql:profileLanguageRepeater');
       set('skills', this.constructor.readSkills(profile), 'graphql:profile*Repeater');
       set('workHistory', this.constructor.readExperience(profile), 'graphql:profileExperienceRepeater');
@@ -283,6 +288,43 @@ export class JobWorkConnector extends BrowserConnector {
 
     return [...rows.values()];
   }
+
+  /**
+   * The pictures, from the same GraphQL payload the rest of the profile comes
+   * from - no scraping of the carousel needed.
+   *
+   * Each item carries a uuid and the flags the platform itself uses:
+   * isPortrait, isShowReel, isAboutMe. Those give the setcard its types
+   * honestly, instead of inferring a type from an image's size on screen.
+   *
+   * The uuid is an Uploadcare id: the file lives at uc.jobwork.com/<uuid>/.
+   * Only that reference is kept - the file stays where it is hosted.
+   */
+  static readMedia(profile) {
+    const items = (profile.mediaItems || []).filter((item) => item.uuid);
+    const url = (item) => `${this.MEDIA_BASE}/${item.convertedUuid || item.uuid}/`;
+
+    const photos = items
+      .filter((item) => (item.mimeType || '').startsWith('image') && !item.isShowReel)
+      .map((item) => ({
+        url: url(item),
+        title: item.title || item.name || '',
+        type: item.isPortrait ? 'portrait' : 'other',
+        isPrimary: Boolean(item.isPortrait)
+      }));
+
+    const reel = items.find((item) => item.isShowReel);
+    const portrait = photos.find((photo) => photo.isPrimary) || photos[0];
+
+    return {
+      photos,
+      avatar: portrait?.url || null,
+      showreel: reel ? { url: url(reel), platform: 'JobWork', description: reel.title || '' } : null
+    };
+  }
+
+  /** Where JobWork's uploaded files live. */
+  static MEDIA_BASE = 'https://uc.jobwork.com';
 
   static readLanguages(profile) {
     return this.repeaterRows(profile, 'profileLanguageRepeater')
