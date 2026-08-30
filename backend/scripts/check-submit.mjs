@@ -116,6 +116,61 @@ try {
     console.log(`  FAIL  a field outside any form reports "not submitted" (got ${orphan})`);
   }
 
+  // ---- choosing an option ------------------------------------------------
+  //
+  // Casting Network's gender field is a Radix RadioGroup: the control is a
+  // button[role="radio"] and the input beside it is invisible, carrying only
+  // the value. Setting `checked` on that input changed the DOM and nothing
+  // else - the circle stayed empty and the component's state, which is what
+  // gets submitted, never moved. These fixtures are that shape, plus the case
+  // that matters most: a click that does not take must be reported as such.
+
+  await page.setContent(page404(`
+    <div role="radiogroup">
+      <button type="button" role="radio" value="m" aria-checked="false"
+              onclick="this.setAttribute('aria-checked','true')"></button>
+      <input type="radio" value="m" style="opacity:0">
+      <button type="button" role="radio" value="w" aria-checked="false"></button>
+      <input type="radio" value="w" style="opacity:0">
+    </div>`), { waitUntil: 'domcontentloaded' });
+
+  const aria = await connector.chooseOption('[role="radio"], input[type="radio"]', 'm');
+  if (aria === true) {
+    passed += 1;
+    console.log('  ok    an ARIA radio button is clicked, not the invisible input');
+  } else {
+    failed += 1;
+    console.log(`  FAIL  an ARIA radio button is clicked, not the invisible input (got ${aria})`);
+  }
+
+  // A control that swallows the click: the write did not take, and saying it
+  // did is the whole failure mode this guards against.
+  await page.setContent(page404(`
+    <div role="radiogroup">
+      <button type="button" role="radio" value="m" aria-checked="false"></button>
+    </div>`), { waitUntil: 'domcontentloaded' });
+
+  const ignored = await connector.chooseOption('[role="radio"]', 'm');
+  if (ignored === false) {
+    passed += 1;
+    console.log('  ok    a click the component ignores is reported as not written');
+  } else {
+    failed += 1;
+    console.log(`  FAIL  a click the component ignores is reported as not written (got ${ignored})`);
+  }
+
+  // Plain radios still work.
+  await page.setContent(page404('<input type="radio" name="g" value="m"><input type="radio" name="g" value="w">'),
+    { waitUntil: 'domcontentloaded' });
+  const plain = await connector.chooseOption('input[type="radio"]', 'w');
+  if (plain === true) {
+    passed += 1;
+    console.log('  ok    a plain radio group still works');
+  } else {
+    failed += 1;
+    console.log(`  FAIL  a plain radio group still works (got ${plain})`);
+  }
+
   // A selector that matches nothing must not throw.
   const missing = await connector.submitFormOwning('input[name="does-not-exist"]');
   if (missing === false) {

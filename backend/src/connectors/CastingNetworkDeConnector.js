@@ -24,7 +24,7 @@ export class CastingNetworkDeConnector extends BrowserConnector {
     // The import reads the account page, which is where this platform keeps
     // the personal data. Pushing back is not offered: nothing has been written
     // to this site and nobody has watched what its save buttons do.
-    capabilities: ['verify', 'pullProfile']
+    capabilities: ['verify', 'pullProfile', 'pushProfile']
   });
 
   /**
@@ -42,7 +42,9 @@ export class CastingNetworkDeConnector extends BrowserConnector {
       password: 'input[name="password"], input[type="password"]',
       submitTexts: ['login', 'anmelden', 'einloggen']
     },
-    paths: {},
+    paths: {
+      profileEdit: '/mein-cn/schauspielprofil'
+    },
     /**
      * Read from the account page, which is where this platform keeps the
      * personal data. Verified logged in on 2026-08-30: name, address, phone
@@ -77,7 +79,39 @@ export class CastingNetworkDeConnector extends BrowserConnector {
         }
       ]
     },
-    profileFields: []
+    /**
+     * The "Kernprofil" section of /mein-cn/schauspielprofil, read off the live
+     * page on 2026-08-30.
+     *
+     * Only what can be mapped honestly. The page also has two react-select
+     * widgets with no label of any kind: without knowing what they ask for,
+     * filling them would be putting an unknown claim in a public profile.
+     * "Steuerlicher Wohnsitz" and "Wohnmöglichkeiten" have no equivalent in
+     * this app at all.
+     *
+     * Note what this form is: submitting it CREATES the public actor profile.
+     * That is why pushProfile supports a dry run, and why the dry run is how
+     * this was checked.
+     */
+    profileFields: [
+      { field: 'firstName', selector: 'input[name="client_first_name"]', kind: 'text' },
+      { field: 'lastName', selector: 'input[name="client_last_name"]', kind: 'text' },
+      // The form asks for a year; the profile stores a date.
+      { field: 'dateOfBirth', selector: 'input[name="client_birth_year"]', kind: 'text', transform: 'year' },
+      // "Berlin, Deutschland" here, "Wohnort" there.
+      { field: 'location', selector: 'input[name="client_residence"]', kind: 'text', transform: 'firstSegment' },
+      // Radios labelled männlich / weiblich / divers, valued m / w / d. The
+      // real control is a Radix button[role="radio"]; the input beside it is
+      // invisible and only carries the value. Both are named here, and the
+      // writer prefers the ARIA one.
+      {
+        field: 'gender',
+        selector: '[role="radio"], input[type="radio"]',
+        kind: 'radio',
+        map: { male: 'm', female: 'w', diverse: 'd' }
+      },
+      { field: 'socialMedia.website', selector: 'input[name="client_url"]', kind: 'text' }
+    ]
   });
 }
 

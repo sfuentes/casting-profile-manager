@@ -1,3 +1,5 @@
+import fs from 'fs/promises';
+import path from 'path';
 import puppeteer from 'puppeteer';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { PlatformConnector } from './PlatformConnector.js';
@@ -440,6 +442,56 @@ export class BrowserConnector extends PlatformConnector {
   }
 
   /**
+   * The value a descriptor asks for, including a nested one: the profile keeps
+   * the website under socialMedia.website, and a platform's form has one box
+   * for it like any other.
+   */
+  static valueAt(profile, path) {
+    return path.split('.').reduce((value, key) => (value === null || value === undefined
+      ? undefined
+      : value[key]), profile);
+  }
+
+  /**
+   * Named conversions from this app's vocabulary into a platform's.
+   *
+   * Kept as names rather than functions so a descriptor stays data: what a
+   * platform wants is a property of that platform, and a reader should be able
+   * to see it without following code. The normaliser does the same job in the
+   * other direction when importing.
+   */
+  static OUTBOUND = Object.freeze({
+    /** A stored date, where the form asks only for a year. */
+    year: (value) => (String(value).match(/\d{4}/) || [''])[0],
+    /** "Berlin, Deutschland" where the form asks for a town. */
+    firstSegment: (value) => String(value).split(',')[0].trim(),
+    /** Digits only, for a form that rejects "178 cm". */
+    digits: (value) => (String(value).match(/\d+/) || [''])[0]
+  });
+
+  /** Apply a descriptor's `transform` and `map`, in that order. */
+  static toPlatformValue(descriptor, value) {
+    let out = value;
+
+    if (descriptor.transform) {
+      const convert = this.OUTBOUND[descriptor.transform];
+      if (!convert) throw new Error(`Unknown transform "${descriptor.transform}"`);
+      out = convert(out);
+    }
+
+    if (descriptor.map) {
+      const mapped = descriptor.map[out];
+      // A value the platform has no equivalent for is not written at all.
+      // Guessing one would put something in the user's public profile that
+      // they never said.
+      if (mapped === undefined) return null;
+      out = mapped;
+    }
+
+    return out;
+  }
+
+  /**
    * Write one field.
    * @returns {Promise<boolean>} false when the field is not on the page - the
    *   caller must not count that as an update.
@@ -455,6 +507,8 @@ export class BrowserConnector extends PlatformConnector {
 
     if (!await this.page.$(selector)) return false;
 
+    if (kind === 'radio') return this.chooseOption(selector, String(value));
+
     if (kind === 'select') {
       // page.select does not throw on a value the select does not offer - it
       // selects nothing and returns an empty array. Treating that as a write
@@ -465,6 +519,56 @@ export class BrowserConnector extends PlatformConnector {
 
     await this.clearAndType(selector, value);
     return true;
+  }
+
+  /**
+   * Pick one option of a radio group, by the value the platform uses.
+   *
+   * Not as simple as ticking an input. Casting Network's group is a Radix
+   * RadioGroup: the real control is a button[role="radio"], and the
+   * input[type="radio"] beside it is invisible (opacity 0) and only carries
+   * the value for form submission. Setting `checked` on that input does change
+   * the DOM - and changes nothing else. The circle on screen stays empty and
+   * the component's own state, which is what gets submitted, never moves. The
+   * dry-run screenshot is what caught it: the log said the field was filled,
+   * the picture said it was not.
+   *
+   * So: click the ARIA control if there is one, click the input otherwise, and
+   * afterwards check that it actually took. A write that did not take must be
+   * reported as a write that did not take.
+   */
+  async chooseOption(selector, wanted) {
+    const handle = await this.page.evaluateHandle((sel, value) => {
+      const candidates = [
+        ...document.querySelectorAll('[role="radio"]'),
+        ...document.querySelectorAll(sel)
+      ];
+      return candidates.find((el) => (el.getAttribute('value') ?? el.value) === value) || null;
+    }, selector, wanted);
+
+    const element = handle.asElement();
+    if (!element) {
+      await handle.dispose();
+      return false;
+    }
+
+    // A real mouse click, because a component library listens for one.
+    await element.click().catch(() => {});
+    await element.dispose();
+
+    // Did it take? ARIA first - that is what a component library updates.
+    return this.page.evaluate((sel, value) => {
+      const candidates = [
+        ...document.querySelectorAll('[role="radio"]'),
+        ...document.querySelectorAll(sel)
+      ];
+      const chosen = candidates.find((el) => (el.getAttribute('value') ?? el.value) === value);
+      if (!chosen) return false;
+
+      return chosen.getAttribute('aria-checked') === 'true'
+        || chosen.getAttribute('data-state') === 'checked'
+        || chosen.checked === true;
+    }, selector, wanted);
   }
 
   /**
@@ -483,13 +587,21 @@ export class BrowserConnector extends PlatformConnector {
     let updatedSelector = null;
 
     for (const descriptor of fields) {
-      const value = profile[descriptor.field];
-      if (value === undefined || value === null || value === '') continue;
+      const stored = this.constructor.valueAt(profile, descriptor.field);
+      if (stored === undefined || stored === null || stored === '') continue;
+
+      const value = this.constructor.toPlatformValue(descriptor, stored);
+      if (value === null || value === '') {
+        // The platform has no equivalent for this value; say so rather than
+        // writing something close enough.
+        missingFields.push(descriptor.field);
+        continue;
+      }
 
       requestedFields.push(descriptor.field);
       try {
         // eslint-disable-next-line no-await-in-loop
-        const written = await this.writeField(descriptor, descriptor.transform ? descriptor.transform(value) : value);
+        const written = await this.writeField(descriptor, value);
         if (written) {
           updatedFields.push(descriptor.field);
           updatedSelector = updatedSelector || descriptor.selector;
@@ -647,8 +759,8 @@ export class BrowserConnector extends PlatformConnector {
     }));
   }
 
-  async pushProfile(profile) {
-    return this.updateProfile(profile);
+  async pushProfile(profile, options = {}) {
+    return this.updateProfile(profile, options);
   }
 
   /**
@@ -657,9 +769,9 @@ export class BrowserConnector extends PlatformConnector {
    * Fails loudly when nothing landed: this is the one place where a scraper is
    * most tempted to report success it did not earn.
    */
-  async updateProfile(profile) {
+  async updateProfile(profile, { dryRun = false } = {}) {
     return this.withRateLimit(() => this.withRetry(async () => {
-      this.log('info', `Updating profile on ${this.manifest.name}`);
+      this.log('info', `${dryRun ? 'Dry run:' : 'Updating profile on'} ${this.manifest.name}`);
 
       if (!this.isAuthenticated || !this.page) {
         throw new Error('Not authenticated. Call authenticate() first.');
@@ -677,6 +789,28 @@ export class BrowserConnector extends PlatformConnector {
           + `(looked for: ${requestedFields.join(', ')})`,
           { platform: this.manifest.key }
         );
+      }
+
+      // A dry run stops here, with the form filled in and photographed. This
+      // is the only way to see what a push would actually publish before it
+      // publishes it - on a platform where "save" creates a public profile,
+      // finding out afterwards is too late.
+      if (dryRun) {
+        const shot = await this.captureFilledForm();
+        this.log('info', `Dry run finished for ${this.manifest.name}`, {
+          filled: updatedFields, notFilled: missingFields, screenshot: shot
+        });
+
+        return {
+          success: true,
+          dryRun: true,
+          submitted: false,
+          updatedFields,
+          missingFields,
+          screenshot: shot,
+          url: this.page.url(),
+          details: { dryRun: true, filled: updatedFields, notFilled: missingFields, screenshot: shot }
+        };
       }
 
       let submitted = false;
@@ -786,6 +920,33 @@ export class BrowserConnector extends PlatformConnector {
       else form.submit();
       return true;
     }, selector);
+  }
+
+  /**
+   * Photograph the filled form for a dry run.
+   *
+   * Written next to the failure captures, because it answers the same kind of
+   * question: what was actually on the screen. A field that looks filled in
+   * the log but empty in the picture means the write did not take - which is
+   * exactly what a custom widget does to a naive `type()`.
+   */
+  async captureFilledForm() {
+    const dir = process.env.CONNECTOR_FORENSICS_DIR
+      || path.join(process.cwd(), 'forensics');
+    const file = path.join(
+      dir,
+      `${new Date().toISOString().replace(/[:.]/g, '-')}_${this.manifest.key}_dry-run.png`
+    );
+
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      await this.page.screenshot({ path: file, fullPage: true });
+      return file;
+    } catch (error) {
+      // A dry run must not fail because a screenshot could not be written.
+      this.log('warn', 'Could not save the dry-run screenshot', { error: error.message });
+      return null;
+    }
   }
 
   /** Format a date for a date input (YYYY-MM-DD). */
