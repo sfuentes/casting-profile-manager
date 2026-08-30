@@ -21,10 +21,10 @@ export class CastingNetworkDeConnector extends BrowserConnector {
     authType: 'credentials',
     credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
       { name: 'password', type: 'password', required: true, label: 'Passwort' }],
-    // Login only. The pages behind it have not been seen, so nothing behind it
-    // is offered - a profile import will be added once someone has logged in
-    // and the connector has been written against what is actually there.
-    capabilities: ['verify']
+    // The import reads the account page, which is where this platform keeps
+    // the personal data. Pushing back is not offered: nothing has been written
+    // to this site and nobody has watched what its save buttons do.
+    capabilities: ['verify', 'pullProfile']
   });
 
   /**
@@ -43,6 +43,40 @@ export class CastingNetworkDeConnector extends BrowserConnector {
       submitTexts: ['login', 'anmelden', 'einloggen']
     },
     paths: {},
+    /**
+     * Read from the account page, which is where this platform keeps the
+     * personal data. Verified logged in on 2026-08-30: name, address, phone
+     * and email are filled in there.
+     *
+     * The actor profile at /mein-cn/schauspielprofil is deliberately not read.
+     * That page currently says "Schauspielprofil anlegen" - the profile does
+     * not exist for this account yet, and every field on it is empty. Its
+     * inputs are named client_first_name and so on, but nobody has seen the
+     * page in its filled state, and a descriptor written against a creation
+     * form would quietly report "nothing there" if the filled one differs.
+     * It gets added when there is a profile to check it against.
+     */
+    profileRead: {
+      pages: [
+        {
+          path: '/mein-cn/konto',
+          fields: [
+            { field: 'firstName', selector: 'input[name="first_name"]' },
+            { field: 'lastName', selector: 'input[name="last_name"]' },
+            { field: 'location', selector: 'input[name="city"]' },
+            { field: 'contact.email', selector: 'input[name="email"]' },
+            { field: 'contact.phone', selector: 'input[name="phone"]' },
+            {
+              field: 'contact.address',
+              kind: 'join',
+              selectors: ['input[name="street"]', 'input[name="postal_code"]', 'input[name="city"]'],
+              // street, postcode town
+              separators: [', ', ' ']
+            }
+          ]
+        }
+      ]
+    },
     profileFields: []
   });
 }

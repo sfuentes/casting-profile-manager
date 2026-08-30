@@ -575,6 +575,7 @@ export class BrowserConnector extends PlatformConnector {
 
       for (const descriptor of page.fields) {
         const { field, selector, kind = 'value' } = descriptor;
+        const where = selector || (descriptor.selectors || []).join(' + ');
         let value;
 
         /* eslint-disable no-await-in-loop */
@@ -588,12 +589,26 @@ export class BrowserConnector extends PlatformConnector {
         } else if (kind === 'list') {
           const raw = await this.readValue(selector);
           value = (raw || '').split(/[,;]/).map((part) => part.trim()).filter(Boolean);
+        } else if (kind === 'join') {
+          // One value of ours spread over several of theirs: an address is a
+          // street, a postal code and a town in three separate inputs.
+          const parts = [];
+          for (const one of descriptor.selectors || []) {
+            parts.push(await this.readValue(one));
+          }
+          // `separators` gives one per gap, because the gaps differ: a German
+          // address is "street, postcode town", not "street, postcode, town".
+          const present = parts.filter(Boolean);
+          const gaps = descriptor.separators || [];
+          value = present.reduce((text, part, index) => (index === 0
+            ? part
+            : text + (gaps[index - 1] ?? descriptor.separator ?? ', ') + part), '');
         } else {
           value = await this.readValue(selector);
         }
         /* eslint-enable no-await-in-loop */
 
-        add(field, value, `${page.path} ${selector}`);
+        add(field, value, `${page.path} ${where}`);
       }
     }
 
