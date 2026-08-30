@@ -43,6 +43,10 @@ check('a platform spelling maps to our language level',
   normalizeProfileFields({ languages: [{ language: 'Englisch', level: 'fliessend' }] }).fields.languages,
   [{ language: 'Englisch', level: 'Fließend' }]);
 
+check('a German gender label maps to the stored enum',
+  normalizeProfileFields({ gender: 'Männlich' }).fields.gender,
+  'male');
+
 check('an English hair colour maps to the German one',
   normalizeProfileFields({ hairColor: 'brown' }).fields.hairColor,
   'braun');

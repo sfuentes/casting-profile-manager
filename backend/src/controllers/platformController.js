@@ -91,11 +91,24 @@ export const connectPlatform = catchAsync(async (req, res) => {
         message: 'Invalid platform identifier'
       });
     }
+    // Name and authType come from the manifest, not the request. The client
+    // sends only credentials, so taking them from the body left both undefined
+    // and the record failed validation on `name` - which is what connecting a
+    // platform the user has no record for would have done for every connector
+    // added after their account was created.
+    const Connector = getConnector(numeric);
+    if (!Connector) {
+      return res.status(404).json({
+        success: false,
+        message: `No integration is registered for platform ${numeric}`
+      });
+    }
+
     platform = new Platform({
       user: req.user.id,
       platformId: numeric,
-      name: req.body.name,
-      authType: req.body.authType,
+      name: req.body.name || Connector.manifest.name,
+      authType: req.body.authType || Connector.manifest.authType,
       authData,
       connected: false,
       meta: req.body.meta || {}
@@ -206,9 +219,11 @@ export const testPlatformConnection = catchAsync(async (req, res) => {
     timestamp: new Date()
   };
   platform.lastTested = new Date();
-  // A failed test means the stored credentials no longer work; stop reporting
-  // the platform as connected until they are fixed.
-  if (!result.ok) platform.connected = false;
+  // The test result decides the connection state in both directions. It only
+  // ever cleared the flag: a platform whose credentials were fixed and then
+  // tested successfully stayed "not connected" forever, and everything that
+  // requires a connected platform - syncing, importing - kept refusing to run.
+  platform.connected = result.ok;
   await platform.save();
 
   res.status(200).json({

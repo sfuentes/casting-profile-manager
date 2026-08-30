@@ -15,31 +15,40 @@ export class WantedConnector extends BrowserConnector {
     key: 'wanted',
     name: 'Wanted',
     authType: 'credentials',
-    credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
+    credentialFields: [{ name: 'username', type: 'text', required: true, label: 'Benutzername' },
       { name: 'password', type: 'password', required: true, label: 'Passwort' }],
     capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia']
   });
 
   /**
-   * NOT verified, and the host is doubtful: www.wanted.de does not resolve
-   * from here (ERR_NAME_NOT_RESOLVED), so no page of this platform has ever
-   * been loaded. Everything below is what the connector was originally written
-   * with. The domain needs confirming before any of it can be trusted.
+   * Verified against the live login page on 2026-08-30 (URL supplied by the
+   * project owner).
+   *
+   * The host is not wanted.de - that name does not resolve at all. The agency
+   * runs on online.agentur-wanted.de, on the same "online casting solutions"
+   * platform as Sarah Weiß Casting: identical field names, identical form
+   * action. The account field is a user name, not an email address.
+   *
+   * `hint` is a third text field in the same form and is left alone: on this
+   * kind of form it is usually a honeypot, and filling it is how a bot
+   * announces itself.
    */
   static site = Object.freeze({
-    baseUrl: 'https://www.wanted.de',
-    loginPath: '/login',
+    baseUrl: 'https://online.agentur-wanted.de',
+    loginPath: '/de/login/actor',
     login: {
-      user: 'input[type="email"], input[name="email"], input[name="benutzername"]',
-      password: 'input[type="password"], input[name="password"], input[name="passwort"]',
-      submitTexts: ['anmelden', 'einloggen', 'login'],
-      failureUrls: ['/anmelden']
+      user: 'input[name="username"]',
+      password: 'input[name="password"], input[type="password"]',
+      submitTexts: ['anmelden', 'login', 'einloggen']
     },
     paths: {
+      // NOT verified: reaching these needs an account, and nobody has logged
+      // in. They are the paths the connector was originally written with.
       profileEdit: '/profil/bearbeiten',
       availability: '/profil/verfuegbarkeit',
       media: '/profil/fotos'
     },
+    // NOT verified either - see above.
     profileFields: [
       { field: 'biography', selector: 'textarea[name="biography"], textarea[name="biografie"], textarea[name="ueber_mich"]', kind: 'text' },
       { field: 'height', selector: 'input[name="height"], input[name="groesse"], input[name="koerpergroesse"]', kind: 'text' },

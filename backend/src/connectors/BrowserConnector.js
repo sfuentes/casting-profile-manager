@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { PlatformConnector } from './PlatformConnector.js';
 import { findByCssOrText } from './selectors.js';
-import { AuthError, PlatformChangedError } from './errors.js';
+import { AuthError, NotSupportedError, PlatformChangedError } from './errors.js';
 
 /**
  * Everything a browser-driven connector does that is not specific to one
@@ -47,6 +47,29 @@ import { AuthError, PlatformChangedError } from './errors.js';
  * descriptor's selectors are checked like any other.
  */
 export class BrowserConnector extends PlatformConnector {
+  /**
+   * Labels that decline a consent banner, lower-cased and matched exactly.
+   * Ordered by preference: refusing outright beats saving a set of switches
+   * that some banners pre-tick. Nothing here accepts anything.
+   */
+  static DECLINE_TEXTS = Object.freeze([
+    'ablehnen',
+    'alle ablehnen',
+    'alles ablehnen',
+    'nur notwendige',
+    'nur notwendige cookies',
+    'nur essenzielle',
+    'nur erforderliche',
+    'reject all',
+    'decline',
+    'decline all',
+    'only necessary',
+    'necessary only',
+    'reject',
+    'weiter ohne einwilligung',
+    'continue without agreeing'
+  ]);
+
   /** @returns {object} the platform's descriptor */
   static get site() {
     throw new Error(`${this.name} must declare a static site descriptor`);
@@ -178,7 +201,7 @@ export class BrowserConnector extends PlatformConnector {
       await this.launch();
 
       const loginUrl = this.url(this.loginPath);
-      await this.page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+      await this.openPage(loginUrl);
       this.log('info', 'Loaded login page, entering credentials');
 
       await this.page.waitForSelector(login.user, { timeout: 10000 });
@@ -186,7 +209,7 @@ export class BrowserConnector extends PlatformConnector {
       await this.page.type(login.password, this.credentials.password);
 
       await this.submitLogin();
-      await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+      await this.waitForLoginOutcome(loginUrl);
 
       const currentUrl = this.page.url();
       const passwordStillVisible = Boolean(await this.page.$('input[type="password"]'));
@@ -218,6 +241,36 @@ export class BrowserConnector extends PlatformConnector {
   }
 
   /**
+   * Wait for the login to resolve one way or the other.
+   *
+   * `waitForNavigation` alone is wrong twice over. A single-page app never
+   * fires one, so waiting for it times out after a successful login - which is
+   * how JobWork reported "could not be reached" while logging in perfectly
+   * well. And when it does fire, it can resolve while the app is still
+   * client-side routing: JobWork had already torn its form down and had not yet
+   * changed the URL, so judging at that instant called a good login a rejected
+   * one.
+   *
+   * What settles it either way is the URL leaving the login page. This waits
+   * for that, and gives up quietly - the caller decides what a still-unchanged
+   * URL means.
+   */
+  async waitForLoginOutcome(loginUrl, timeoutMs = 20000) {
+    // A classic form post navigates; take that when it happens.
+    await this.page
+      .waitForNavigation({ waitUntil: 'networkidle2', timeout: 8000 })
+      .catch(() => {});
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (!this.page.url().startsWith(loginUrl)) return true;
+      // eslint-disable-next-line no-await-in-loop
+      await this.delay(500);
+    }
+    return false;
+  }
+
+  /**
    * The account field's value. Most platforms want the email address; a
    * connector whose manifest asks for a username overrides this.
    */
@@ -234,7 +287,12 @@ export class BrowserConnector extends PlatformConnector {
   async submitLogin() {
     const { login } = this.site;
 
-    if (await this.submitFormOwning(login.password)) return true;
+    // `submitBy: 'text'` when the form holds more than one submit button and
+    // picking the wrong one does something the user did not ask for. Filmpool
+    // and UFA Base put "Einloggen" and "Sende mir einen Login-Link" in the same
+    // form: clicking blindly would mail the account holder a login link.
+    const labels = login.submitTexts || ['anmelden', 'einloggen', 'login', 'sign in'];
+    if (login.submitBy !== 'text' && await this.submitFormOwning(login.password, labels)) return true;
 
     const button = await findByCssOrText(this.page, {
       css: ['button[type="submit"]', 'input[type="submit"]'],
@@ -255,9 +313,70 @@ export class BrowserConnector extends PlatformConnector {
 
   // ---- reading the page ----------------------------------------------------
 
-  /** Navigate, waiting for the page to settle. */
+  /** Navigate, waiting for the page to settle, then clear any consent overlay. */
   async openPage(url) {
     await this.page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+    await this.dismissConsentBanner();
+  }
+
+  /**
+   * Decline a cookie banner if one is covering the page.
+   *
+   * JobWork's login sat behind a Usercentrics banner. The fields underneath it
+   * were in the DOM and could be typed into, so the connector filled them in,
+   * clicked "Weiter", and waited thirty seconds for a navigation that could
+   * never happen because the overlay swallowed the click. The failure read
+   * "JobWork could not be reached", which is not what was wrong at all - only
+   * the forensics screenshot showed the banner.
+   *
+   * Two details make this awkward, and both are why a plain selector does not
+   * work: the banner renders inside a shadow root, so it is invisible to
+   * document.querySelector and absent from page.content(); and its buttons are
+   * identified only by their labels.
+   *
+   * It always declines. "Alles akzeptieren" is right there and would be one
+   * word shorter to match, but consenting to tracking on someone's behalf is
+   * not this code's decision to make.
+   */
+  async dismissConsentBanner() {
+    const declined = await this.page.evaluate((texts) => {
+      const buttons = [];
+      const visit = (root, depth) => {
+        if (!root || depth > 12) return;
+        for (const element of root.querySelectorAll('*')) {
+          const tag = element.tagName.toLowerCase();
+          const role = element.getAttribute && element.getAttribute('role');
+          if (tag === 'button' || role === 'button' || tag === 'a') buttons.push(element);
+          if (element.shadowRoot) visit(element.shadowRoot, depth + 1);
+        }
+      };
+      visit(document, 0);
+
+      const visible = (el) => {
+        const style = getComputedStyle(el);
+        const box = el.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden'
+          && box.width > 0 && box.height > 0;
+      };
+
+      for (const wanted of texts) {
+        const match = buttons.find((el) => visible(el)
+          && (el.innerText || el.textContent || '').trim().toLowerCase() === wanted);
+        if (match) {
+          match.click();
+          return match.innerText.trim();
+        }
+      }
+      return null;
+    }, this.site.consent?.declineTexts || BrowserConnector.DECLINE_TEXTS);
+
+    if (declined) {
+      this.log('info', `Declined a consent banner ("${declined}")`);
+      // The overlay unmounts asynchronously; give it a moment before anything
+      // tries to click what it was covering.
+      await this.delay(500);
+    }
+    return Boolean(declined);
   }
 
   /** Trimmed value of an input, or null when it is absent or empty. */
@@ -391,6 +510,128 @@ export class BrowserConnector extends PlatformConnector {
     return this.url(this.site.paths.profileEdit);
   }
 
+  /**
+   * Read a profile from a form the descriptor describes.
+   *
+   * Filmmakers and JobWork each needed their own reader - one discovers a slug
+   * and parses a vita list, the other listens to GraphQL. A platform whose
+   * profile is simply a form, possibly spread over several pages, needs no code
+   * at all: it declares where to look and what each control means.
+   *
+   *   profileRead: {
+   *     pages: [{
+   *       path: '/external/extras',
+   *       fields: [
+   *         { field: 'firstName', selector: '#first_name' },
+   *         { field: 'gender', selector: '#sex', kind: 'selected' },
+   *         { field: 'languages', selector: '#mother_tongue_id', kind: 'nativeLanguage' },
+   *         { field: 'skills', selector: '#dialect', kind: 'list' }
+   *       ]
+   *     }]
+   *   }
+   *
+   * Values are passed on exactly as the platform words them. Turning "braun"
+   * or "männlich" into this app's vocabulary is the normaliser's job, and what
+   * it cannot map becomes a question for the user rather than a guess here.
+   */
+  async readDeclaredProfile() {
+    const { profileRead } = this.site;
+    if (!profileRead?.pages?.length) {
+      throw new NotSupportedError(
+        `${this.manifest.name} declares no profileRead descriptor`,
+        { platform: this.manifest.key }
+      );
+    }
+
+    const fields = {};
+    const sources = {};
+    const missing = [];
+
+    const add = (field, value, source) => {
+      const empty = value === null || value === undefined || value === ''
+        || (Array.isArray(value) && value.length === 0);
+      if (empty) {
+        missing.push(field);
+        return;
+      }
+
+      // Several controls can feed one field - dialects, instruments and
+      // hobbies are all just skills here.
+      if (Array.isArray(value) && Array.isArray(fields[field])) {
+        fields[field] = [...fields[field], ...value];
+      } else if (field.includes('.')) {
+        const [head, tail] = field.split('.');
+        fields[head] = { ...(fields[head] || {}), [tail]: value };
+      } else {
+        fields[field] = value;
+      }
+      sources[field] = source;
+    };
+
+    for (const page of profileRead.pages) {
+      const url = page.path.startsWith('http') ? page.path : this.url(page.path);
+      // eslint-disable-next-line no-await-in-loop
+      await this.openPage(url);
+
+      for (const descriptor of page.fields) {
+        const { field, selector, kind = 'value' } = descriptor;
+        let value;
+
+        /* eslint-disable no-await-in-loop */
+        if (kind === 'selected') {
+          [value] = await this.readSelected(selector);
+        } else if (kind === 'selectedList') {
+          value = await this.readSelected(selector);
+        } else if (kind === 'nativeLanguage') {
+          const [language] = await this.readSelected(selector);
+          value = language ? [{ language, level: 'Muttersprache' }] : [];
+        } else if (kind === 'list') {
+          const raw = await this.readValue(selector);
+          value = (raw || '').split(/[,;]/).map((part) => part.trim()).filter(Boolean);
+        } else {
+          value = await this.readValue(selector);
+        }
+        /* eslint-enable no-await-in-loop */
+
+        add(field, value, `${page.path} ${selector}`);
+      }
+    }
+
+    if (Object.keys(fields).length === 0) {
+      throw new PlatformChangedError(
+        `None of the declared profile fields were found on ${this.manifest.name}`,
+        { platform: this.manifest.key }
+      );
+    }
+
+    this.log('info', `Read profile from ${this.manifest.name}`, {
+      found: Object.keys(fields),
+      missing
+    });
+
+    // One field can be fed by several controls, so the same name can land in
+    // `missing` more than once - report it once.
+    const missingOnce = [...new Set(missing)].filter((field) => !(field in fields));
+
+    return {
+      success: true,
+      fields,
+      sources,
+      missing: missingOnce,
+      details: { found: Object.keys(fields), missing: missingOnce }
+    };
+  }
+
+  /** Declarative by default; connectors with a stranger source override this. */
+  async pullProfile() {
+    return this.withRateLimit(() => this.withRetry(async () => {
+      if (!this.isAuthenticated || !this.page) {
+        throw new Error('Not authenticated. Call authenticate() first.');
+      }
+      return this.readDeclaredProfile();
+    }));
+  }
+
   async pushProfile(profile) {
     return this.updateProfile(profile);
   }
@@ -427,7 +668,7 @@ export class BrowserConnector extends PlatformConnector {
       if (updatedFields.length > 0) {
         // The form that owns an edited field, never a page-wide submit
         // selector: that can hit an unrelated form elsewhere on the page.
-        submitted = await this.submitFormOwning(updatedSelector);
+        submitted = await this.submitFormOwning(updatedSelector, this.site.saveTexts || ['speichern', 'save', 'übernehmen', 'aktualisieren']);
         if (!submitted) {
           throw new PlatformChangedError(
             'Filled the profile form but found no submit control in it, so nothing was saved',
@@ -468,14 +709,22 @@ export class BrowserConnector extends PlatformConnector {
    * @returns {Promise<boolean>} false when there is no such form or no submit
    *   control in it - the caller must not treat that as a submission.
    */
-  async submitFormOwning(selector) {
+  async submitFormOwning(selector, labels = []) {
     if (!this.page || !selector) return false;
 
-    // A visible control is clicked like a person would. JobWork's login form
-    // carries a hidden button[type="submit"] and does its work from a visible
-    // "Weiter" button with no type attribute, so taking the first match in DOM
-    // order would pick the hidden one - and puppeteer refuses to click that.
-    const handle = await this.page.evaluateHandle((sel) => {
+    // Which control to click, in order of how sure we can be about it.
+    //
+    // "First visible candidate" is not good enough. JobWork's login form holds
+    // a hidden button[type="submit"], then a typeless icon button that reveals
+    // the password, then the typeless "Weiter" button that actually submits.
+    // Clicking the first visible one clicked the eye: no login, and the
+    // password rendered in clear - which the forensics screenshot then stored.
+    //
+    // So: a real submit button first; then a labelled button matching what the
+    // caller expects; then any labelled button. A button with no text at all is
+    // never clicked - that is an icon, and icons in a login form do things like
+    // reveal passwords.
+    const handle = await this.page.evaluateHandle((sel, wanted) => {
       const field = document.querySelector(sel);
       const form = field && field.closest('form');
       if (!form) return null;
@@ -486,11 +735,20 @@ export class BrowserConnector extends PlatformConnector {
         return style.display !== 'none' && style.visibility !== 'hidden'
           && box.width > 0 && box.height > 0;
       };
+      const labelOf = (el) => (el.innerText || el.value || '').trim().toLowerCase();
 
-      return [...form.querySelectorAll(
-        'input[type="submit"], button[type="submit"], button:not([type])'
-      )].find(isVisible) || null;
-    }, selector);
+      const typed = [...form.querySelectorAll('input[type="submit"], button[type="submit"]')]
+        .filter(isVisible);
+      if (typed.length > 0) return typed[0];
+
+      const bare = [...form.querySelectorAll('button:not([type])')]
+        .filter((el) => isVisible(el) && labelOf(el).length > 0);
+
+      const expected = bare.find((el) => wanted.some((text) => labelOf(el) === text
+        || labelOf(el).includes(text)));
+
+      return expected || bare[0] || null;
+    }, selector, labels.map((text) => text.toLowerCase()));
 
     const element = handle.asElement();
     if (element) {
