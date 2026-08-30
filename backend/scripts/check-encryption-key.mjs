@@ -12,7 +12,7 @@
  * paste into a bug report.
  */
 import crypto from 'crypto';
-import { getKeyProblem } from '../src/utils/crypto.js';
+import { describeKeyProblem } from '../src/utils/crypto.js';
 
 const raw = process.env.CREDENTIAL_ENCRYPTION_KEY;
 
@@ -45,7 +45,7 @@ if (bad !== -1) {
 // same value you pasted into Coolify without either of you reading it out.
 console.log(`  sha256 fingerprint      : ${crypto.createHash('sha256').update(trimmed).digest('hex').slice(0, 16)}`);
 
-const problem = getKeyProblem();
+const problem = describeKeyProblem();
 console.log('');
 if (problem) {
   console.log(`  USABLE: no — ${problem}`);
