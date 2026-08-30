@@ -14,8 +14,14 @@ integrations, especially the things that are not visible from the code alone.
 ```
 backend/src/
   connectors/        platform integrations + the interface the app talks to
+  connectors/PlatformConnector.js   the interface every connector implements
+  connectors/BrowserConnector.js    everything browser-driven, platform-agnostic
+  connectors/<Name>Connector.js     one manifest + one `site` descriptor each
+  connectors/profileNormalizer.js   platform words -> this app's vocabulary,
+                                    and the questions it refuses to guess at
   connectors/forensics.js    screenshot/HTML/URL capture on every failure
-  scripts/check-*.mjs        selector validity, run against local Chromium
+  scripts/check-*.mjs        selectors, submits, normaliser, login pages
+  scripts/recon-*.mjs        read a platform's pages before writing selectors
   controllers/       route handlers
   models/            Mongoose schemas
   utils/logger.js    winston
@@ -128,57 +134,173 @@ add cert handling to the repo.
 
 ## Platform integrations
 
-Nine platforms. Six have real integrations, three (ids 6–8) are agencies handled
-by hand.
+Thirteen platforms, two of them (ids 6–7) agencies kept by hand. The rest are
+browser-driven and were, on 2026-08-30, verified against their live login pages
+for the first time. **Nothing below is guessed: every URL and selector here was
+read off the page it belongs to.**
 
-**Everything here was simulated at some point.** Four separate code paths
-claimed success without contacting anything: `platformController` (endpoints the
-UI calls), `platformAgent.js` on the backend, a 615-line copy of it on the
-frontend, and a hard-coded platform list in the client. All are removed or made
-real across PRs #16, #17 and #21. **If something reports success suspiciously
-easily, check whether it is actually doing anything.**
+### The shape
 
-The connector interface (PR #17) is the single entry point. Each connector
-declares a manifest — `id`, `key`, `name`, `authType`, `credentialFields`,
-`capabilities` — and the app reads that instead of knowing anything
-platform-specific. No id is special-cased anywhere; capability checks and the
-UI's connect form both derive from the manifest.
+`BrowserConnector` holds everything that is not specific to one platform:
+launching Chromium, declining consent banners, logging in, deciding whether the
+login worked, reading and writing form fields, uploading media, tearing down,
+typing errors. A connector declares a `static site` descriptor and overrides a
+method only where its platform genuinely behaves differently.
 
-Errors are typed (`AuthError`, `RateLimitError`, `PlatformUnavailableError`,
-`NotSupportedError`, `PlatformChangedError`) and carry `retryable`. Do not match
-on message strings. `PlatformChangedError` means selectors rotted, which is
-distinct from the site being down and is the failure to expect most often.
+    static site = {
+      baseUrl, loginPath,
+      login: { user, password, submitTexts, submitBy, failureUrls },
+      paths: { profileEdit, media, availability },
+      profileRead:  { pages: [{ path, fields: [{ field, selector, kind }] }] },
+      profileFields: [{ field, selector, kind, transform, map }],
+      mediaFields:   [{ selector, type }]
+    };
 
-### Known broken, with evidence
+Field kinds for reading: `value`, `selected`, `selectedList`, `nativeLanguage`,
+`list`, `join` (with `separators`), `images`. For writing: `text`, `select`,
+`radio`, `file`. Outbound conversions are named (`year`, `firstSegment`,
+`digits`) and enum translation is a `map`, so a descriptor stays data.
 
-- **The six invalid CSS selectors are fixed.** `button:contains("Add")` was
-  jQuery syntax; `querySelectorAll` throws `SyntaxError` on it and rejects the
-  whole selector string. They are now structural selectors with a text fallback
-  matched in JavaScript (`findByCssOrText`). `npm run check:connectors` runs all
-  70 selectors through real Chromium and 9 checks against fixture markup; both
-  pass. Valid CSS is not a match on a live page.
-- **e-TALENTA and Schauspielervideos have zero selectors.** They are API
-  adapters against APIs the project has no access to. They cannot work as
-  written.
-- **No connector has ever run against a live platform.** Deeper selectors
-  (`.upload-success`, `textarea[name="biography"]`, `[data-action="add-availability"]`)
-  are speculative. Login selectors are valid CSS and plausible; everything past
-  login probably is not.
+Adding a platform is a manifest plus a descriptor. The four scraping connectors
+used to carry a copy of the same eighty-line `authenticate()`; fixes were made
+in one or two of them, never all four.
 
-### Recommended next step
+### What each platform is, and where its data comes from
 
-Forensics and the selector checks are in, and the six selectors are fixed. What
-remains is the part that cannot be done from here: take **one** platform end to
-end with real credentials on the server, and read
-`SyncLog.metadata.forensics` — **the final URL first**. A redirect back to
-`/login` means the session died, which looks identical to a missing selector at
-the call site and is a completely different problem.
+| id | key | login | import source | verified |
+|---|---|---|---|---|
+| 1 | filmmakers | filmmakers.eu`/users/sign_in` | edit form + sedcard gallery | login, import, pictures |
+| 2 | casting-network | app.castingnetworks.com`/login/` | — | login page only |
+| 3 | schauspielervideos | — (API, no access) | — | no |
+| 4 | e-talenta | etalenta.eu`/login/login` | — | login page only |
+| 5 | jobwork | jobwork.com`/de/login` | GraphQL `profile` payload | login, import, media |
+| 8 | sarah-weiss | online.castingagentur-weiss.de | — | login page only |
+| 9 | wanted | online.agentur-wanted.de | — | login page only |
+| 10 | filmpool | filmpool-casting.de`/users/sign_in` | — | login page only |
+| 11 | ufa-base | ufa-base.de`/users/sign_in` | — | login page only |
+| 12 | im-off | app.im-off.de`/login` | multi-page form, 7 picture slots | login, import, pictures |
+| 13 | casting-network-de | casting-network.de`/login` | account page | login, import, push (dry run) |
 
-Scraping is an ongoing maintenance burden and likely breaches these platforms'
-terms; the downside lands on users as suspended accounts. Worth confirming the
-project owner accepts that before expanding it.
+Three platforms, three completely different import sources — which is why
+"look at the page first" is not a slogan here:
 
----
+- **Filmmakers** keeps the data in its edit form (`actor_profile[...]`), the
+  pictures on the public sedcard, the vita under `?section=vita_entries`. The
+  profile URL contains a slug that differs per user and is read from the header.
+- **JobWork** has no readable form at all: `/settings` carries zero controls,
+  editing happens in overlays, and the markup is generated utility classes. The
+  app is fed by GraphQL at `api.jobwork.com/graphql`, so the connector reads the
+  response the app itself receives. Values are option keys
+  (`profileEyeColorBrown`), not labels.
+- **IM OFF** is an ordinary multi-page form — but every control is addressed by
+  `id`, because the inputs carry no `name` at all.
+
+### Traps these platforms actually sprung
+
+Each of these cost a debugging round and is now covered by a check:
+
+- **A cookie banner in a shadow root.** JobWork's login sat behind Usercentrics.
+  The fields underneath were fillable, the click on "Weiter" went into the
+  overlay, and the failure read "could not be reached". Consent banners are now
+  declined on every navigation — declined, never accepted.
+- **A submit selector that matched 36 elements.** filmmakers.eu has one submit
+  form per interface language in its header. `page.click` took the first:
+  "English". Submits are scoped to the form owning the field just filled.
+- **An icon button mistaken for the submit.** JobWork's login form holds a
+  hidden `button[type=submit]`, a typeless icon button that reveals the
+  password, and the "Weiter" button. "First visible" clicked the eye — no
+  login, and the password rendered in clear into the forensics screenshot.
+  Buttons with no label are never clicked.
+- **`url.includes('/login')` as a success check.** Devise re-renders
+  `/users/sign_in` on a rejected password, so every failed login was reported
+  as a success. Compare against the URL actually navigated to.
+- **A single-page app that never fires a navigation.** JobWork logs in fine and
+  `waitForNavigation` times out; when it does resolve, the app may still be
+  routing and the URL has not changed yet. `waitForLoginOutcome` waits for the
+  URL to leave the login page.
+- **A Radix radio group.** Casting Network's gender field is a
+  `button[role=radio]` with an invisible input beside it. Setting `checked` on
+  the input changed the DOM and nothing else. Radios are chosen via ARIA and
+  **the write is verified afterwards**.
+- **`page.select` does not throw** on a value the select does not offer. It
+  selects nothing and returns an empty array, which used to be reported as a
+  successful write.
+
+### Import, and what it must never do
+
+`GET /api/platforms/:id/profile` reads and returns; it writes nothing.
+`POST /api/platforms/:id/profile/apply` writes the fields the user ticked,
+taking the values from the import's SyncLog rather than the request body.
+
+Everything imported passes `profileNormalizer.js`, which turns a platform's
+words into this app's vocabulary — and **asks rather than guesses**. A value it
+cannot map (an eye colour nobody has seen, an unparseable date) comes back as a
+question with the allowed options; the import dialog renders those as
+dropdowns. `applyResolutions` accepts only an offered value or `__keep__`.
+
+Media is normalised the same way: duplicates dropped, categories mapped into
+the schema's enums, exactly one primary picture, an avatar that is not a URL
+discarded. Only references are stored — a picture stays on the platform hosting
+it.
+
+### Uploads into the platforms
+
+Pictures are the user's own, given to these platforms by them; keeping the
+platforms in step is what this app is for. `pushMedia` fetches a picture
+**through the logged-in page** (a server-side fetch gets the sign-in form
+instead), uploads it, and deletes the temporary file.
+
+**Only IM OFF has usable upload slots so far** — seven named `input[type=file]`.
+The others hide their uploader behind a click and were not reachable in the
+time available:
+
+- Filmmakers: a "Medien verwalten" button, target unseen
+- JobWork: a "Medien Manager" at `/media`, an Uploadcare widget, no plain input
+- Casting Network (DE): a "Medien" step of the profile wizard
+
+**Nothing has ever been uploaded to any platform.** Every push was a dry run.
+
+### Dry runs
+
+`pushProfile(profile, { dryRun: true })` and `pushMedia(profile, { dryRun: true })`
+fill in or plan, photograph the page into `forensics/`, and submit nothing. On
+these platforms "save" can mean publishing a public profile, so this is the only
+honest way to check a push. It has already earned itself twice: it caught the
+Radix radio that was not really set, and a format check that was asking an
+upload control what it accepts before the page holding that control was open.
+
+Filmmakers serves AVIF, IM OFF accepts image/jpeg only — a picture sync between
+those two needs conversion, which means an image library and re-encoding
+someone's photographs. **That is a decision, not a workaround to slip in.**
+
+### Checks
+
+    npm run check:connectors     selectors, text selectors, submit, normaliser
+    npm run check:login-pages    every login page, live, no credentials
+    npm run check:encryption-key inside the container
+    node check-imports.mjs       every backend module loads
+
+`check-selectors.mjs` reads selectors out of the source — including descriptor
+keys (`selector:`, `user:`, `password:`) — and hands them to a real Chromium. It
+strips comments first: an apostrophe in prose used to look like a string start,
+and the scanner then silently skipped every selector below it.
+
+`check-login-pages.mjs` is the one that would have caught four wrong hosts at
+once. It needs internet and is deliberately not part of `check:connectors`.
+
+### Reconnaissance, before writing anything
+
+    node scripts/recon-login.mjs <url>        find and read a login form
+    node scripts/recon-profile.mjs <key>      log in, follow the profile links
+
+`recon-profile` uses the credentials already stored — it never asks for a
+password, and it saves pages to a temp directory outside the repository,
+because they are the account holder's personal data.
+
+**Ask for a platform's URL rather than probing paths.** `/login` on Filmmakers
+is a 404; `wanted.de` does not resolve; `jobwork.de` has no working certificate
+and only redirects to `.com`; `home.castingnetworks.com` is a marketing site.
+All four were guesses that survived for months.
 
 ## Security
 
@@ -200,32 +322,45 @@ project owner accepts that before expanding it.
 
 ## State
 
-`master` carries everything: the connector abstraction, credential encryption,
-failure forensics, the selector fixes and the manifest-driven UI. PRs #16–#22
-are merged.
+`master` carries all of it: the connector abstraction, credential encryption,
+forensics, the descriptor refactor, thirteen platforms, the importers for
+Filmmakers, JobWork, IM OFF and Casting Network (DE), media import with
+normalisation, and the dry runs.
 
-**The flatten-onto-master commit (`493b5fc`) dropped 12 of the 47 files in its
-own diff, and the merge after it (`ec4cbe3`) resolved two more files to the
-wrong side.** The backend did not start for either reason. What was repaired:
+**Three merges into `master` have silently resolved to the wrong side.** The
+flatten commit (`493b5fc`) dropped 12 of its own 47 files; the merge after it
+(`ec4cbe3`) resolved two files to the wrong side; and PR #28 spliced *both*
+versions of four connector files into each other, leaving 25 of 60 modules with
+syntax errors. Every time, `git status` was clean and the backend could not
+start.
 
-| Broken | Consequence |
-|---|---|
-| `platformController.js` never rewritten | imported the deleted `SyncService.js` → `ERR_MODULE_NOT_FOUND` at boot |
-| `platformRoutes.js` was rewritten | imported `getPlatformCatalog`, which that controller did not export |
-| `Platform.js` never got the #18 setters | credentials stored in plaintext; `toJSON` still sent the password to the browser — while `index.js` refused to start without `CREDENTIAL_ENCRYPTION_KEY` |
-| `docker-compose.coolify.yml` skipped | no `CREDENTIAL_ENCRYPTION_KEY` passed to the backend → `process.exit(1)` in production |
-| `BasePlatformAdapter.js` resurrected by the merge | dead code, nothing imported it |
-| `agentController.js` health endpoint | hard-coded platform list reporting `status: 'healthy'`, `mode: 'production'` and six features it never checked |
+**After every merge into `master`, run this. It takes two seconds and would
+have caught all three:**
 
-`/api/agent/health` now derives from `listManifests()` and reports whether the
-Chromium binary at `PUPPETEER_EXECUTABLE_PATH` exists. It still cannot tell you
-a sync would succeed.
+    cd backend && node check-imports.mjs
 
-Verified after the repair: all 55 backend modules import from a real `.mjs`
-entry point; the Platform model encrypts at rest and `toJSON` emits
-`hasPassword`/`hasApiKey` instead of values; `npm run check:connectors` passes;
-the frontend builds. **Not verified: anything involving a live platform, and
-anything on the server.**
+### What is not done
+
+- **Uploads into Filmmakers, JobWork and Casting Network (DE).** Their
+  uploaders sit behind a click that was not followed.
+- **Nothing has been pushed to any platform.** Every push is dry-run only.
+- **AVIF → JPEG conversion** for picture syncs between platforms that disagree
+  on format.
+- **Writing back the profile** to JobWork and IM OFF: each page saves through
+  its own button and nobody has watched what that does.
+- **Casting Network (DE)'s actor profile does not exist yet** for this account;
+  the page says "Schauspielprofil anlegen". The import reads the account page
+  instead, and the descriptor for the profile page is deliberately absent until
+  there is a filled one to check it against.
+- **schauspielervideos (id 3)** is still an API adapter for an API nobody has
+  access to. e-TALENTA was converted to its web login; this one was not.
+
+### Credentials
+
+Platform passwords are entered **by the user, in the app**. Never type one into
+a form, never accept one pasted into the chat, never write one into a file.
+Scripts read them through the Mongoose getters, which decrypt them, so the
+plaintext is never handled directly.
 
 ## Conventions
 
@@ -234,3 +369,14 @@ anything on the server.**
 - Fix causes, not symptoms: every deployment failure above was one layer beneath
   where it appeared.
 - Never reintroduce a code path that reports success without doing the work.
+- **Look at the page before writing a selector.** Every wrong URL in this
+  project's history was a plausible guess: /login, wanted.de, jobwork.de,
+  home.castingnetworks.com. Ask for the address rather than probing paths.
+- **Disbelieve a number that looks small.** "One picture" from a page showing
+  seven, "no video" from a profile holding one - both were real bugs found by
+  not accepting the first plausible result.
+- **A dry run before anything is published.** On these platforms "save" can
+  create a public profile.
+- **Declare only capabilities that have been established.** A connector whose
+  profile pages nobody has seen gets `capabilities: ['verify']`; anything more
+  puts a button in the UI that can only fail.
