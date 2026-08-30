@@ -17,7 +17,8 @@
     "encrypt-credentials": "node src/utils/encryptExistingCredentials.js",
     "check:selectors": "node scripts/check-selectors.mjs",
     "check:text-selectors": "node scripts/check-text-selectors.mjs",
-    "check:connectors": "npm run check:selectors && npm run check:text-selectors"
+    "check:submit": "node scripts/check-submit.mjs",
+    "check:connectors": "npm run check:selectors && npm run check:text-selectors && npm run check:submit"
   },
   "keywords": [
     "platform",

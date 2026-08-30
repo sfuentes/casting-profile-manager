@@ -42,12 +42,13 @@ export class JobWorkConnector extends PlatformConnector {
   constructor(platform, credentials) {
     super(platform, credentials);
 
-    this.baseUrl = 'https://www.jobwork.de';
-    // NOT verified against the live site: unlike Filmmakers (whose /login turned
-    // out to be a 404), nobody has loaded this path from a machine that can
-    // reach the platform. Treat a PlatformChangedError from the login step as a
-    // sign that this is wrong before assuming the selectors are.
-    this.loginPath = '/login';
+    // Verified against the live site on 2026-08-30. The platform runs on
+    // jobwork.COM; jobwork.de only redirects, over plain HTTP, and presents no
+    // usable certificate - so the previous https://www.jobwork.de failed at the
+    // TLS handshake (ERR_SSL_UNRECOGNIZED_NAME_ALERT) before any page loaded.
+    this.baseUrl = 'https://www.jobwork.com';
+    // /login redirects here; this is where the form actually lives.
+    this.loginPath = '/de/login';
     this.browser = null;
     this.page = null;
     this.isAuthenticated = false;
@@ -106,10 +107,15 @@ export class JobWorkConnector extends PlatformConnector {
 
       this.log('info', 'Loaded login page, entering credentials');
 
-      // Fill in login form
-      await this.page.waitForSelector('input[type="email"], input[name="email"], input[name="username"]', { timeout: 10000 });
+      // Fill in login form.
+      //
+      // The account field is `identifier` and carries type="text", not "email":
+      // the previous selectors (email/username) matched nothing at all, so the
+      // login could only ever fail here. The older names stay as fallbacks in
+      // case the form is rolled back.
+      await this.page.waitForSelector('input[name="identifier"], input[type="email"], input[name="email"], input[name="username"]', { timeout: 10000 });
 
-      const emailInput = await this.page.$('input[type="email"], input[name="email"], input[name="username"]');
+      const emailInput = await this.page.$('input[name="identifier"], input[type="email"], input[name="email"], input[name="username"]');
       await emailInput.type(this.credentials.email);
 
       const passwordInput = await this.page.$('input[type="password"], input[name="password"]');
@@ -118,12 +124,25 @@ export class JobWorkConnector extends PlatformConnector {
       // Submit the login form itself, not the first submit control on the page:
       // a page-wide selector can hit an unrelated form in the header (on
       // Filmmakers it matched 36 language-switcher buttons).
-      const submitted = await this.submitFormOwning('input[type="password"], input[name="password"]');
+      let submitted = await this.submitFormOwning('input[type="password"], input[name="password"]');
+
       if (!submitted) {
-        throw new PlatformChangedError(
-          'The login form has no submit control',
-          { platform: 'jobwork' }
-        );
+        // The form's only typed submit control is hidden and the visible one is
+        // a plain "Weiter" button, so fall back to matching it by its label.
+        const button = await findByCssOrText(this.page, {
+          css: ['button[type="submit"]', 'input[type="submit"]'],
+          texts: ['weiter', 'anmelden', 'einloggen', 'login', 'sign in'],
+          timeout: 5000
+        });
+        if (!button) {
+          throw new PlatformChangedError(
+            'The login form has no submit control',
+            { platform: 'jobwork' }
+          );
+        }
+        await button.click();
+        await button.dispose().catch(() => {});
+        submitted = true;
       }
       await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
 
