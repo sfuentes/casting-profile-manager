@@ -21,6 +21,61 @@ const KEY_BYTES = 32;
 
 let cachedKey = null;
 
+const HEX_CHARS = KEY_BYTES * 2;
+
+/**
+ * Why the configured key cannot be used, or null when it is fine.
+ *
+ * Deliberately specific, and deliberately free of the value itself. On a
+ * container that refuses to start, this one line is the entire evidence a
+ * deploy leaves behind - and "missing or invalid" covers two problems with
+ * completely different fixes: the variable never reaching the container, or
+ * reaching it in the wrong format.
+ *
+ * The format traps are worth naming, because Buffer.from(x, 'hex') hides them:
+ * it stops at the first character that is not hex and returns a short buffer,
+ * so a base64 key, a value someone wrapped in quotes, and a truncated key all
+ * arrive as the same unhelpful byte count.
+ */
+export const describeKeyProblem = () => {
+  const raw = process.env.CREDENTIAL_ENCRYPTION_KEY;
+
+  if (raw === undefined) {
+    return 'CREDENTIAL_ENCRYPTION_KEY is not set: the variable never reached this '
+      + 'container. Check that it exists in the deployment environment and is '
+      + 'available at runtime, not only at build time.';
+  }
+
+  const value = raw.trim();
+
+  if (value === '') {
+    return 'CREDENTIAL_ENCRYPTION_KEY is set but empty.';
+  }
+
+  if (/^(["']).*\1$/.test(value)) {
+    return 'CREDENTIAL_ENCRYPTION_KEY is wrapped in quotes. Store the bare value, '
+      + 'without surrounding quotation marks.';
+  }
+
+  const firstNonHex = value.search(/[^0-9a-fA-F]/);
+  if (firstNonHex !== -1) {
+    const looksBase64 = /[+/=]/.test(value);
+    return `CREDENTIAL_ENCRYPTION_KEY contains a non-hex character at position ${firstNonHex + 1} `
+      + `of ${value.length}.`
+      + (looksBase64
+        ? ' The value looks base64-encoded; this key must be hex. Generate it with'
+          + ' openssl rand -hex 32, not openssl rand -base64 32.'
+        : ' Expected only the characters 0-9 and a-f.');
+  }
+
+  if (value.length !== HEX_CHARS) {
+    return `CREDENTIAL_ENCRYPTION_KEY is ${value.length} hex characters; `
+      + `a ${KEY_BYTES}-byte key is exactly ${HEX_CHARS}.`;
+  }
+
+  return null;
+};
+
 /**
  * Resolve the encryption key. Cached because this runs on every field access.
  * @throws {Error} when the key is missing or malformed
@@ -28,49 +83,14 @@ let cachedKey = null;
 const getKey = () => {
   if (cachedKey) return cachedKey;
 
-  const raw = process.env.CREDENTIAL_ENCRYPTION_KEY;
-  if (!raw) {
+  const problem = describeKeyProblem();
+  if (problem) {
     throw new Error(
-      'CREDENTIAL_ENCRYPTION_KEY is not set. Platform credentials cannot be ' +
-      'stored or read without it. Generate one with: openssl rand -hex 32'
+      `${problem} Platform credentials cannot be stored or read without a valid key.`
     );
   }
 
-  const trimmed = raw.trim();
-
-  // Buffer.from(x, 'hex') is lenient: it decodes up to the first character that
-  // is not a hex digit and returns the prefix, with no error. A quoted value, a
-  // base64 key, or a single typo therefore all arrive here as "wrong length"
-  // and used to surface as the same unhelpful "missing or invalid". Find the
-  // offending character first so the message can name the actual problem.
-  const badIndex = trimmed.search(/[^0-9a-fA-F]/);
-  if (badIndex !== -1) {
-    throw new Error(
-      `CREDENTIAL_ENCRYPTION_KEY contains a non-hexadecimal character at ` +
-      `position ${badIndex + 1} of ${trimmed.length}. Expected ${KEY_BYTES * 2} ` +
-      'hex characters (0-9, a-f) and nothing else - no quotes, no whitespace, ' +
-      'not base64. Generate one with: openssl rand -hex 32'
-    );
-  }
-
-  if (trimmed.length !== KEY_BYTES * 2) {
-    throw new Error(
-      `CREDENTIAL_ENCRYPTION_KEY is ${trimmed.length} hex characters; ` +
-      `expected exactly ${KEY_BYTES * 2} (${KEY_BYTES} bytes). ` +
-      'Generate one with: openssl rand -hex 32'
-    );
-  }
-
-  const key = Buffer.from(trimmed, 'hex');
-  if (key.length !== KEY_BYTES) {
-    throw new Error(
-      `CREDENTIAL_ENCRYPTION_KEY must be ${KEY_BYTES} bytes as hex ` +
-      `(${KEY_BYTES * 2} characters); got ${key.length} bytes. ` +
-      'Generate one with: openssl rand -hex 32'
-    );
-  }
-
-  cachedKey = key;
+  cachedKey = Buffer.from(process.env.CREDENTIAL_ENCRYPTION_KEY.trim(), 'hex');
   return cachedKey;
 };
 
@@ -80,21 +100,12 @@ export const resetKeyCache = () => {
 };
 
 /** True once a usable key is configured. Never throws. */
-export const isEncryptionConfigured = () => getKeyProblem() === null;
-
-/**
- * Why the key is unusable, or null when it is fine. Never throws.
- *
- * The value itself is never included: the message reports lengths and a
- * position so a misconfiguration is diagnosable from the container log without
- * printing the key into it.
- */
-export const getKeyProblem = () => {
+export const isEncryptionConfigured = () => {
   try {
     getKey();
-    return null;
-  } catch (error) {
-    return error.message;
+    return true;
+  } catch {
+    return false;
   }
 };
 

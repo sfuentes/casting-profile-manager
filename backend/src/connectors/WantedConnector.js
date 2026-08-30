@@ -1,6 +1,4 @@
-import puppeteer from 'puppeteer';
-import { RateLimiterMemory } from 'rate-limiter-flexible';
-import { PlatformConnector } from './PlatformConnector.js';
+import { BrowserConnector } from './BrowserConnector.js';
 import { findByCssOrText } from './selectors.js';
 import { PlatformChangedError } from './errors.js';
 
@@ -11,7 +9,7 @@ import { PlatformChangedError } from './errors.js';
  * Features: Profile, Jobs, Availability
  * Regions: DE, AT, CH
  */
-export class WantedConnector extends PlatformConnector {
+export class WantedConnector extends BrowserConnector {
   static manifest = Object.freeze({
     id: 9,
     key: 'wanted',
@@ -22,114 +20,33 @@ export class WantedConnector extends PlatformConnector {
     capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia']
   });
 
-  // ---- unified interface ----
-  // The app calls these names on every connector; the platform-specific work
-  // stays in the methods below, which keep their original names.
-
-  async verify() {
-    await this.authenticate();
-    return { ok: true, message: 'Login succeeded.' };
-  }
-
-  async pushProfile(profile) {
-    return this.updateProfile(profile);
-  }
-
-  async close() {
-    if (typeof this.cleanup === 'function') await this.cleanup();
-  }
-
-  constructor(platform, credentials) {
-    super(platform, credentials);
-
-    this.baseUrl = 'https://www.wanted.de';
-    this.browser = null;
-    this.page = null;
-    this.isAuthenticated = false;
-  }
-
   /**
-   * Initialize rate limiter with conservative limits
+   * NOT verified, and the host is doubtful: www.wanted.de does not resolve
+   * from here (ERR_NAME_NOT_RESOLVED), so no page of this platform has ever
+   * been loaded. Everything below is what the connector was originally written
+   * with. The domain needs confirming before any of it can be trusted.
    */
-  initRateLimiter() {
-    return new RateLimiterMemory({
-      points: 10,
-      duration: 60,
-    });
-  }
-
-  /**
-   * Authenticate with Wanted platform
-   * @returns {Promise<boolean>}
-   */
-  async authenticate() {
-    try {
-      this.log('info', 'Authenticating with Wanted via web automation');
-
-      if (!this.credentials || !this.credentials.email || !this.credentials.password) {
-        throw new Error('Missing Wanted credentials (email/password required)');
-      }
-
-      // Launch browser
-      this.browser = await puppeteer.launch({
-        ...(process.env.PUPPETEER_EXECUTABLE_PATH && { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }),
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--disable-gpu'
-        ]
-      });
-
-      this.page = await this.browser.newPage();
-
-      // Set user agent
-      await this.page.setUserAgent(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      );
-
-      // Navigate to login page
-      await this.page.goto(`${this.baseUrl}/login`, {
-        waitUntil: 'networkidle2',
-        timeout: 30000
-      });
-
-      this.log('info', 'Loaded login page, entering credentials');
-
-      // Fill in login form (German platform)
-      await this.page.waitForSelector('input[type="email"], input[name="email"], input[name="benutzername"]', { timeout: 10000 });
-      await this.page.type('input[type="email"], input[name="email"], input[name="benutzername"]', this.credentials.email);
-      await this.page.type('input[type="password"], input[name="password"], input[name="passwort"]', this.credentials.password);
-
-      // Submit form
-      await Promise.all([
-        this.page.click('button[type="submit"], input[type="submit"], .login-button'),
-        this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
-      ]);
-
-      // Check if login was successful
-      const currentUrl = this.page.url();
-      if (currentUrl.includes('/login') || currentUrl.includes('/anmelden')) {
-        throw new Error('Login failed - still on login page');
-      }
-
-      this.isAuthenticated = true;
-      this.log('info', 'Successfully authenticated with Wanted');
-
-      return true;
-
-    } catch (error) {
-      this.log('error', 'Wanted authentication failed', {
-        error: error.message
-      });
-
-      await this.cleanup();
-      throw new Error(`Wanted authentication failed: ${error.message}`);
-    }
-  }
-
+  static site = Object.freeze({
+    baseUrl: 'https://www.wanted.de',
+    loginPath: '/login',
+    login: {
+      user: 'input[type="email"], input[name="email"], input[name="benutzername"]',
+      password: 'input[type="password"], input[name="password"], input[name="passwort"]',
+      submitTexts: ['anmelden', 'einloggen', 'login'],
+      failureUrls: ['/anmelden']
+    },
+    paths: {
+      profileEdit: '/profil/bearbeiten',
+      availability: '/profil/verfuegbarkeit',
+      media: '/profil/fotos'
+    },
+    profileFields: [
+      { field: 'biography', selector: 'textarea[name="biography"], textarea[name="biografie"], textarea[name="ueber_mich"]', kind: 'text' },
+      { field: 'height', selector: 'input[name="height"], input[name="groesse"], input[name="koerpergroesse"]', kind: 'text' },
+      { field: 'eyeColor', selector: 'select[name="eye_color"], select[name="augenfarbe"]', kind: 'select' },
+      { field: 'hairColor', selector: 'select[name="hair_color"], select[name="haarfarbe"]', kind: 'select' }
+    ]
+  });
   /**
    * Push availability data to Wanted
    * @param {Array} availability
@@ -151,6 +68,7 @@ export class WantedConnector extends PlatformConnector {
         });
 
         let successCount = 0;
+        let firstItemError = null;
 
         // Process each availability item
         for (const item of availability) {
@@ -196,6 +114,7 @@ export class WantedConnector extends PlatformConnector {
             successCount++;
 
           } catch (itemError) {
+            firstItemError = firstItemError || itemError;
             this.log('warn', 'Failed to add availability item', {
               item,
               error: itemError.message
@@ -203,13 +122,23 @@ export class WantedConnector extends PlatformConnector {
           }
         }
 
-        this.log('info', `Successfully pushed ${successCount}/${availability.length} availability items to Wanted`);
+        // Every item failed: keeping going is right for one bad date, wrong
+        // when nothing worked - the caller would log a successful sync of zero.
+        if (successCount === 0 && availability.length > 0) {
+          throw firstItemError || new PlatformChangedError(
+            'No availability item could be added on Wanted',
+            { platform: 'wanted' }
+          );
+        }
+
+        this.log('info', `Pushed ${successCount}/${availability.length} availability items to Wanted`);
 
         return {
           success: true,
           count: successCount,
           total: availability.length,
-          externalIds: []
+          externalIds: [],
+          details: { added: successCount, total: availability.length }
         };
       });
     });
@@ -331,160 +260,6 @@ export class WantedConnector extends PlatformConnector {
     });
   }
 
-  /**
-   * Update profile information on Wanted
-   * @param {Object} profile
-   * @returns {Promise<Object>}
-   */
-  async updateProfile(profile) {
-    return this.withRateLimit(async () => {
-      return this.withRetry(async () => {
-        this.log('info', 'Updating profile on Wanted');
-
-        if (!this.isAuthenticated || !this.page) {
-          throw new Error('Not authenticated. Call authenticate() first.');
-        }
-
-        // Navigate to profile edit (German: Bearbeiten)
-        await this.page.goto(`${this.baseUrl}/profil/bearbeiten`, {
-          waitUntil: 'networkidle2',
-          timeout: 30000
-        });
-
-        const updatedFields = [];
-
-        // Biography (Biografie/Über mich)
-        if (profile.biography) {
-          try {
-            const bioTextarea = await this.page.$('textarea[name="biography"], textarea[name="biografie"], textarea[name="ueber_mich"]');
-            if (bioTextarea) {
-              await this.page.evaluate(el => { el.value = ''; }, bioTextarea);
-              await bioTextarea.type(profile.biography);
-              updatedFields.push('biography');
-            }
-          } catch (e) {
-            this.log('warn', 'Could not update biography');
-          }
-        }
-
-        // Physical attributes (German labels)
-        if (profile.height) {
-          try {
-            const heightInput = await this.page.$('input[name="height"], input[name="groesse"], input[name="koerpergroesse"]');
-            if (heightInput) {
-              await this.page.evaluate(el => { el.value = ''; }, heightInput);
-              await heightInput.type(profile.height);
-              updatedFields.push('height');
-            }
-          } catch (e) {
-            // Field might not exist
-          }
-        }
-
-        if (profile.eyeColor) {
-          try {
-            const eyeColorSelect = await this.page.$('select[name="eye_color"], select[name="augenfarbe"]');
-            if (eyeColorSelect) {
-              await this.page.select('select[name="eye_color"], select[name="augenfarbe"]', profile.eyeColor.toLowerCase());
-              updatedFields.push('eyeColor');
-            }
-          } catch (e) {
-            // Field might not exist
-          }
-        }
-
-        if (profile.hairColor) {
-          try {
-            const hairColorSelect = await this.page.$('select[name="hair_color"], select[name="haarfarbe"]');
-            if (hairColorSelect) {
-              await this.page.select('select[name="hair_color"], select[name="haarfarbe"]', profile.hairColor.toLowerCase());
-              updatedFields.push('hairColor');
-            }
-          } catch (e) {
-            // Field might not exist
-          }
-        }
-
-        // Submit (German: Speichern/Aktualisieren)
-        const submitButton = await findByCssOrText(this.page, {
-          css: ['button[type="submit"]', 'input[type="submit"]'],
-          texts: ['speichern', 'aktualisieren', 'übernehmen', 'save'],
-          timeout: 5000
-        });
-
-        if (!submitButton) {
-          // Previously swallowed as "the form might auto-save", which reported a
-          // successful profile push whether or not anything had been submitted.
-          throw new PlatformChangedError('Profile form has no submit control', { platform: 'wanted' });
-        }
-
-        await submitButton.click();
-        await submitButton.dispose().catch(() => {});
-        // Some forms save without navigating; a timeout here is not a failure.
-        await this.page
-          .waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 })
-          .catch(() => {});
-
-        this.log('info', 'Successfully updated profile on Wanted', {
-          updatedFields
-        });
-
-        return {
-          success: true,
-          updatedFields
-        };
-      });
-    });
-  }
-
-  /**
-   * Format date for input field (DD.MM.YYYY for German platforms)
-   * @param {Date|string} date
-   * @returns {string}
-   */
-  formatDateForInput(date) {
-    if (!date) return '';
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return '';
-
-    // German date format: DD.MM.YYYY
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-
-    return `${day}.${month}.${year}`;
-  }
-
-  /**
-   * Clean up browser resources
-   */
-  async cleanup() {
-    try {
-      if (this.page) {
-        await this.page.close();
-        this.page = null;
-      }
-      if (this.browser) {
-        await this.browser.close();
-        this.browser = null;
-      }
-      this.isAuthenticated = false;
-    } catch (error) {
-      this.log('error', 'Error during cleanup', { error: error.message });
-    }
-  }
-
-  /**
-   * Override to ensure cleanup on errors
-   */
-  async withRetry(fn, maxRetries = 3) {
-    try {
-      return await super.withRetry(fn, maxRetries);
-    } catch (error) {
-      await this.cleanup();
-      throw error;
-    }
-  }
 }
 
 export default WantedConnector;

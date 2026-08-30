@@ -26,6 +26,16 @@ import {
 import {useAppContext} from '../context/AppContext';
 import {Button, Modal, Input, Card, Badge} from './ui';
 
+/**
+ * A date for <input type="date">, which needs exactly YYYY-MM-DD and renders
+ * nothing at all for the full ISO timestamp Mongo returns.
+ */
+const toDateInputValue = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+};
+
 const ProfileView = () => {
     const {
         profile,
@@ -153,8 +163,18 @@ const ProfileView = () => {
         setFormData(prev => ({...prev, [field]: value}));
     };
 
+    /**
+     * Save one field. A dotted path like "contact.email" is sent as a nested
+     * object, never as a dotted key: express-mongo-sanitize strips any key
+     * containing a dot, so `{'contact.email': x}` would be silently dropped on
+     * the way in and the field would appear not to save at all.
+     */
     const handleProfileUpdate = async (field, value) => {
-        await updateProfile({[field]: value});
+        const [head, ...rest] = field.split('.');
+        const payload = rest.length === 0
+            ? {[head]: value}
+            : {[head]: rest.reduceRight((acc, key) => ({[key]: acc}), value)};
+        await updateProfile(payload);
     };
 
     const handleSyncProfile = async () => {
@@ -233,15 +253,15 @@ const ProfileView = () => {
                     </div>
                     <div className="flex-1">
                         <h2 className="text-2xl font-bold text-gray-900">{profile.name}</h2>
-                        <p className="text-gray-600 mt-1">{profile.age} • {profile.location}</p>
+                        <p className="text-gray-600 mt-1">{profile.actingAge} • {profile.location}</p>
                         <div className="flex items-center space-x-4 mt-3 text-sm text-gray-500">
                             <div className="flex items-center space-x-1">
                                 <Mail size={16}/>
-                                <span>{profile.email}</span>
+                                <span>{profile.contact?.email}</span>
                             </div>
                             <div className="flex items-center space-x-1">
                                 <Phone size={16}/>
-                                <span>{profile.phone}</span>
+                                <span>{profile.contact?.phone}</span>
                             </div>
                         </div>
                         {profile.biography && (
@@ -287,29 +307,29 @@ const ProfileView = () => {
                                 <Input
                                     label="E-Mail"
                                     type="email"
-                                    value={profile.email}
-                                    onChange={(e) => handleProfileUpdate('email', e.target.value)}
+                                    value={profile.contact?.email || ''}
+                                    onChange={(e) => handleProfileUpdate('contact.email', e.target.value)}
                                 />
                                 <Input
                                     label="Telefon"
-                                    value={profile.phone}
-                                    onChange={(e) => handleProfileUpdate('phone', e.target.value)}
+                                    value={profile.contact?.phone || ''}
+                                    onChange={(e) => handleProfileUpdate('contact.phone', e.target.value)}
                                 />
                                 <Input
                                     label="Wohnort"
-                                    value={profile.residence || ''}
-                                    onChange={(e) => handleProfileUpdate('residence', e.target.value)}
+                                    value={profile.location || ''}
+                                    onChange={(e) => handleProfileUpdate('location', e.target.value)}
                                 />
                                 <Input
                                     label="Staatsangehörigkeit"
-                                    value={profile.nationality || ''}
-                                    onChange={(e) => handleProfileUpdate('nationality', e.target.value)}
+                                    value={profile.citizenship || ''}
+                                    onChange={(e) => handleProfileUpdate('citizenship', e.target.value)}
                                 />
                                 <Input
                                     label="Geburtsdatum"
                                     type="date"
-                                    value={profile.birthDate || ''}
-                                    onChange={(e) => handleProfileUpdate('birthDate', e.target.value)}
+                                    value={toDateInputValue(profile.dateOfBirth)}
+                                    onChange={(e) => handleProfileUpdate('dateOfBirth', e.target.value)}
                                 />
                             </div>
                         </Card>
@@ -341,8 +361,8 @@ const ProfileView = () => {
                                 />
                                 <Input
                                     label="Spielalter"
-                                    value={profile.age || ''}
-                                    onChange={(e) => handleProfileUpdate('age', e.target.value)}
+                                    value={profile.actingAge || ''}
+                                    onChange={(e) => handleProfileUpdate('actingAge', e.target.value)}
                                     placeholder="z.B. 25-35"
                                 />
                             </div>
@@ -353,24 +373,24 @@ const ProfileView = () => {
                             <div className="space-y-4">
                                 <Input
                                     label="Agentur Name"
-                                    value={profile.agentName || ''}
-                                    onChange={(e) => handleProfileUpdate('agentName', e.target.value)}
+                                    value={profile.agent?.name || ''}
+                                    onChange={(e) => handleProfileUpdate('agent.name', e.target.value)}
                                 />
                                 <Input
                                     label="Agentur E-Mail"
                                     type="email"
-                                    value={profile.agentEmail || ''}
-                                    onChange={(e) => handleProfileUpdate('agentEmail', e.target.value)}
+                                    value={profile.agent?.email || ''}
+                                    onChange={(e) => handleProfileUpdate('agent.email', e.target.value)}
                                 />
                                 <Input
                                     label="Agentur Telefon"
-                                    value={profile.agentPhone || ''}
-                                    onChange={(e) => handleProfileUpdate('agentPhone', e.target.value)}
+                                    value={profile.agent?.phone || ''}
+                                    onChange={(e) => handleProfileUpdate('agent.phone', e.target.value)}
                                 />
                                 <Input
                                     label="Website"
-                                    value={profile.website || ''}
-                                    onChange={(e) => handleProfileUpdate('website', e.target.value)}
+                                    value={profile.socialMedia?.website || ''}
+                                    onChange={(e) => handleProfileUpdate('socialMedia.website', e.target.value)}
                                 />
                             </div>
                         </Card>
@@ -619,20 +639,16 @@ const ProfileView = () => {
                         <Card>
                             <h3 className="text-lg font-semibold mb-4">Fähigkeiten</h3>
                             <div className="space-y-3">
-                                {profile.skills?.map(skill => (
-                                    <div key={skill.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                                        <div>
-                                            <span className="font-medium text-gray-900">{skill.name}</span>
-                                            <span className="text-sm text-gray-500 ml-2">({skill.years} Jahre)</span>
-                                        </div>
-                                        <Badge color={
-                                            skill.level === 'Profi' ? 'green' :
-                                                skill.level === 'Fortgeschritten' ? 'blue' : 'gray'
-                                        }>
-                                            {skill.level}
-                                        </Badge>
+                                {/* Skills are plain strings in the profile schema. This block
+                                    used to read skill.name / skill.years / skill.level off them,
+                                    so every imported skill rendered as an empty row. */}
+                                {profile.skills?.length ? profile.skills.map((skill, index) => (
+                                    <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                        <span className="font-medium text-gray-900">{skill}</span>
                                     </div>
-                                ))}
+                                )) : (
+                                    <p className="text-sm text-gray-500">Noch keine Fähigkeiten hinterlegt.</p>
+                                )}
                             </div>
                         </Card>
 
@@ -648,9 +664,16 @@ const ProfileView = () => {
                         <Card className="lg:col-span-2">
                             <h3 className="text-lg font-semibold mb-4">Sprachen</h3>
                             <div className="flex flex-wrap gap-2">
-                                {profile.languages?.map((language, index) => (
-                                    <Badge key={index} color="blue">{language}</Badge>
-                                ))}
+                                {/* {language, level} objects. Rendering the object itself
+                                    threw "Objects are not valid as a React child" and took
+                                    the whole tab down with it. */}
+                                {profile.languages?.length ? profile.languages.map((entry, index) => (
+                                    <Badge key={index} color="blue">
+                                        {entry.level ? `${entry.language} (${entry.level})` : entry.language}
+                                    </Badge>
+                                )) : (
+                                    <p className="text-sm text-gray-500">Noch keine Sprachen hinterlegt.</p>
+                                )}
                             </div>
                         </Card>
                     </div>

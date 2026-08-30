@@ -52,8 +52,28 @@ const CALLS = [
   '.type(',
   '.hover(',
   '.focus(',
-  '.tap('
+  '.tap(',
+  // The connectors' own selector-taking helpers. Without these the profile
+  // importer's selectors would sit in a blind spot: they are passed to
+  // readValue/readSelected/readList rather than straight to puppeteer, and an
+  // unchecked selector is exactly the bug this script exists to catch.
+  '.readValue(',
+  '.readSelected(',
+  '.readList(',
+  '.readTagged(',
+  '.submitFormOwning(',
+  '.updateInputField(',
+  '.updateSelectField(',
+  '.clearAndType('
 ];
+
+/**
+ * Descriptor keys whose value is a selector. Connectors declare their
+ * platform-specific selectors in a `site` object rather than passing them
+ * straight to puppeteer, and an unchecked selector is exactly the bug this
+ * script exists to catch.
+ */
+const DESCRIPTOR_KEYS = /(?:^|[\s{,])(?:selector|user|password)\s*:\s*$/;
 
 const QUOTES = new Set(["'", '"', '`']);
 
@@ -76,7 +96,58 @@ const readString = (source, i) => {
   return null; // unterminated
 };
 
-const collect = (source) => {
+/**
+ * Remove comments before scanning.
+ *
+ * Without this, an apostrophe in prose - "the form's submit control" - looks
+ * like the start of a string literal, the scanner runs to the end of the file
+ * without finding its closing quote, and `break`s out. Every selector below
+ * that comment is then silently skipped, and the run still reports success with
+ * a smaller number nobody checks. That is exactly the failure this script
+ * exists to prevent, so it must not have it itself.
+ */
+const stripComments = (source) => {
+  let out = '';
+  let i = 0;
+
+  while (i < source.length) {
+    const two = source.slice(i, i + 2);
+
+    if (two === '//') {
+      const end = source.indexOf('\n', i);
+      i = end === -1 ? source.length : end;
+      continue;
+    }
+
+    if (two === '/*') {
+      const end = source.indexOf('*/', i + 2);
+      i = end === -1 ? source.length : end + 2;
+      out += ' ';
+      continue;
+    }
+
+    if (QUOTES.has(source[i])) {
+      const str = readString(source, i);
+      if (!str) {
+        // A genuinely unterminated literal: keep the rest verbatim rather than
+        // dropping it, so nothing disappears without the run failing loudly.
+        out += source.slice(i);
+        break;
+      }
+      out += source.slice(i, str.end + 1);
+      i = str.end + 1;
+      continue;
+    }
+
+    out += source[i];
+    i += 1;
+  }
+
+  return out;
+};
+
+const collect = (rawSource) => {
+  const source = stripComments(rawSource);
   const found = [];
   let cssArrayDepth = 0; // bracket depth inside a `css:` array, quotes excluded
 
@@ -89,8 +160,12 @@ const collect = (source) => {
 
       const before = source.slice(Math.max(0, i - 20), i).trimEnd();
       const isCallArgument = CALLS.some((call) => before.endsWith(call));
+      // Selectors in a connector's `site` descriptor are values, not call
+      // arguments: `user: 'input[name="identifier"]'`. They are still selectors
+      // and still have to be valid CSS, so they are collected by their key.
+      const isDescriptorValue = DESCRIPTOR_KEYS.test(before);
 
-      if (isCallArgument || cssArrayDepth > 0) found.push(str.value);
+      if (isCallArgument || isDescriptorValue || cssArrayDepth > 0) found.push(str.value);
       i = str.end;
       continue;
     }

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { PlatformConnector } from './PlatformConnector.js';
+import { AuthError, classifyHttpError } from './errors.js';
 
 /**
  * Schauspielervideos Platform Adapter
@@ -66,7 +67,9 @@ export class SchauspielervideosConnector extends PlatformConnector {
 
       // Check if API key exists
       if (!this.credentials || !this.credentials.apiKey) {
-        throw new Error('Missing Schauspielervideos API key');
+        throw new AuthError('Missing Schauspielervideos API key', {
+          platform: 'schauspielervideos'
+        });
       }
 
       this.apiKey = this.credentials.apiKey;
@@ -97,7 +100,7 @@ export class SchauspielervideosConnector extends PlatformConnector {
         error: error.message,
         statusCode: error.response?.status
       });
-      throw new Error(`Schauspielervideos authentication failed: ${error.message}`);
+      throw classifyHttpError(error, { platform: 'schauspielervideos', name: 'Schauspielervideos' });
     }
   }
 

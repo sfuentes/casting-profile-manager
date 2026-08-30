@@ -9,6 +9,8 @@ import {
   syncToPlatform,
   bulkSyncToPlatforms,
   getPlatformCatalog,
+  importPlatformProfile,
+  applyImportedProfile,
 } from '../controllers/platformController.js';
 import { protect } from '../middleware/auth.js';
 
@@ -41,6 +43,13 @@ router.route('/:id/test')
 
 router.route('/:id/sync')
   .post(syncToPlatform);
+
+// Reading the profile back off the platform, and applying what the user picked.
+router.route('/:id/profile')
+  .get(importPlatformProfile);
+
+router.route('/:id/profile/apply')
+  .post(applyImportedProfile);
 
 router.route('/bulk-sync')
   .post(bulkSyncToPlatforms);

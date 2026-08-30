@@ -12,7 +12,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import Platform from '../models/Platform.js';
 import { connectDB } from '../config/database.js';
-import { isEncrypted, isEncryptionConfigured } from './crypto.js';
+import { isEncrypted, describeKeyProblem } from './crypto.js';
 
 dotenv.config();
 
@@ -21,8 +21,12 @@ const SECRET_FIELDS = ['password', 'apiKey', 'token', 'refreshToken'];
 const run = async () => {
   const dryRun = process.argv.includes('--dry-run');
 
-  if (!isEncryptionConfigured()) {
-    console.error('CREDENTIAL_ENCRYPTION_KEY is not set or invalid. Aborting.');
+  // The same specific diagnosis the server prints: this script is usually run
+  // to repair a deployment, and "not set or invalid" is exactly the ambiguity
+  // that sends people looking in the wrong place.
+  const keyProblem = describeKeyProblem();
+  if (keyProblem) {
+    console.error(`${keyProblem} Generate a key with: openssl rand -hex 32`);
     process.exit(1);
   }
 

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { PlatformConnector } from './PlatformConnector.js';
+import { AuthError, classifyHttpError } from './errors.js';
 
 /**
  * e-TALENTA Platform Adapter
@@ -67,7 +68,9 @@ export class ETalentaConnector extends PlatformConnector {
 
       // Check if credentials exist
       if (!this.credentials || !this.credentials.username || !this.credentials.password) {
-        throw new Error('Missing e-TALENTA credentials (username/password required)');
+        throw new AuthError('Missing e-TALENTA credentials (username/password required)', {
+          platform: 'e-talenta'
+        });
       }
 
       // Authenticate with e-TALENTA API
@@ -103,7 +106,7 @@ export class ETalentaConnector extends PlatformConnector {
         error: error.message,
         statusCode: error.response?.status
       });
-      throw new Error(`e-TALENTA authentication failed: ${error.message}`);
+      throw classifyHttpError(error, { platform: 'e-talenta', name: 'e-TALENTA' });
     }
   }
 

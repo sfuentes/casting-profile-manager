@@ -5,6 +5,7 @@ import SyncLog from '../models/SyncLog.js';
 import { logger } from '../utils/logger.js';
 import { getConnector, listManifests } from './registry.js';
 import { AuthError, ConnectorError, NotSupportedError } from './errors.js';
+import { normalizeProfileFields } from './profileNormalizer.js';
 
 /**
  * The app's single entry point to every platform.
@@ -113,6 +114,100 @@ class ConnectorService {
   /** Push media items. */
   syncMedia(userId, platformId, media) {
     return this.#run(userId, platformId, 'pushMedia', 'push_media', media);
+  }
+
+  /**
+   * Read the profile back off a platform.
+   *
+   * Deliberately not routed through #run: that dispatcher counts items and
+   * stamps `lastSync`, both of which describe a push. An import writes nothing
+   * to the platform and must not look like a sync in the history. It is logged
+   * all the same, with the same forensics on failure.
+   *
+   * Nothing is written to the user's profile here either - the caller decides
+   * what to keep. Overwriting a profile from a scraper without the user seeing
+   * it first is not a decision this layer gets to make.
+   */
+  async importProfile(userId, platformId) {
+    const platform = await Platform.findOne({
+      user: userId,
+      platformId: Number(platformId),
+      connected: true
+    });
+
+    if (!platform) {
+      throw new NotSupportedError(`Platform ${platformId} is not connected`, { platform: platformId });
+    }
+
+    const connector = this.instantiate(platform);
+    connector.assertSupports('pullProfile');
+
+    const syncLog = await SyncLog.create({
+      user: userId,
+      platform: Number(platformId),
+      operation: 'pull_profile',
+      status: 'pending',
+      startedAt: new Date(),
+      itemsTotal: 1
+    });
+
+    try {
+      if (connector.supports('verify')) await connector.verify();
+
+      const result = (await connector.pullProfile()) || {};
+
+      // Normalise here, not in the connector: every platform spells its values
+      // differently, and the app has exactly one vocabulary. Values that cannot
+      // be mapped are not guessed - they come back as questions for the user.
+      const { fields, unmapped } = normalizeProfileFields(result.fields || {});
+
+      syncLog.status = 'success';
+      syncLog.completedAt = new Date();
+      syncLog.itemsProcessed = Object.keys(fields).length;
+      // The imported values are kept on the log so that applying them later
+      // does not mean scraping the platform a second time - and so the values
+      // the user confirms are the ones the server read, not whatever a client
+      // sends back.
+      syncLog.metadata = {
+        details: result.details, sources: result.sources, fields, unmapped
+      };
+      await syncLog.save();
+
+      return {
+        success: true,
+        fields,
+        sources: result.sources || {},
+        missing: result.missing || [],
+        unmapped,
+        syncLogId: String(syncLog._id)
+      };
+    } catch (error) {
+      // Same rule as the push path: photograph the page before anything closes
+      // it, or the failure arrives as a message with nothing behind it.
+      const forensics = await connector.captureFailure(error, 'pull_profile', { userId: String(userId) });
+
+      syncLog.status = 'failed';
+      syncLog.completedAt = new Date();
+      syncLog.error = {
+        message: error.message,
+        code: error instanceof ConnectorError ? error.name : error.code,
+        stack: error.stack
+      };
+      syncLog.metadata = { ...(syncLog.metadata || {}), forensics };
+      await syncLog.save();
+
+      if (error instanceof AuthError) {
+        platform.connected = false;
+        await platform.save();
+      }
+
+      logger.error(`[connectors] pull_profile failed for platform ${platformId}`, {
+        error: error.message
+      });
+      throw error;
+    } finally {
+      await this.#close(connector);
+    }
   }
 
   /**
