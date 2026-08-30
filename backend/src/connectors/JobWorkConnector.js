@@ -375,38 +375,6 @@ export class JobWorkConnector extends BrowserConnector {
   }
 
   /**
-   * Verified against the live site on 2026-08-30.
-   *
-   * The platform runs on jobwork.COM. jobwork.de only redirects, over plain
-   * HTTP, and presents no usable certificate, so the previous
-   * https://www.jobwork.de failed at the TLS handshake before any page loaded.
-   * The account field is `identifier` with type="text" - the older email and
-   * username names matched nothing and stay only as fallbacks. The form's own
-   * button[type="submit"] is hidden; the visible control is "Weiter".
-   */
-  static site = Object.freeze({
-    baseUrl: 'https://www.jobwork.com',
-    loginPath: '/de/login',
-    login: {
-      user: 'input[name="identifier"], input[type="email"], input[name="email"], input[name="username"]',
-      password: 'input[type="password"], input[name="password"]',
-      submitTexts: ['weiter', 'anmelden', 'einloggen', 'login', 'sign in']
-    },
-    paths: {
-      // NOT verified: reaching these needs an account, and nobody has logged in.
-      profileEdit: '/profil/bearbeiten',
-      availability: '/profil/verfuegbarkeit',
-      media: '/profil/bilder'
-    },
-    // NOT verified either - see above. Left as they were found.
-    profileFields: [
-      { field: 'biography', selector: 'textarea[name="biography"], textarea[name="biografie"], textarea[name="ueber_mich"]', kind: 'text' },
-      { field: 'height', selector: 'input[name="height"], input[name="groesse"]', kind: 'text' },
-      { field: 'eyeColor', selector: 'select[name="eye_color"], select[name="augenfarbe"]', kind: 'select' },
-      { field: 'hairColor', selector: 'select[name="hair_color"], select[name="haarfarbe"]', kind: 'select' }
-    ]
-  });
-  /**
    * Push availability data to JobWork
    * @param {Array} availability
    * @returns {Promise<Object>}
