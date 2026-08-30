@@ -99,6 +99,7 @@ something else.
 | Public 503 | Frontend health check used `localhost`; nginx binds IPv4 only (its entrypoint skips the IPv6 patch for a custom `default.conf`), so busybox wget hit `::1` and failed. Traefik drops unhealthy containers from the pool. Use `127.0.0.1` in container health checks. |
 | Public 504 | A custom `casting-network` left each container on **two** networks. Traefik picked the one the proxy is not attached to and forwarded into a black hole. **Never declare custom networks in the Coolify compose file.** |
 | `ValidationError: X-Forwarded-For … trust proxy` | Express sits behind Traefik. `trust proxy` is a hop **count** (1), never `true` — `true` trusts the client-supplied leftmost entry and lets anyone spoof an IP past the rate limiter. |
+| `CREDENTIAL_ENCRYPTION_KEY is missing or invalid` while the variable *is* set in Coolify | `Buffer.from(x, 'hex')` is lenient: it decodes up to the first non-hex character and returns the prefix, silently. A quoted value, a base64 key, `-hex 64` instead of `-hex 32`, or one typo all became the same message. The compose `:?` guard already rejects unset **and empty**, so if the app starts and logs this, the value arrived and is simply the wrong shape. The startup error now names the reason; `npm run check:encryption-key` inside the container reports presence, length, the position of the first non-hex character and a SHA-256 fingerprint — never the key. |
 | Backend container logs empty | winston only added a Console transport outside production, so logs went to files inside the container. stdout is the log stream in a container. |
 
 **503 vs 504 matters.** 503 = no server in Traefik's pool (health check).
@@ -111,7 +112,9 @@ Set in the Coolify UI. All are required and fail the deploy if absent:
 `VITE_API_URL`, and `CREDENTIAL_ENCRYPTION_KEY` (`openssl rand -hex 32`, PR #18).
 
 `CREDENTIAL_ENCRYPTION_KEY` is **not recoverable**. Losing or changing it makes
-every stored platform credential undecryptable.
+every stored platform credential undecryptable. It must be exactly 64 hex
+characters — no quotes, no whitespace, not base64. Coolify stores the value
+verbatim, quotes included, so paste the bare output of `openssl rand -hex 32`.
 
 `VITE_API_URL` is compiled into the frontend bundle at build time, so changing
 domains forces a frontend rebuild.
