@@ -11,9 +11,9 @@
  *   node scripts/check-submit.mjs
  */
 import puppeteer from 'puppeteer';
-import { PlatformConnector } from '../src/connectors/PlatformConnector.js';
+import { BrowserConnector } from '../src/connectors/BrowserConnector.js';
 
-class TestConnector extends PlatformConnector {
+class TestConnector extends BrowserConnector {
   static manifest = Object.freeze({
     id: 0,
     key: 'test',
@@ -21,6 +21,14 @@ class TestConnector extends PlatformConnector {
     authType: 'credentials',
     credentialFields: [],
     capabilities: []
+  });
+
+  static site = Object.freeze({
+    baseUrl: 'http://127.0.0.1',
+    loginPath: '/login',
+    login: { user: 'input[name="identifier"]', password: 'input[type="password"]' },
+    paths: {},
+    profileFields: []
   });
 }
 

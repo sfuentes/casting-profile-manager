@@ -1,8 +1,6 @@
-import puppeteer from 'puppeteer';
-import { RateLimiterMemory } from 'rate-limiter-flexible';
-import { PlatformConnector } from './PlatformConnector.js';
-import { clickByCssOrText, findByCssOrText } from './selectors.js';
-import { AuthError, PlatformChangedError } from './errors.js';
+import { BrowserConnector } from './BrowserConnector.js';
+import { clickByCssOrText } from './selectors.js';
+import { PlatformChangedError } from './errors.js';
 
 /**
  * Filmmakers Platform Adapter
@@ -11,7 +9,7 @@ import { AuthError, PlatformChangedError } from './errors.js';
  * Features: Profile, Photos, Networking
  * Regions: EU, Global
  */
-export class FilmmakersConnector extends PlatformConnector {
+export class FilmmakersConnector extends BrowserConnector {
   static manifest = Object.freeze({
     id: 1,
     key: 'filmmakers',
@@ -22,155 +20,54 @@ export class FilmmakersConnector extends PlatformConnector {
     capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia', 'pullProfile']
   });
 
-  // ---- unified interface ----
-  // The app calls these names on every connector; the platform-specific work
-  // stays in the methods below, which keep their original names.
+  /**
+   * Verified against the live site on 2026-08-30.
+   *
+   * `/login` answers 404 and renders the site's not-found page; the real form
+   * is Devise's, with the fields user[email] and user[password] - both carry
+   * type=email / type=password, which is what the selectors below match.
+   */
+  static site = Object.freeze({
+    baseUrl: 'https://www.filmmakers.eu',
+    loginPath: '/users/sign_in',
+    login: {
+      user: 'input[name="email"], input[type="email"]',
+      password: 'input[name="password"], input[type="password"]',
+      submitTexts: ['einloggen', 'anmelden', 'login']
+    },
+    paths: {
+      // The profile form lives under the actor's own slug, so it is resolved
+      // per user in profileEditUrl() instead of being a fixed path here.
+      availability: '/profile/availability',
+      media: '/profile/photos'
+    },
+    /**
+     * Read off the live edit form. The previous set - input[name="height"],
+     * select[name="eye_color"] - exists nowhere on it; every field is
+     * namespaced as actor_profile[...].
+     *
+     * Biography is deliberately absent: actor_profile[about_me] is a hidden
+     * input behind a rich-text editor, and typing into a hidden field throws.
+     * Writing it needs the editor, which nobody has looked at yet.
+     */
+    profileFields: [
+      { field: 'height', selector: 'input[name="actor_profile[height]"]', kind: 'text' },
+      { field: 'eyeColor', selector: 'select[name="actor_profile[eye_color]"]', kind: 'select' },
+      { field: 'hairColor', selector: 'select[name="actor_profile[hair_color]"]', kind: 'select' }
+    ]
+  });
 
-  async verify() {
-    await this.authenticate();
-    return { ok: true, message: 'Login succeeded.' };
+  /**
+   * The edit form sits under the actor's slug (/actors/<slug>/edit), which
+   * differs per user, so it is discovered from the logged-in header rather
+   * than hard-coded.
+   */
+  async profileEditUrl() {
+    return `${this.baseUrl}/actors/${await this.findProfileSlug()}/edit`;
   }
-
-  async pushProfile(profile) {
-    return this.updateProfile(profile);
-  }
-
   async pullProfile() {
     return this.readProfile();
   }
-
-  async close() {
-    if (typeof this.cleanup === 'function') await this.cleanup();
-  }
-
-  constructor(platform, credentials) {
-    super(platform, credentials);
-
-    this.baseUrl = 'https://www.filmmakers.eu';
-    // Verified against the live site on 2026-08-30: `/login` answers 404 and
-    // renders the site's not-found page, which has no login form at all. The
-    // real form is Devise's, at /users/sign_in, with fields user[email] and
-    // user[password] (both carry type=email / type=password, which is what the
-    // selectors below match on).
-    this.loginPath = '/users/sign_in';
-    this.browser = null;
-    this.page = null;
-    this.isAuthenticated = false;
-  }
-
-  /**
-   * Initialize rate limiter with conservative limits for web scraping
-   * Be respectful to the platform
-   */
-  initRateLimiter() {
-    return new RateLimiterMemory({
-      points: 10, // Only 10 requests
-      duration: 60, // Per minute
-    });
-  }
-
-  /**
-   * Authenticate with Filmmakers platform via web scraping
-   * @returns {Promise<boolean>}
-   */
-  async authenticate() {
-    try {
-      this.log('info', 'Authenticating with Filmmakers via web automation');
-
-      if (!this.credentials || !this.credentials.email || !this.credentials.password) {
-        throw new AuthError('Missing Filmmakers credentials (email/password required)', {
-          platform: 'filmmakers'
-        });
-      }
-
-      // Launch browser
-      this.browser = await puppeteer.launch({
-        ...(process.env.PUPPETEER_EXECUTABLE_PATH && { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }),
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--disable-gpu'
-        ]
-      });
-
-      this.page = await this.browser.newPage();
-
-      // Set user agent to avoid bot detection
-      await this.page.setUserAgent(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      );
-
-      // Navigate to login page
-      const loginUrl = `${this.baseUrl}${this.loginPath}`;
-      await this.page.goto(loginUrl, {
-        waitUntil: 'networkidle2',
-        timeout: 30000
-      });
-
-      this.log('info', 'Loaded login page, entering credentials');
-
-      // Fill in login form
-      await this.page.waitForSelector('input[name="email"], input[type="email"]', { timeout: 10000 });
-      await this.page.type('input[name="email"], input[type="email"]', this.credentials.email);
-      await this.page.type('input[name="password"], input[type="password"]', this.credentials.password);
-
-      // Submit the login form itself. Not a page-wide submit selector: the
-      // header holds a submit button per interface language, and the first one
-      // in the DOM would switch the site to English instead of logging in.
-      const submitted = await this.submitFormOwning('input[name="password"], input[type="password"]');
-      if (!submitted) {
-        throw new PlatformChangedError(
-          'The login form has no submit control',
-          { platform: 'filmmakers' }
-        );
-      }
-      await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
-
-      // Check if login was successful.
-      //
-      // Not `url.includes('/login')`: Devise re-renders /users/sign_in on a
-      // rejected password, and that string does not contain "login" - so the
-      // old check called every failed login a success. Compare against the URL
-      // we actually navigated to, and treat a password field that is still on
-      // the page as the same evidence.
-      const currentUrl = this.page.url();
-      const passwordStillVisible = Boolean(await this.page.$('input[type="password"]'));
-      if (currentUrl.startsWith(loginUrl) || passwordStillVisible) {
-        // Rejected credentials and a changed login form look identical from
-        // here. AuthError is the common case and the one the user can act on;
-        // the caller's forensics capture holds the final URL and a screenshot,
-        // which is what actually tells the two apart.
-        throw new AuthError(
-          `Login failed: still on the login page after submitting (${currentUrl}). `
-          + 'The credentials were rejected, or the login form changed.',
-          { platform: 'filmmakers' }
-        );
-      }
-
-      this.isAuthenticated = true;
-      this.log('info', 'Successfully authenticated with Filmmakers');
-
-      return true;
-
-    } catch (error) {
-      const failure = this.classifyFailure(error);
-      this.log('error', 'Filmmakers authentication failed', {
-        error: failure.message,
-        type: failure.name
-      });
-
-      // Leave the page open and let the caller photograph it. Tearing the
-      // browser down here - as this used to - left the caller's forensics call
-      // capturing a page that no longer existed: url null, screenshot absent,
-      // every login failure indistinguishable from every other. The caller
-      // captures and then closes in a `finally`.
-      throw failure;
-    }
-  }
-
   /**
    * Push availability data to Filmmakers
    * @param {Array} availability
@@ -366,130 +263,6 @@ export class FilmmakersConnector extends PlatformConnector {
   }
 
   /**
-   * Update profile information on Filmmakers
-   * @param {Object} profile
-   * @returns {Promise<Object>}
-   */
-  async updateProfile(profile) {
-    return this.withRateLimit(async () => {
-      return this.withRetry(async () => {
-        this.log('info', 'Updating profile on Filmmakers');
-
-        if (!this.isAuthenticated || !this.page) {
-          throw new Error('Not authenticated. Call authenticate() first.');
-        }
-
-        // Navigate to profile edit page
-        await this.page.goto(`${this.baseUrl}/profile/edit`, {
-          waitUntil: 'networkidle2',
-          timeout: 30000
-        });
-
-        // Three lists, not one: what we were asked to write, what actually
-        // landed, and what could not be found. A field whose input is missing
-        // must never appear in updatedFields - this method used to report
-        // height, eyeColor and hairColor as updated on a page that contained
-        // none of them, and the sync log recorded the whole run as a success.
-        const requestedFields = [];
-        const updatedFields = [];
-        const missingFields = [];
-
-        // The selector of a field that actually landed, so the submit below can
-        // be scoped to the form that owns it rather than to the whole page.
-        let updatedSelector = null;
-
-        const applyField = async (field, selector, apply) => {
-          requestedFields.push(field);
-          try {
-            if (await apply()) {
-              updatedFields.push(field);
-              updatedSelector = updatedSelector || selector;
-            } else {
-              missingFields.push(field);
-            }
-          } catch (error) {
-            this.log('warn', `Could not update ${field}`, { error: error.message });
-            missingFields.push(field);
-          }
-        };
-
-        // Update biography
-        if (profile.biography) {
-          await applyField('biography', 'textarea[name="biography"], textarea[name="bio"]', async () => {
-            try {
-              await this.page.waitForSelector('textarea[name="biography"], textarea[name="bio"]', { timeout: 5000 });
-            } catch {
-              return false;
-            }
-            await this.page.evaluate((sel) => {
-              const textarea = document.querySelector(sel);
-              if (textarea) textarea.value = '';
-            }, 'textarea[name="biography"], textarea[name="bio"]');
-            await this.page.type('textarea[name="biography"], textarea[name="bio"]', profile.biography);
-            return true;
-          });
-        }
-
-        // Update physical attributes
-        if (profile.height) {
-          await applyField('height', 'input[name="height"]', () => this.updateInputField('input[name="height"]', profile.height));
-        }
-
-        if (profile.eyeColor) {
-          await applyField('eyeColor', 'select[name="eye_color"]', () => this.updateSelectField('select[name="eye_color"]', profile.eyeColor));
-        }
-
-        if (profile.hairColor) {
-          await applyField('hairColor', 'select[name="hair_color"]', () => this.updateSelectField('select[name="hair_color"]', profile.hairColor));
-        }
-
-        // Submit the form that owns an edited field. Only worth attempting if
-        // something was actually filled - and never via a page-wide submit
-        // selector, which on this site matches the header's language switcher.
-        let submitted = false;
-        if (updatedFields.length > 0) {
-          submitted = await this.submitFormOwning(updatedSelector);
-          if (!submitted) {
-            throw new PlatformChangedError(
-              'Filled the profile form but found no submit control in it, so nothing was saved',
-              { platform: 'filmmakers' }
-            );
-          }
-          // Some forms save without navigating; a timeout here is not a failure.
-          await this.page
-            .waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 })
-            .catch(() => {});
-        }
-
-        // Nothing landed at all: this is not the page the connector was written
-        // against. Returning success here is what let a rotted selector look
-        // like a completed sync.
-        if (requestedFields.length > 0 && updatedFields.length === 0) {
-          throw new PlatformChangedError(
-            'No profile field was found on the Filmmakers edit page '
-            + `(looked for: ${requestedFields.join(', ')})`,
-            { platform: 'filmmakers' }
-          );
-        }
-
-        this.log('info', 'Updated profile on Filmmakers', {
-          updatedFields,
-          missingFields,
-          submitted
-        });
-
-        return {
-          success: true,
-          updatedFields,
-          missingFields,
-          submitted,
-          details: { updatedFields, missingFields, submitted }
-        };
-      });
-    });
-  }
-
-  /**
    * Read the actor profile back off Filmmakers.
    *
    * Written against the live pages on 2026-08-30. The edit form is the source
@@ -653,60 +426,6 @@ export class FilmmakersConnector extends PlatformConnector {
     return slug;
   }
 
-  /** Navigate, tolerating the locale prefix Filmmakers redirects to. */
-  async openPage(url) {
-    await this.page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-  }
-
-  /** Trimmed value of an input, or null when it is absent or empty. */
-  async readValue(selector) {
-    return this.page
-      .$eval(selector, (el) => (el.value || '').trim() || null)
-      .catch(() => null);
-  }
-
-  /** Texts of the selected options of a (possibly multiple) select. */
-  async readSelected(selector) {
-    return this.page
-      .$eval(selector, (el) => [...el.selectedOptions].map((o) => o.text.trim()).filter(Boolean))
-      .catch(() => []);
-  }
-
-  /** Values of a repeated hidden input, as a tag widget writes them. */
-  async readList(selector) {
-    return this.page
-      .$$eval(selector, (els) => els.map((el) => (el.value || '').trim()).filter(Boolean))
-      .catch(() => []);
-  }
-
-  /**
-   * Read a tag widget: chosen values sit in repeated hidden inputs as
-   * "code#level", and the code is only readable through the options of the
-   * widget's own select.
-   *
-   * Note that `selectSelector` is resolved inside this method, so it is not
-   * covered by scripts/check-selectors.mjs. That is tolerable here and nowhere
-   * else: if it matches nothing the codes are returned as they are, which is
-   * ugly but not wrong - it cannot throw and cannot silently drop an entry.
-   */
-  async readTagged(hashSelector, selectSelector) {
-    const entries = await this.readList(hashSelector);
-    if (entries.length === 0) return [];
-
-    const labels = await this.page.$eval(selectSelector, (select) => {
-      const map = {};
-      for (const option of select.options) {
-        if (option.value) map[option.value] = option.text.trim();
-      }
-      return map;
-    }).catch(() => ({}));
-
-    return entries.map((entry) => {
-      const [code, level] = entry.split('#');
-      return { name: labels[code] || code.trim(), level: (level || '').trim() };
-    });
-  }
-
   /**
    * Rails splits a date across three selects (1i year, 2i month, 3i day).
    * @returns {Promise<string|null>} ISO date, or null if the parts are not all there
@@ -810,83 +529,6 @@ export class FilmmakersConnector extends PlatformConnector {
     return 'not_specified';
   }
 
-  /**
-   * Update input field value.
-   * @returns {Promise<boolean>} false when the field is not on the page - the
-   *   caller must not count that as an update.
-   */
-  async updateInputField(selector, value) {
-    const element = await this.page.$(selector);
-    if (!element) return false;
-
-    await this.page.evaluate((sel) => {
-      const input = document.querySelector(sel);
-      if (input) input.value = '';
-    }, selector);
-    await this.page.type(selector, String(value));
-    return true;
-  }
-
-  /**
-   * Update select field value.
-   * @returns {Promise<boolean>} false when the field is not on the page.
-   */
-  async updateSelectField(selector, value) {
-    const element = await this.page.$(selector);
-    if (!element) return false;
-
-    await this.page.select(selector, value);
-    return true;
-  }
-
-  /**
-   * Format date for input field (YYYY-MM-DD)
-   * @param {Date|string} date
-   * @returns {string}
-   */
-  formatDateForInput(date) {
-    if (!date) return '';
-
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return '';
-
-    return d.toISOString().split('T')[0];
-  }
-
-  /**
-   * Clean up browser resources
-   */
-  async cleanup() {
-    try {
-      if (this.page) {
-        await this.page.close();
-        this.page = null;
-      }
-      if (this.browser) {
-        await this.browser.close();
-        this.browser = null;
-      }
-      this.isAuthenticated = false;
-    } catch (error) {
-      this.log('error', 'Error during cleanup', { error: error.message });
-    }
-  }
-
-  /**
-   * Give every failure a typed error, but leave the browser open.
-   *
-   * This used to call cleanup() here, which closed the page before the caller
-   * could photograph it - the same bug as in authenticate(), for every sync
-   * operation. ConnectorService captures forensics and then closes the
-   * connector in a `finally`, so teardown is already covered.
-   */
-  async withRetry(fn, maxRetries = 3) {
-    try {
-      return await super.withRetry(fn, maxRetries);
-    } catch (error) {
-      throw this.classifyFailure(error);
-    }
-  }
 }
 
 export default FilmmakersConnector;
