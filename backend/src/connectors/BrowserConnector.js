@@ -202,6 +202,7 @@ export class BrowserConnector extends PlatformConnector {
 
       const loginUrl = this.url(this.loginPath);
       await this.openPage(loginUrl);
+      await this.page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 30000 });
       this.log('info', 'Loaded login page, entering credentials');
 
       await this.page.waitForSelector(login.user, { timeout: 10000 });
@@ -210,6 +211,7 @@ export class BrowserConnector extends PlatformConnector {
 
       await this.submitLogin();
       await this.waitForLoginOutcome(loginUrl);
+      await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
 
       const currentUrl = this.page.url();
       const passwordStillVisible = Boolean(await this.page.$('input[type="password"]'));
@@ -293,6 +295,7 @@ export class BrowserConnector extends PlatformConnector {
     // form: clicking blindly would mail the account holder a login link.
     const labels = login.submitTexts || ['anmelden', 'einloggen', 'login', 'sign in'];
     if (login.submitBy !== 'text' && await this.submitFormOwning(login.password, labels)) return true;
+    if (await this.submitFormOwning(login.password)) return true;
 
     const button = await findByCssOrText(this.page, {
       css: ['button[type="submit"]', 'input[type="submit"]'],
@@ -377,6 +380,9 @@ export class BrowserConnector extends PlatformConnector {
       await this.delay(500);
     }
     return Boolean(declined);
+  /** Navigate, waiting for the page to settle. */
+  async openPage(url) {
+    await this.page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
   }
 
   /** Trimmed value of an input, or null when it is absent or empty. */
@@ -547,6 +553,7 @@ export class BrowserConnector extends PlatformConnector {
         // The form that owns an edited field, never a page-wide submit
         // selector: that can hit an unrelated form elsewhere on the page.
         submitted = await this.submitFormOwning(updatedSelector, this.site.saveTexts || ['speichern', 'save', 'übernehmen', 'aktualisieren']);
+        submitted = await this.submitFormOwning(updatedSelector);
         if (!submitted) {
           throw new PlatformChangedError(
             'Filled the profile form but found no submit control in it, so nothing was saved',
@@ -603,6 +610,14 @@ export class BrowserConnector extends PlatformConnector {
     // never clicked - that is an icon, and icons in a login form do things like
     // reveal passwords.
     const handle = await this.page.evaluateHandle((sel, wanted) => {
+  async submitFormOwning(selector) {
+    if (!this.page || !selector) return false;
+
+    // A visible control is clicked like a person would. JobWork's login form
+    // carries a hidden button[type="submit"] and does its work from a visible
+    // "Weiter" button with no type attribute, so taking the first match in DOM
+    // order would pick the hidden one - and puppeteer refuses to click that.
+    const handle = await this.page.evaluateHandle((sel) => {
       const field = document.querySelector(sel);
       const form = field && field.closest('form');
       if (!form) return null;
@@ -627,6 +642,11 @@ export class BrowserConnector extends PlatformConnector {
 
       return expected || bare[0] || null;
     }, selector, labels.map((text) => text.toLowerCase()));
+
+      return [...form.querySelectorAll(
+        'input[type="submit"], button[type="submit"], button:not([type])'
+      )].find(isVisible) || null;
+    }, selector);
 
     const element = handle.asElement();
     if (element) {

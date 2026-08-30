@@ -41,6 +41,22 @@ export class CastingNetworkConnector extends BrowserConnector {
     paths: {
       // NOT verified: reaching these needs an account, and nobody has logged
       // in. They are the paths the connector was originally written with.
+   * NOT verified. home.castingnetworks.com redirects to
+   * www.castingnetworks.com, whose "Log In" link points at
+   * app.castingnetworks.com - a single-page app whose form is not in the
+   * delivered HTML. The path and selectors below are the original guesses and
+   * have never matched a real page.
+   */
+  static site = Object.freeze({
+    baseUrl: 'https://home.castingnetworks.com',
+    loginPath: '/login',
+    login: {
+      user: 'input[type="email"], input[name="email"]',
+      password: 'input[type="password"], input[name="password"]',
+      submitTexts: ['log in', 'login', 'sign in'],
+      failureUrls: ['/signin']
+    },
+    paths: {
       profileEdit: '/talent/profile/edit',
       availability: '/talent/schedule',
       media: '/talent/photos'

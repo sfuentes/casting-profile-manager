@@ -44,6 +44,21 @@ export class WantedConnector extends BrowserConnector {
     paths: {
       // NOT verified: reaching these needs an account, and nobody has logged
       // in. They are the paths the connector was originally written with.
+   * NOT verified, and the host is doubtful: www.wanted.de does not resolve
+   * from here (ERR_NAME_NOT_RESOLVED), so no page of this platform has ever
+   * been loaded. Everything below is what the connector was originally written
+   * with. The domain needs confirming before any of it can be trusted.
+   */
+  static site = Object.freeze({
+    baseUrl: 'https://www.wanted.de',
+    loginPath: '/login',
+    login: {
+      user: 'input[type="email"], input[name="email"], input[name="benutzername"]',
+      password: 'input[type="password"], input[name="password"], input[name="passwort"]',
+      submitTexts: ['anmelden', 'einloggen', 'login'],
+      failureUrls: ['/anmelden']
+    },
+    paths: {
       profileEdit: '/profil/bearbeiten',
       availability: '/profil/verfuegbarkeit',
       media: '/profil/fotos'
