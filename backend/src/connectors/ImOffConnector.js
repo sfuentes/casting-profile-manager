@@ -16,13 +16,19 @@ export class ImOffConnector extends BrowserConnector {
     // for a user name, so the UI does too.
     credentialFields: [{ name: 'username', type: 'text', required: true, label: 'Benutzername' },
       { name: 'password', type: 'password', required: true, label: 'Passwort' }],
-    // Login only: nothing behind it has been seen.
-    capabilities: ['verify']
+    capabilities: ['verify', 'pullProfile']
   });
 
   /**
-   * Verified against the live login page on 2026-08-30 (URL supplied by the
-   * project owner).
+   * Verified against the live site on 2026-08-30, logged in.
+   *
+   * The login lands straight on the profile form, which is spread over several
+   * pages under /external/extras. Every control is addressed by its id: the
+   * inputs carry no `name` attribute at all, so name-based selectors - the kind
+   * every other connector here uses - would match nothing.
+   *
+   * There is nothing to parse and no API to listen to, so the whole importer is
+   * this descriptor; BrowserConnector.readDeclaredProfile does the work.
    */
   static site = Object.freeze({
     baseUrl: 'https://app.im-off.de',
@@ -32,7 +38,50 @@ export class ImOffConnector extends BrowserConnector {
       password: 'input[name="password"], input[type="password"]',
       submitTexts: ['login', 'anmelden', 'einloggen']
     },
-    paths: {},
+    paths: {
+      profileEdit: '/external/extras'
+    },
+    profileRead: {
+      pages: [
+        {
+          path: '/external/extras',
+          fields: [
+            { field: 'firstName', selector: '#first_name' },
+            { field: 'lastName', selector: '#last_name' },
+            { field: 'gender', selector: '#sex', kind: 'selected' },
+            { field: 'dateOfBirth', selector: '#birthday' },
+            { field: 'citizenship', selector: '#nationality_id', kind: 'selected' },
+            { field: 'location', selector: '#city' },
+            { field: 'contact.email', selector: '#email' },
+            { field: 'contact.phone', selector: '#mobile' },
+            { field: 'socialMedia.instagram', selector: '#instagram' },
+            { field: 'socialMedia.website', selector: '#website' }
+          ]
+        },
+        {
+          path: '/external/extras/look',
+          fields: [
+            { field: 'height', selector: '#height' },
+            { field: 'hairColor', selector: '#hair_color_id', kind: 'selected' },
+            { field: 'eyeColor', selector: '#eye_color_id', kind: 'selected' }
+          ]
+        },
+        {
+          path: '/external/extras/skills',
+          fields: [
+            // The native language is a select; the app stores languages as
+            // { language, level } pairs, which is what this kind produces.
+            { field: 'languages', selector: '#mother_tongue_id', kind: 'nativeLanguage' },
+            // Free text, comma-separated. All three are simply skills here.
+            { field: 'skills', selector: '#dialect', kind: 'list' },
+            { field: 'skills', selector: '#instruments', kind: 'list' },
+            { field: 'skills', selector: '#hobbies', kind: 'list' }
+          ]
+        }
+      ]
+    },
+    // Writing back has not been looked at: the form saves through its own
+    // buttons per page and nobody has watched what that does.
     profileFields: []
   });
 }
