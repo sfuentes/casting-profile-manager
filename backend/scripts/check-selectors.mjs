@@ -52,7 +52,19 @@ const CALLS = [
   '.type(',
   '.hover(',
   '.focus(',
-  '.tap('
+  '.tap(',
+  // The connectors' own selector-taking helpers. Without these the profile
+  // importer's selectors would sit in a blind spot: they are passed to
+  // readValue/readSelected/readList rather than straight to puppeteer, and an
+  // unchecked selector is exactly the bug this script exists to catch.
+  '.readValue(',
+  '.readSelected(',
+  '.readList(',
+  '.readTagged(',
+  '.submitFormOwning(',
+  '.updateInputField(',
+  '.updateSelectField(',
+  '.clearAndType('
 ];
 
 const QUOTES = new Set(["'", '"', '`']);

@@ -39,6 +39,51 @@ import {useAppContext} from '../context/AppContext';
 import {Button, Modal, Input, Card, Badge} from './ui';
 import {apiService} from '../services/apiService';
 
+/**
+ * Whether a platform has an automated integration, and whether that integration
+ * talks to an API rather than driving a browser.
+ *
+ * Both were previously read as `platform.agentCapable` / `platform.hasAPI`,
+ * which are not fields on what the API returns - the stored record carries them
+ * under `meta`, and the connector manifests (the source of truth since the
+ * catalogue endpoint landed) do not carry them at all. Every check was
+ * therefore permanently false: the summary tiles reported 0 agent-capable
+ * platforms while six connectors were registered and healthy.
+ */
+const isAutomated = (platform) => Boolean(platform?.authType) && platform.authType !== 'manual';
+const isApiBased = (platform) => platform?.authType === 'apiKey';
+
+/**
+ * Whether this platform's connector can read a profile back.
+ *
+ * Straight from the manifest: filling a form is a different job from parsing
+ * one, and only Filmmakers has had its pages read for real. Offering "Import"
+ * anywhere else would produce a button that can only fail.
+ */
+const canImportProfile = (platform) => Boolean(platform?.capabilities?.includes('pullProfile'));
+
+/** German labels for the profile fields an import can return. */
+const IMPORT_FIELD_LABELS = {
+    name: 'Name',
+    firstName: 'Vorname',
+    lastName: 'Nachname',
+    gender: 'Geschlecht',
+    dateOfBirth: 'Geburtsdatum',
+    biography: 'Biografie',
+    height: 'Körpergröße (cm)',
+    weight: 'Gewicht',
+    eyeColor: 'Augenfarbe',
+    hairColor: 'Haarfarbe',
+    location: 'Wohnort',
+    citizenship: 'Staatsangehörigkeit',
+    languages: 'Sprachen',
+    skills: 'Fähigkeiten',
+    socialMedia: 'Social Media',
+    contact: 'Kontakt',
+    workHistory: 'Vita / Engagements',
+    education: 'Ausbildung'
+};
+
 const PlatformsView = () => {
     const {
         platforms,
@@ -50,7 +95,8 @@ const PlatformsView = () => {
         updatePlatformSettings,
         testPlatformConnection,
         syncToPlatform,
-        bulkSyncToPlatforms
+        bulkSyncToPlatforms,
+        loadAllData
     } = useAppContext();
 
     const [showModal, setShowModal] = useState(false);
@@ -63,6 +109,8 @@ const PlatformsView = () => {
     const [testResults, setTestResults] = useState({});
     const [agentStatus, setAgentStatus] = useState(null);
     const [importResults, setImportResults] = useState({});
+    const [importSelection, setImportSelection] = useState([]);
+    const [importing, setImporting] = useState(false);
 
     // Check agent health on component mount
     useEffect(() => {
@@ -171,20 +219,82 @@ const PlatformsView = () => {
         }
     };
 
+    /**
+     * Read the profile off the platform and show what came back.
+     *
+     * Nothing is written to the local profile here. The previous version
+     * claimed "Die Daten wurden mit Ihrem lokalen Profil zusammengeführt"
+     * against an endpoint that did not exist - and merging scraped values into
+     * a profile without showing them first is how an import quietly destroys
+     * data the user typed by hand.
+     */
     const handleImportProfile = async (platform) => {
-        if (!platform.authData || Object.keys(platform.authData).length === 0) {
+        if (!platform.connected) {
             alert('Bitte stellen Sie zuerst eine Verbindung zur Plattform her.');
             return;
         }
 
+        setImporting(true);
         try {
-            const result = await apiService.readProfileFromPlatform(platform.id, platform.authData);
+            const result = await apiService.readProfileFromPlatform(platform.id);
             setImportResults(prev => ({...prev, [platform.id]: result}));
-            alert('Profil erfolgreich importiert! Die Daten wurden mit Ihrem lokalen Profil zusammengeführt.');
+            // Everything that was found is preselected; the user unticks what
+            // they would rather keep as it is.
+            setImportSelection(Object.keys(result.fields || {}));
+            setSelectedPlatform(platform);
+            setModalType('import');
+            setShowModal(true);
         } catch (error) {
             console.error('Import failed:', error);
             alert(`Import fehlgeschlagen: ${error.message}`);
+        } finally {
+            setImporting(false);
         }
+    };
+
+    const toggleImportField = (key) => {
+        setImportSelection(prev => (
+            prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+        ));
+    };
+
+    const handleApplyImport = async () => {
+        const result = importResults[selectedPlatform?.id];
+        if (!result || importSelection.length === 0) return;
+
+        setImporting(true);
+        try {
+            const applied = await apiService.applyImportedProfile(
+                selectedPlatform.id,
+                result.syncLogId,
+                importSelection
+            );
+            setShowModal(false);
+            // The profile view reads from context, so reload it rather than
+            // leaving the user looking at pre-import values.
+            await loadAllData();
+            alert(`${applied.applied.length} Feld(er) ins Profil übernommen.`);
+        } catch (error) {
+            console.error('Apply failed:', error);
+            alert(`Übernehmen fehlgeschlagen: ${error.message}`);
+        } finally {
+            setImporting(false);
+        }
+    };
+
+    /** A short, readable preview of an imported value. */
+    const previewImported = (value) => {
+        if (Array.isArray(value)) {
+            if (value.length === 0) return '-';
+            if (typeof value[0] === 'string') return value.join(', ');
+            if (value[0].language) return value.map(l => `${l.language} (${l.level})`).join(', ');
+            if (value[0].institution) return value.map(e => e.institution).join(' · ');
+            return `${value.length} Einträge`;
+        }
+        if (value && typeof value === 'object') {
+            return Object.entries(value).map(([k, v]) => `${k}: ${v}`).join(', ');
+        }
+        return String(value);
     };
 
     const handleInputChange = (field, value) => {
@@ -196,19 +306,16 @@ const PlatformsView = () => {
     };
 
     const getConnectionTypeIcon = (platform) => {
-        if (platform.connectionType === 'agent') return Bot;
-        if (platform.connectionType === 'api') return Cpu;
         if (platform.authType === 'manual') return Link;
         if (platform.authType === 'apiKey') return Cpu;
-        return Key;
+        return Bot;
     };
 
     const getConnectionTypeText = (platform) => {
-        if (platform.connectionType === 'agent') return 'Agent-basiert';
-        if (platform.connectionType === 'api') return 'API-Integration';
         if (platform.authType === 'manual') return 'Manuell';
-        if (platform.authType === 'apiKey') return 'API-Key';
-        return 'Standard';
+        if (platform.authType === 'apiKey') return 'API-Integration';
+        if (platform.authType === 'credentials') return 'Agent-basiert';
+        return 'Unbekannt';
     };
 
     const getPlatformStatusColor = (platform) => {
@@ -235,7 +342,7 @@ const PlatformsView = () => {
     const getPlatformCapabilities = (platform) => {
         const capabilities = [];
 
-        if (platform.agentCapable) {
+        if (isAutomated(platform)) {
             capabilities.push({
                 icon: Bot,
                 label: 'Automatisierung',
@@ -243,7 +350,7 @@ const PlatformsView = () => {
             });
         }
 
-        if (platform.hasAPI) {
+        if (isApiBased(platform)) {
             capabilities.push({
                 icon: Cpu,
                 label: 'API-Zugriff',
@@ -280,8 +387,8 @@ const PlatformsView = () => {
 
     const connectedPlatforms = platforms.filter(p => p.connected);
     const disconnectedPlatforms = platforms.filter(p => !p.connected);
-    const agentPlatforms = platforms.filter(p => p.agentCapable);
-    const apiPlatforms = platforms.filter(p => p.hasAPI);
+    const agentPlatforms = platforms.filter(isAutomated);
+    const apiPlatforms = platforms.filter(isApiBased);
 
     return (
         <div className="space-y-6">
@@ -330,9 +437,15 @@ const PlatformsView = () => {
                                 <h3 className="font-semibold text-gray-900">Platform Agent Status</h3>
                                 <p className="text-sm text-gray-600">{agentStatus.message}</p>
                                 <div className="flex items-center space-x-4 mt-1 text-xs text-gray-500">
-                                    <span>Agent-fähige Plattformen: {agentPlatforms.length}</span>
+                                    <span>Agent-fähige Plattformen: {agentStatus.data?.automatedPlatforms ?? agentPlatforms.length}</span>
                                     <span>API-Plattformen: {apiPlatforms.length}</span>
-                                    <span>Letzte Prüfung: {new Date(agentStatus.timestamp).toLocaleString('de-DE')}</span>
+                                    {/* The one thing this endpoint can actually
+                                        verify: that the browser binary exists.
+                                        It says nothing about a sync succeeding. */}
+                                    <span>Browser: {agentStatus.data?.browserAvailable ? 'verfügbar' : 'nicht verfügbar'}</span>
+                                    <span>Letzte Prüfung: {agentStatus.timestamp
+                                        ? new Date(agentStatus.timestamp).toLocaleString('de-DE')
+                                        : 'unbekannt'}</span>
                                 </div>
                             </div>
                         </div>
@@ -472,16 +585,16 @@ const PlatformsView = () => {
                                                     Importiert
                                                 </Badge>
                                             )}
-                                            {platform.agentCapable && (
+                                            {canImportProfile(platform) && (
                                                 <Button
                                                     size="sm"
                                                     variant="outline"
                                                     onClick={() => handleImportProfile(platform)}
-                                                    disabled={syncing}
-                                                    icon={syncing ? Loader : Download}
+                                                    disabled={syncing || importing}
+                                                    icon={importing ? Loader : Download}
                                                     title="Profil von Plattform importieren"
                                                 >
-                                                    Import
+                                                    {importing ? 'Lese...' : 'Import'}
                                                 </Button>
                                             )}
                                             <Button
@@ -631,7 +744,7 @@ const PlatformsView = () => {
                                                 <h3 className="font-semibold text-gray-900">{platform.name}</h3>
                                                 <div className="flex items-center space-x-2">
                                                     <Badge variant="outline" color="gray">Nicht verbunden</Badge>
-                                                    <Badge color={platform.agentCapable ? 'blue' : 'purple'} size="sm">
+                                                    <Badge color={isApiBased(platform) ? 'purple' : 'blue'} size="sm">
                                                         {getConnectionTypeText(platform)}
                                                     </Badge>
                                                 </div>
@@ -688,7 +801,7 @@ const PlatformsView = () => {
                 title={`Verbindung zu ${selectedPlatform?.name}`}
             >
                 <div className="space-y-4">
-                    {selectedPlatform?.agentCapable && (
+                    {isAutomated(selectedPlatform) && (
                         <div className="p-4 bg-blue-50 rounded-lg flex items-start space-x-3">
                             <Bot className="w-6 h-6 text-blue-600 mt-1"/>
                             <div>
@@ -770,7 +883,7 @@ const PlatformsView = () => {
                 title={`Einstellungen für ${selectedPlatform?.name}`}
             >
                 <div className="space-y-4">
-                    {selectedPlatform?.agentCapable && (
+                    {isAutomated(selectedPlatform) && (
                         <div className="p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
                             <Bot size={16} className="inline mr-2"/>
                             Agent-basierte Plattform mit erweiterten Synchronisationsoptionen
@@ -796,7 +909,7 @@ const PlatformsView = () => {
                             onChange={(e) => handleInputChange('syncInterval', e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
-                            {selectedPlatform?.agentCapable && <option value="realtime">Echtzeit (Agent)</option>}
+                            {isAutomated(selectedPlatform) && <option value="realtime">Echtzeit (Agent)</option>}
                             <option value="hourly">Stündlich</option>
                             <option value="daily">Täglich</option>
                             <option value="weekly">Wöchentlich</option>
@@ -833,6 +946,82 @@ const PlatformsView = () => {
                         </Button>
                     </div>
                 </div>
+            </Modal>
+
+            {/* Import Modal: what the platform returned, and what to keep. */}
+            <Modal
+                isOpen={showModal && modalType === 'import'}
+                onClose={() => setShowModal(false)}
+                title={`Import von ${selectedPlatform?.name}`}
+            >
+                {(() => {
+                    const result = importResults[selectedPlatform?.id];
+                    const fields = result?.fields || {};
+                    const keys = Object.keys(fields);
+
+                    if (keys.length === 0) {
+                        return (
+                            <p className="text-sm text-gray-600">
+                                Es konnten keine Felder gelesen werden.
+                            </p>
+                        );
+                    }
+
+                    return (
+                        <div className="space-y-4">
+                            <div className="p-3 bg-blue-50 rounded text-xs text-blue-900">
+                                <AlertCircle size={14} className="inline mr-1"/>
+                                Ausgewählte Felder überschreiben die entsprechenden Werte in Ihrem
+                                Profil. Nicht ausgewählte Felder bleiben unverändert.
+                            </div>
+
+                            <div className="divide-y divide-gray-100">
+                                {keys.map((key) => (
+                                    <label key={key} className="flex items-start gap-3 py-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            className="mt-1"
+                                            checked={importSelection.includes(key)}
+                                            onChange={() => toggleImportField(key)}
+                                        />
+                                        <span className="min-w-0">
+                                            <span className="block text-sm font-medium text-gray-900">
+                                                {IMPORT_FIELD_LABELS[key] || key}
+                                            </span>
+                                            <span className="block text-xs text-gray-600 break-words">
+                                                {previewImported(fields[key])}
+                                            </span>
+                                            {result.sources?.[key] && (
+                                                <span className="block text-[10px] text-gray-400">
+                                                    Quelle: {result.sources[key]}
+                                                </span>
+                                            )}
+                                        </span>
+                                    </label>
+                                ))}
+                            </div>
+
+                            {result.missing?.length > 0 && (
+                                <p className="text-xs text-gray-500">
+                                    Auf der Plattform leer oder nicht gefunden: {result.missing.join(', ')}
+                                </p>
+                            )}
+
+                            <div className="flex space-x-3 pt-2">
+                                <Button
+                                    onClick={handleApplyImport}
+                                    disabled={importing || importSelection.length === 0}
+                                    icon={importing ? Loader : Check}
+                                >
+                                    {importing ? 'Übernehme...' : `${importSelection.length} Feld(er) übernehmen`}
+                                </Button>
+                                <Button variant="secondary" onClick={() => setShowModal(false)} icon={X}>
+                                    Abbrechen
+                                </Button>
+                            </div>
+                        </div>
+                    );
+                })()}
             </Modal>
         </div>
     );

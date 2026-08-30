@@ -696,9 +696,13 @@ export const AppProvider = ({children}) => {
         setSaving(true);
 
         try {
-            const result = await apiService.connectPlatform(platformId, authData);
+            // The API returns the saved platform record itself (apiService
+            // unwraps the `data` envelope), not a `platform` property - reading
+            // `result.platform` spread `undefined` and left the optimistic
+            // "connected" state in place regardless of what the server said.
+            const platform = await apiService.connectPlatform(platformId, authData);
             setPlatforms(prev => prev.map(p =>
-                p.id === platformId ? {...p, ...result.platform} : p
+                p.id === platformId ? {...p, ...platform} : p
             ));
             setLastSaved(new Date());
         } catch (err) {

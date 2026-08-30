@@ -12,80 +12,23 @@ const getHeaders = () => {
     };
 };
 
-const handleResponse = async (response) => {
+/**
+ * Unwraps the API's { success, data } envelope by default.
+ *
+ * Pass unwrap: false for endpoints whose payload lives on the envelope itself -
+ * /agent/health carries status, message and timestamp next to `data`, and
+ * unwrapping threw all three away: the UI read `undefined` and rendered a
+ * permanent red "Agent: Unbekannt" with "Letzte Prüfung: Invalid Date" while
+ * the backend was reporting healthy.
+ */
+const handleResponse = async (response, {unwrap = true} = {}) => {
     const data = await response.json();
     if (!response.ok) {
         const errorMsg = data.error?.message || data.message || 'API request failed';
         throw new Error(errorMsg);
     }
+    if (!unwrap) return data;
     return data.data !== undefined ? data.data : data;
-};
-
-// Platform capabilities mapping based on existing platforms.js structure
-const platformCapabilities = {
-    1: { // Filmmakers
-        hasAPI: false,
-        agentCapable: true,
-        connectionType: 'agent',
-        features: ['profile', 'photos', 'networking'],
-        regions: ['EU', 'Global']
-    },
-    2: { // Casting Network
-        hasAPI: false,
-        agentCapable: true,
-        connectionType: 'agent',
-        features: ['profile', 'photos', 'submissions', 'availability'],
-        regions: ['US', 'CA', 'UK']
-    },
-    3: { // Schauspielervideos
-        hasAPI: true,
-        agentCapable: true,
-        connectionType: 'api',
-        features: ['profile', 'videos', 'photos', 'showreel'],
-        regions: ['DE', 'AT', 'CH']
-    },
-    4: { // e-TALENTA
-        hasAPI: true,
-        agentCapable: true,
-        connectionType: 'api',
-        features: ['profile', 'photos', 'availability', 'castings'],
-        regions: ['EU', 'DE', 'AT', 'CH']
-    },
-    5: { // JobWork
-        hasAPI: false,
-        agentCapable: true,
-        connectionType: 'agent',
-        features: ['profile', 'jobs', 'networking'],
-        regions: ['DE', 'AT', 'CH']
-    },
-    6: { // Agentur Iris Müller
-        hasAPI: false,
-        agentCapable: false,
-        connectionType: 'manual',
-        features: ['profile', 'representation'],
-        regions: ['DE']
-    },
-    7: { // Agentur Connection
-        hasAPI: true,
-        agentCapable: false,
-        connectionType: 'api',
-        features: ['profile', 'representation', 'bookings'],
-        regions: ['DE', 'AT']
-    },
-    8: { // Agentur Sarah Weiss
-        hasAPI: false,
-        agentCapable: false,
-        connectionType: 'manual',
-        features: ['profile', 'representation'],
-        regions: ['DE']
-    },
-    9: { // Wanted
-        hasAPI: false,
-        agentCapable: true,
-        connectionType: 'agent',
-        features: ['profile', 'jobs', 'availability'],
-        regions: ['DE', 'AT', 'CH']
-    }
 };
 
 // API Service with improved error handling
@@ -410,7 +353,13 @@ export const apiService = {
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/connect`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify(authData)
+            // The credentials go under `authData`, which is where the controller
+            // reads them (`const { authData } = req.body`). Posting the bare
+            // credential object put email and password at the top level, so the
+            // backend saw no credentials at all and rejected every connect with
+            // "Missing credentials" - before it ever opened a browser. Connecting
+            // a platform through the UI could not work.
+            body: JSON.stringify({authData})
         });
         return handleResponse(response);
     },
@@ -459,17 +408,34 @@ export const apiService = {
         return handleResponse(response);
     },
 
-    readProfileFromPlatform: async (platformId, credentials) => {
+    /**
+     * Read the profile from a platform. The server logs in with the credentials
+     * it already holds - the browser has none to send: the API strips secrets
+     * from every platform response, so the old X-Platform-Credentials header
+     * could only ever have carried `undefined`.
+     */
+    readProfileFromPlatform: async (platformId) => {
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/profile`, {
             method: 'GET',
-            headers: {...getHeaders(), 'X-Platform-Credentials': btoa(JSON.stringify(credentials))}
+            headers: getHeaders()
+        });
+        return handleResponse(response);
+    },
+
+    /** Write the fields the user picked from an earlier import into the profile. */
+    applyImportedProfile: async (platformId, syncLogId, keys) => {
+        const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/profile/apply`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({syncLogId, keys})
         });
         return handleResponse(response);
     },
 
     checkAgentHealth: async () => {
         const response = await fetch(`${API_BASE_URL}/agent/health`, {headers: getHeaders()});
-        return handleResponse(response);
+        // Keep the envelope: status, message and timestamp are on it.
+        return handleResponse(response, {unwrap: false});
     }
 };
 

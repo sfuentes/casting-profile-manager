@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { PlatformConnector } from './PlatformConnector.js';
 import { clickByCssOrText, findByCssOrText } from './selectors.js';
-import { PlatformChangedError } from './errors.js';
+import { AuthError, PlatformChangedError } from './errors.js';
 
 /**
  * Casting Network Platform Adapter
@@ -43,6 +43,11 @@ export class CastingNetworkConnector extends PlatformConnector {
     super(platform, credentials);
 
     this.baseUrl = 'https://home.castingnetworks.com';
+    // NOT verified against the live site: unlike Filmmakers (whose /login turned
+    // out to be a 404), nobody has loaded this path from a machine that can
+    // reach the platform. Treat a PlatformChangedError from the login step as a
+    // sign that this is wrong before assuming the selectors are.
+    this.loginPath = '/login';
     this.browser = null;
     this.page = null;
     this.isAuthenticated = false;
@@ -67,7 +72,9 @@ export class CastingNetworkConnector extends PlatformConnector {
       this.log('info', 'Authenticating with Casting Network via web automation');
 
       if (!this.credentials || !this.credentials.email || !this.credentials.password) {
-        throw new Error('Missing Casting Network credentials (email/password required)');
+        throw new AuthError('Missing Casting Network credentials (email/password required)', {
+          platform: 'casting-network'
+        });
       }
 
       // Launch browser
@@ -91,7 +98,8 @@ export class CastingNetworkConnector extends PlatformConnector {
       );
 
       // Navigate to login page
-      await this.page.goto(`${this.baseUrl}/login`, {
+      const loginUrl = `${this.baseUrl}${this.loginPath}`;
+      await this.page.goto(loginUrl, {
         waitUntil: 'networkidle2',
         timeout: 30000
       });
@@ -103,16 +111,34 @@ export class CastingNetworkConnector extends PlatformConnector {
       await this.page.type('input[type="email"], input[name="email"]', this.credentials.email);
       await this.page.type('input[type="password"], input[name="password"]', this.credentials.password);
 
-      // Submit form
-      await Promise.all([
-        this.page.click('button[type="submit"], input[type="submit"]'),
-        this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
-      ]);
+      // Submit the login form itself, not the first submit control on the page:
+      // a page-wide selector can hit an unrelated form in the header (on
+      // Filmmakers it matched 36 language-switcher buttons).
+      const submitted = await this.submitFormOwning('input[type="password"], input[name="password"]');
+      if (!submitted) {
+        throw new PlatformChangedError(
+          'The login form has no submit control',
+          { platform: 'casting-network' }
+        );
+      }
+      await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
 
-      // Check if login was successful
+      // Check if login was successful. Compare against the URL we navigated to
+      // rather than looking for "/login" in it: a platform that re-renders its
+      // sign-in page under a different path (Filmmakers does) would otherwise
+      // have every rejected password reported as a successful login.
       const currentUrl = this.page.url();
-      if (currentUrl.includes('/login') || currentUrl.includes('/signin')) {
-        throw new Error('Login failed - still on login page');
+      const passwordStillVisible = Boolean(await this.page.$('input[type="password"]'));
+      if (currentUrl.startsWith(loginUrl) || passwordStillVisible) {
+        // Rejected credentials and a changed login form look identical from
+        // here. AuthError is the common case and the one the user can act on;
+        // the caller's forensics capture holds the final URL and a screenshot,
+        // which is what actually tells the two apart.
+        throw new AuthError(
+          `Login failed: still on the login page after submitting (${currentUrl}). `
+          + 'The credentials were rejected, or the login form changed.',
+          { platform: 'casting-network' }
+        );
       }
 
       this.isAuthenticated = true;
@@ -121,12 +147,18 @@ export class CastingNetworkConnector extends PlatformConnector {
       return true;
 
     } catch (error) {
+      const failure = this.classifyFailure(error);
       this.log('error', 'Casting Network authentication failed', {
-        error: error.message
+        error: failure.message,
+        type: failure.name
       });
 
-      await this.cleanup();
-      throw new Error(`Casting Network authentication failed: ${error.message}`);
+      // Leave the page open and let the caller photograph it. Tearing the
+      // browser down here - as this used to - left the caller's forensics call
+      // capturing a page that no longer existed: url null, screenshot absent,
+      // every login failure indistinguishable from every other. The caller
+      // captures and then closes in a `finally`.
+      throw failure;
     }
   }
 
@@ -151,6 +183,7 @@ export class CastingNetworkConnector extends PlatformConnector {
         });
 
         let successCount = 0;
+        let firstItemError = null;
 
         // Process each availability item
         for (const item of availability) {
@@ -184,6 +217,7 @@ export class CastingNetworkConnector extends PlatformConnector {
             successCount++;
 
           } catch (itemError) {
+            firstItemError = firstItemError || itemError;
             this.log('warn', 'Failed to add availability item', {
               item,
               error: itemError.message
@@ -191,13 +225,23 @@ export class CastingNetworkConnector extends PlatformConnector {
           }
         }
 
-        this.log('info', `Successfully pushed ${successCount}/${availability.length} availability items`);
+        // Every item failed: keeping going is right for one bad date, wrong
+        // when nothing worked - the caller would log a successful sync of zero.
+        if (successCount === 0 && availability.length > 0) {
+          throw firstItemError || new PlatformChangedError(
+            'No availability item could be added on Casting Network',
+            { platform: 'casting-network' }
+          );
+        }
+
+        this.log('info', `Pushed ${successCount}/${availability.length} availability items`);
 
         return {
           success: true,
           count: successCount,
           total: availability.length,
-          externalIds: []
+          externalIds: [],
+          details: { added: successCount, total: availability.length }
         };
       });
     });
@@ -336,71 +380,101 @@ export class CastingNetworkConnector extends PlatformConnector {
           timeout: 30000
         });
 
+        // What we were asked to write, what landed, and what was not found.
+        // A field whose input is missing must never appear in updatedFields.
+        const requestedFields = [];
         const updatedFields = [];
+        const missingFields = [];
+
+        // The selector of a field that actually landed, so the submit below can
+        // be scoped to the form that owns it rather than to the whole page.
+        let updatedSelector = null;
+
+        const applyField = async (field, selector, apply) => {
+          requestedFields.push(field);
+          try {
+            if (await apply()) {
+              updatedFields.push(field);
+              updatedSelector = updatedSelector || selector;
+            } else {
+              missingFields.push(field);
+            }
+          } catch (error) {
+            this.log('warn', `Could not update ${field}`, { error: error.message });
+            missingFields.push(field);
+          }
+        };
 
         // Update biography/about
         if (profile.biography) {
-          try {
-            await this.page.waitForSelector('textarea[name="biography"], textarea[name="about"]', { timeout: 5000 });
+          await applyField('biography', 'textarea[name="biography"], textarea[name="about"]', async () => {
+            try {
+              await this.page.waitForSelector('textarea[name="biography"], textarea[name="about"]', { timeout: 5000 });
+            } catch {
+              return false;
+            }
             await this.clearAndType('textarea[name="biography"], textarea[name="about"]', profile.biography);
-            updatedFields.push('biography');
-          } catch (e) {
-            this.log('warn', 'Could not update biography field');
-          }
+            return true;
+          });
         }
 
         // Update physical attributes
         if (profile.height) {
-          try {
-            await this.updateInputField('input[name="height"]', profile.height);
-            updatedFields.push('height');
-          } catch (e) {
-            // Field might not exist
-          }
+          await applyField('height', 'input[name="height"]', () => this.updateInputField('input[name="height"]', profile.height));
         }
 
         if (profile.weight) {
-          try {
-            await this.updateInputField('input[name="weight"]', profile.weight);
-            updatedFields.push('weight');
-          } catch (e) {
-            // Field might not exist
-          }
+          await applyField('weight', 'input[name="weight"]', () => this.updateInputField('input[name="weight"]', profile.weight));
         }
 
         if (profile.eyeColor) {
-          try {
-            await this.updateSelectField('select[name="eye_color"]', profile.eyeColor);
-            updatedFields.push('eyeColor');
-          } catch (e) {
-            // Field might not exist
-          }
+          await applyField('eyeColor', 'select[name="eye_color"]', () => this.updateSelectField('select[name="eye_color"]', profile.eyeColor));
         }
 
         if (profile.hairColor) {
-          try {
-            await this.updateSelectField('select[name="hair_color"]', profile.hairColor);
-            updatedFields.push('hairColor');
-          } catch (e) {
-            // Field might not exist
+          await applyField('hairColor', 'select[name="hair_color"]', () => this.updateSelectField('select[name="hair_color"]', profile.hairColor));
+        }
+
+        // Submit form. Only worth attempting if something was actually filled.
+        let submitted = false;
+        if (updatedFields.length > 0) {
+          // The form that owns an edited field, never a page-wide submit
+          // selector: that can hit an unrelated form elsewhere on the page.
+          submitted = await this.submitFormOwning(updatedSelector);
+          if (!submitted) {
+            throw new PlatformChangedError(
+              'Filled the profile form but found no submit control in it, so nothing was saved',
+              { platform: 'casting-network' }
+            );
           }
+          // Some forms save without navigating; a timeout here is not a failure.
+          await this.page
+            .waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 })
+            .catch(() => {});
         }
 
-        // Submit form
-        try {
-          await this.page.click('button[type="submit"], input[type="submit"]');
-          await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
-        } catch (e) {
-          // Form might auto-save
+        // Nothing landed: this is not the page the connector was written
+        // against, and reporting success would log a sync that never happened.
+        if (requestedFields.length > 0 && updatedFields.length === 0) {
+          throw new PlatformChangedError(
+            'No profile field was found on the Casting Network edit page '
+            + `(looked for: ${requestedFields.join(', ')})`,
+            { platform: 'casting-network' }
+          );
         }
 
-        this.log('info', 'Successfully updated profile on Casting Network', {
-          updatedFields
+        this.log('info', 'Updated profile on Casting Network', {
+          updatedFields,
+          missingFields,
+          submitted
         });
 
         return {
           success: true,
-          updatedFields
+          updatedFields,
+          missingFields,
+          submitted,
+          details: { updatedFields, missingFields, submitted }
         };
       });
     });
@@ -420,27 +494,28 @@ export class CastingNetworkConnector extends PlatformConnector {
   }
 
   /**
-   * Update input field value
-   * @param {string} selector
-   * @param {string} value
+   * Update input field value.
+   * @returns {Promise<boolean>} false when the field is not on the page - the
+   *   caller must not count that as an update.
    */
   async updateInputField(selector, value) {
     const element = await this.page.$(selector);
-    if (element) {
-      await this.clearAndType(selector, String(value));
-    }
+    if (!element) return false;
+
+    await this.clearAndType(selector, String(value));
+    return true;
   }
 
   /**
-   * Update select field value
-   * @param {string} selector
-   * @param {string} value
+   * Update select field value.
+   * @returns {Promise<boolean>} false when the field is not on the page.
    */
   async updateSelectField(selector, value) {
     const element = await this.page.$(selector);
-    if (element) {
-      await this.page.select(selector, value);
-    }
+    if (!element) return false;
+
+    await this.page.select(selector, value);
+    return true;
   }
 
   /**
@@ -475,14 +550,15 @@ export class CastingNetworkConnector extends PlatformConnector {
   }
 
   /**
-   * Override to ensure cleanup on errors
+   * Give every failure a typed error, but leave the browser open: the caller
+   * captures forensics from the live page and closes in a `finally`. Closing
+   * here made every sync failure capture an empty page.
    */
   async withRetry(fn, maxRetries = 3) {
     try {
       return await super.withRetry(fn, maxRetries);
     } catch (error) {
-      await this.cleanup();
-      throw error;
+      throw this.classifyFailure(error);
     }
   }
 }

@@ -1,6 +1,6 @@
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { logger } from '../utils/logger.js';
-import { NotSupportedError } from './errors.js';
+import { NotSupportedError, classifyBrowserError } from './errors.js';
 import { capture } from './forensics.js';
 
 /**
@@ -32,7 +32,12 @@ export class PlatformConnector {
     'verify',
     'pushProfile',
     'pushAvailability',
-    'pushMedia'
+    'pushMedia',
+    // Reading the profile back off the platform. Declared separately from
+    // pushProfile: a connector can usually fill a form long before it can parse
+    // one reliably, and the UI must only offer an import where that parsing has
+    // actually been written against the real page.
+    'pullProfile'
   ]);
 
   constructor(platform, credentials = {}) {
@@ -118,20 +123,48 @@ export class PlatformConnector {
   }
 
   /**
-   * Record the page state behind a failure.
+   * Click the submit control of the form that owns `selector`.
    *
-   * Connectors that drive a browser expose `this.page`; API connectors have
-   * none and still get a summary written, which is enough to tell a transport
-   * error apart from a rejected request. Returns a summary the caller may
-   * attach to the error - never throws, so it is safe inside a catch block.
+   * A bare `button[type="submit"], input[type="submit"]` is not safe: on
+   * filmmakers.eu the header carries one submit form per interface language, so
+   * that selector matches 36 elements and `page.click` takes the first in the
+   * DOM - the "English" button. The connector would navigate away and report a
+   * submitted form that was never submitted. Scoping to the form that actually
+   * holds the field we filled is the only reliable way to hit the right button.
+   *
+   * @returns {Promise<boolean>} false when there is no such form or no submit
+   *   control in it - the caller must not treat that as a submission.
    */
-  async captureFailure(error, operation, meta = {}) {
-    return capture(this.page || null, {
+  async submitFormOwning(selector) {
+    if (!this.page) return false;
+
+    const handle = await this.page.evaluateHandle((sel) => {
+      const field = document.querySelector(sel);
+      const form = field && field.closest('form');
+      if (!form) return null;
+      return form.querySelector('input[type="submit"], button[type="submit"], button:not([type])');
+    }, selector);
+
+    const element = handle.asElement();
+    if (!element) {
+      await handle.dispose();
+      return false;
+    }
+
+    await element.click();
+    await element.dispose();
+    return true;
+  }
+
+  /**
+   * Map a raw browser or transport failure onto a typed error, filling in this
+   * connector's identity. Connectors call this in their catch blocks so that
+   * "wrong password" and "site is down" stay distinguishable at the caller.
+   */
+  classifyFailure(error) {
+    return classifyBrowserError(error, {
       platform: this.manifest.key,
-      operation,
-      error,
-      credentials: this.credentials,
-      meta
+      name: this.manifest.name
     });
   }
 
@@ -142,6 +175,12 @@ export class PlatformConnector {
    * none and still get a summary written, which is enough to tell a transport
    * error apart from a rejected request. Returns a summary the caller may
    * attach to the error - never throws, so it is safe inside a catch block.
+   *
+   * This only works while the page is still open. A connector must therefore
+   * never close its own browser in a catch block: teardown belongs to whoever
+   * ran the operation, which captures first and closes in a `finally`. A
+   * capture taken after cleanup has no URL, no screenshot and no HTML - it is
+   * an empty directory that looks like evidence.
    */
   async captureFailure(error, operation, meta = {}) {
     return capture(this.page || null, {
@@ -174,6 +213,19 @@ export class PlatformConnector {
   async pushMedia() {
     this.assertSupports('pushMedia');
     throw new Error(`${this.constructor.name} declares pushMedia but does not implement it`);
+  }
+
+  /**
+   * Read the profile back off the platform.
+   *
+   * @returns {Promise<{ fields: object, sources: object }>} `fields` uses this
+   *   app's own Profile vocabulary, so callers never learn platform field
+   *   names; `sources` records where each value came from, which is what makes
+   *   a wrong import diagnosable.
+   */
+  async pullProfile() {
+    this.assertSupports('pullProfile');
+    throw new Error(`${this.constructor.name} declares pullProfile but does not implement it`);
   }
 
   /**
