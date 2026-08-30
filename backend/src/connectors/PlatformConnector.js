@@ -138,22 +138,48 @@ export class PlatformConnector {
   async submitFormOwning(selector) {
     if (!this.page) return false;
 
+    // A visible control is clicked like a person would. JobWork's login form
+    // carries a hidden button[type="submit"] and does its work from a visible
+    // "Weiter" button with no type attribute, so taking the first match in DOM
+    // order would pick the hidden one - and puppeteer refuses to click that.
     const handle = await this.page.evaluateHandle((sel) => {
       const field = document.querySelector(sel);
       const form = field && field.closest('form');
       if (!form) return null;
-      return form.querySelector('input[type="submit"], button[type="submit"], button:not([type])');
+
+      const isVisible = (el) => {
+        const style = getComputedStyle(el);
+        const box = el.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden'
+          && box.width > 0 && box.height > 0;
+      };
+
+      return [...form.querySelectorAll(
+        'input[type="submit"], button[type="submit"], button:not([type])'
+      )].find(isVisible) || null;
     }, selector);
 
     const element = handle.asElement();
-    if (!element) {
-      await handle.dispose();
-      return false;
+    if (element) {
+      await element.click();
+      await element.dispose();
+      return true;
     }
+    await handle.dispose();
 
-    await element.click();
-    await element.dispose();
-    return true;
+    // Nothing visible to click. A form whose only submit control is hidden is
+    // still meant to be submitted - that is what the hidden button is for - so
+    // ask the form itself, which fires the same submit event a click would.
+    return this.page.evaluate((sel) => {
+      const field = document.querySelector(sel);
+      const form = field && field.closest('form');
+      if (!form) return false;
+
+      const submitter = form.querySelector('input[type="submit"], button[type="submit"]');
+      if (typeof form.requestSubmit === 'function') form.requestSubmit(submitter || undefined);
+      else form.submit();
+      return true;
+    }, selector);
   }
 
   /**

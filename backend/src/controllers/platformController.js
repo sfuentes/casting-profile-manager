@@ -4,6 +4,7 @@ import Profile from '../models/Profile.js';
 import SyncLog from '../models/SyncLog.js';
 import connectorService from '../connectors/ConnectorService.js';
 import { getConnector } from '../connectors/registry.js';
+import { applyResolutions } from '../connectors/profileNormalizer.js';
 import { logger } from '../utils/logger.js';
 import { asyncHandler as catchAsync } from '../middleware/asyncHandler.js';
 
@@ -361,7 +362,7 @@ export const importPlatformProfile = catchAsync(async (req, res) => {
  * lands in the profile is what the server actually read off the platform.
  */
 export const applyImportedProfile = catchAsync(async (req, res) => {
-  const { syncLogId, keys } = req.body;
+  const { syncLogId, keys, resolutions } = req.body;
 
   if (!syncLogId || !Array.isArray(keys) || keys.length === 0) {
     return res.status(400).json({
@@ -381,7 +382,15 @@ export const applyImportedProfile = catchAsync(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Import not found' });
   }
 
-  const imported = syncLog.metadata?.fields || {};
+  // The user's answers to the values the normaliser could not map. Applied
+  // server-side against the offered options, so the client cannot smuggle in a
+  // value the profile's own vocabulary does not allow.
+  const imported = applyResolutions(
+    syncLog.metadata?.fields || {},
+    syncLog.metadata?.unmapped || [],
+    resolutions || {}
+  );
+
   const profile = await Profile.findOne({ user: req.user.id });
 
   if (!profile) {

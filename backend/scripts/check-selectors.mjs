@@ -88,7 +88,58 @@ const readString = (source, i) => {
   return null; // unterminated
 };
 
-const collect = (source) => {
+/**
+ * Remove comments before scanning.
+ *
+ * Without this, an apostrophe in prose - "the form's submit control" - looks
+ * like the start of a string literal, the scanner runs to the end of the file
+ * without finding its closing quote, and `break`s out. Every selector below
+ * that comment is then silently skipped, and the run still reports success with
+ * a smaller number nobody checks. That is exactly the failure this script
+ * exists to prevent, so it must not have it itself.
+ */
+const stripComments = (source) => {
+  let out = '';
+  let i = 0;
+
+  while (i < source.length) {
+    const two = source.slice(i, i + 2);
+
+    if (two === '//') {
+      const end = source.indexOf('\n', i);
+      i = end === -1 ? source.length : end;
+      continue;
+    }
+
+    if (two === '/*') {
+      const end = source.indexOf('*/', i + 2);
+      i = end === -1 ? source.length : end + 2;
+      out += ' ';
+      continue;
+    }
+
+    if (QUOTES.has(source[i])) {
+      const str = readString(source, i);
+      if (!str) {
+        // A genuinely unterminated literal: keep the rest verbatim rather than
+        // dropping it, so nothing disappears without the run failing loudly.
+        out += source.slice(i);
+        break;
+      }
+      out += source.slice(i, str.end + 1);
+      i = str.end + 1;
+      continue;
+    }
+
+    out += source[i];
+    i += 1;
+  }
+
+  return out;
+};
+
+const collect = (rawSource) => {
+  const source = stripComments(rawSource);
   const found = [];
   let cssArrayDepth = 0; // bracket depth inside a `css:` array, quotes excluded
 

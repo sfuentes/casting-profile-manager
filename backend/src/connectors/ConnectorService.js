@@ -5,6 +5,7 @@ import SyncLog from '../models/SyncLog.js';
 import { logger } from '../utils/logger.js';
 import { getConnector, listManifests } from './registry.js';
 import { AuthError, ConnectorError, NotSupportedError } from './errors.js';
+import { normalizeProfileFields } from './profileNormalizer.js';
 
 /**
  * The app's single entry point to every platform.
@@ -154,7 +155,11 @@ class ConnectorService {
       if (connector.supports('verify')) await connector.verify();
 
       const result = (await connector.pullProfile()) || {};
-      const fields = result.fields || {};
+
+      // Normalise here, not in the connector: every platform spells its values
+      // differently, and the app has exactly one vocabulary. Values that cannot
+      // be mapped are not guessed - they come back as questions for the user.
+      const { fields, unmapped } = normalizeProfileFields(result.fields || {});
 
       syncLog.status = 'success';
       syncLog.completedAt = new Date();
@@ -163,7 +168,9 @@ class ConnectorService {
       // does not mean scraping the platform a second time - and so the values
       // the user confirms are the ones the server read, not whatever a client
       // sends back.
-      syncLog.metadata = { details: result.details, sources: result.sources, fields };
+      syncLog.metadata = {
+        details: result.details, sources: result.sources, fields, unmapped
+      };
       await syncLog.save();
 
       return {
@@ -171,6 +178,7 @@ class ConnectorService {
         fields,
         sources: result.sources || {},
         missing: result.missing || [],
+        unmapped,
         syncLogId: String(syncLog._id)
       };
     } catch (error) {

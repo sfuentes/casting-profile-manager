@@ -29,6 +29,12 @@ export const getProfile = asyncHandler(async (req, res, next) => {
 // @desc    Update user profile
 // @route   PUT /api/v1/profile
 // @access  Private
+/**
+ * Profile fields that hold an object rather than a scalar or an array. Updates
+ * to these are merged, not replaced.
+ */
+const NESTED_FIELDS = ['contact', 'socialMedia', 'agent', 'showreel'];
+
 export const updateProfile = asyncHandler(async (req, res, next) => {
   let profile = await Profile.findOne({ user: req.user.id });
 
@@ -40,10 +46,21 @@ export const updateProfile = asyncHandler(async (req, res, next) => {
       lastUpdated: new Date()
     });
   } else {
-    // Update existing profile
+    // Merge the object-valued fields instead of replacing them. The profile
+    // form saves one field at a time, so a payload of {contact: {email: x}}
+    // would otherwise wipe the stored phone number - and the client cannot send
+    // a dotted path instead, because express-mongo-sanitize strips those keys.
+    const updates = { ...req.body, lastUpdated: new Date() };
+    for (const key of NESTED_FIELDS) {
+      if (updates[key] && typeof updates[key] === 'object' && !Array.isArray(updates[key])) {
+        const current = profile[key]?.toObject?.() ?? profile[key] ?? {};
+        updates[key] = { ...current, ...updates[key] };
+      }
+    }
+
     profile = await Profile.findOneAndUpdate(
       { user: req.user.id },
-      { ...req.body, lastUpdated: new Date() },
+      updates,
       { new: true, runValidators: true }
     );
   }

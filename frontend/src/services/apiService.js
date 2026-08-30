@@ -423,11 +423,11 @@ export const apiService = {
     },
 
     /** Write the fields the user picked from an earlier import into the profile. */
-    applyImportedProfile: async (platformId, syncLogId, keys) => {
+    applyImportedProfile: async (platformId, syncLogId, keys, resolutions = {}) => {
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/profile/apply`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({syncLogId, keys})
+            body: JSON.stringify({syncLogId, keys, resolutions})
         });
         return handleResponse(response);
     },
