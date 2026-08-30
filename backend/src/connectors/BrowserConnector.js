@@ -1,3 +1,6 @@
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
 import puppeteer from 'puppeteer';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { PlatformConnector } from './PlatformConnector.js';
@@ -393,11 +396,50 @@ export class BrowserConnector extends PlatformConnector {
       .catch(() => []);
   }
 
+  /** One attribute of one element, or null when it is not there. */
+  async readAttribute(selector, attribute) {
+    return this.page
+      .$eval(selector, (el, name) => el.getAttribute(name), attribute)
+      .catch(() => null);
+  }
+
   /** Values of a repeated hidden input, as a tag widget writes them. */
   async readList(selector) {
     return this.page
       .$$eval(selector, (els) => els.map((el) => (el.value || '').trim()).filter(Boolean))
       .catch(() => []);
+  }
+
+  /**
+   * Collect the pictures a page shows, as setcard entries.
+   *
+   * A profile page is full of images that are not the actor: logos, app-store
+   * badges, other people's thumbnails. So the caller names a container, and
+   * only what is inside it counts - never "every img on the page".
+   *
+   * Only references are taken, never the files. The picture stays on the
+   * platform that hosts it; copying someone's media library into this app
+   * would be a decision about storage and rights that reading a profile does
+   * not include.
+   *
+   * @param {string} selector  images inside the gallery, e.g. '.sedcard-media-pictures--item img'
+   * @param {object} options   type, primary, limit, titles
+   */
+  async readImages(selector, { type = 'other', primary = false, limit = 24 } = {}) {
+    const urls = await this.page
+      .$$eval(selector, (els) => els
+        .map((el) => el.currentSrc || el.src)
+        .filter((src) => src && !src.startsWith('data:')))
+      .catch(() => []);
+
+    // The same picture often appears twice - once large, once as a thumbnail.
+    const unique = [...new Set(urls)].slice(0, limit);
+
+    return unique.map((url, index) => ({
+      url,
+      type,
+      isPrimary: primary && index === 0
+    }));
   }
 
   /**
@@ -440,6 +482,56 @@ export class BrowserConnector extends PlatformConnector {
   }
 
   /**
+   * The value a descriptor asks for, including a nested one: the profile keeps
+   * the website under socialMedia.website, and a platform's form has one box
+   * for it like any other.
+   */
+  static valueAt(profile, path) {
+    return path.split('.').reduce((value, key) => (value === null || value === undefined
+      ? undefined
+      : value[key]), profile);
+  }
+
+  /**
+   * Named conversions from this app's vocabulary into a platform's.
+   *
+   * Kept as names rather than functions so a descriptor stays data: what a
+   * platform wants is a property of that platform, and a reader should be able
+   * to see it without following code. The normaliser does the same job in the
+   * other direction when importing.
+   */
+  static OUTBOUND = Object.freeze({
+    /** A stored date, where the form asks only for a year. */
+    year: (value) => (String(value).match(/\d{4}/) || [''])[0],
+    /** "Berlin, Deutschland" where the form asks for a town. */
+    firstSegment: (value) => String(value).split(',')[0].trim(),
+    /** Digits only, for a form that rejects "178 cm". */
+    digits: (value) => (String(value).match(/\d+/) || [''])[0]
+  });
+
+  /** Apply a descriptor's `transform` and `map`, in that order. */
+  static toPlatformValue(descriptor, value) {
+    let out = value;
+
+    if (descriptor.transform) {
+      const convert = this.OUTBOUND[descriptor.transform];
+      if (!convert) throw new Error(`Unknown transform "${descriptor.transform}"`);
+      out = convert(out);
+    }
+
+    if (descriptor.map) {
+      const mapped = descriptor.map[out];
+      // A value the platform has no equivalent for is not written at all.
+      // Guessing one would put something in the user's public profile that
+      // they never said.
+      if (mapped === undefined) return null;
+      out = mapped;
+    }
+
+    return out;
+  }
+
+  /**
    * Write one field.
    * @returns {Promise<boolean>} false when the field is not on the page - the
    *   caller must not count that as an update.
@@ -455,6 +547,17 @@ export class BrowserConnector extends PlatformConnector {
 
     if (!await this.page.$(selector)) return false;
 
+    if (kind === 'radio') return this.chooseOption(selector, String(value));
+
+    if (kind === 'file') {
+      // `value` is a path on this machine; the platform gets the bytes.
+      const input = await this.page.$(selector);
+      if (!input) return false;
+      await input.uploadFile(value);
+      await input.dispose();
+      return true;
+    }
+
     if (kind === 'select') {
       // page.select does not throw on a value the select does not offer - it
       // selects nothing and returns an empty array. Treating that as a write
@@ -465,6 +568,56 @@ export class BrowserConnector extends PlatformConnector {
 
     await this.clearAndType(selector, value);
     return true;
+  }
+
+  /**
+   * Pick one option of a radio group, by the value the platform uses.
+   *
+   * Not as simple as ticking an input. Casting Network's group is a Radix
+   * RadioGroup: the real control is a button[role="radio"], and the
+   * input[type="radio"] beside it is invisible (opacity 0) and only carries
+   * the value for form submission. Setting `checked` on that input does change
+   * the DOM - and changes nothing else. The circle on screen stays empty and
+   * the component's own state, which is what gets submitted, never moves. The
+   * dry-run screenshot is what caught it: the log said the field was filled,
+   * the picture said it was not.
+   *
+   * So: click the ARIA control if there is one, click the input otherwise, and
+   * afterwards check that it actually took. A write that did not take must be
+   * reported as a write that did not take.
+   */
+  async chooseOption(selector, wanted) {
+    const handle = await this.page.evaluateHandle((sel, value) => {
+      const candidates = [
+        ...document.querySelectorAll('[role="radio"]'),
+        ...document.querySelectorAll(sel)
+      ];
+      return candidates.find((el) => (el.getAttribute('value') ?? el.value) === value) || null;
+    }, selector, wanted);
+
+    const element = handle.asElement();
+    if (!element) {
+      await handle.dispose();
+      return false;
+    }
+
+    // A real mouse click, because a component library listens for one.
+    await element.click().catch(() => {});
+    await element.dispose();
+
+    // Did it take? ARIA first - that is what a component library updates.
+    return this.page.evaluate((sel, value) => {
+      const candidates = [
+        ...document.querySelectorAll('[role="radio"]'),
+        ...document.querySelectorAll(sel)
+      ];
+      const chosen = candidates.find((el) => (el.getAttribute('value') ?? el.value) === value);
+      if (!chosen) return false;
+
+      return chosen.getAttribute('aria-checked') === 'true'
+        || chosen.getAttribute('data-state') === 'checked'
+        || chosen.checked === true;
+    }, selector, wanted);
   }
 
   /**
@@ -483,13 +636,21 @@ export class BrowserConnector extends PlatformConnector {
     let updatedSelector = null;
 
     for (const descriptor of fields) {
-      const value = profile[descriptor.field];
-      if (value === undefined || value === null || value === '') continue;
+      const stored = this.constructor.valueAt(profile, descriptor.field);
+      if (stored === undefined || stored === null || stored === '') continue;
+
+      const value = this.constructor.toPlatformValue(descriptor, stored);
+      if (value === null || value === '') {
+        // The platform has no equivalent for this value; say so rather than
+        // writing something close enough.
+        missingFields.push(descriptor.field);
+        continue;
+      }
 
       requestedFields.push(descriptor.field);
       try {
         // eslint-disable-next-line no-await-in-loop
-        const written = await this.writeField(descriptor, descriptor.transform ? descriptor.transform(value) : value);
+        const written = await this.writeField(descriptor, value);
         if (written) {
           updatedFields.push(descriptor.field);
           updatedSelector = updatedSelector || descriptor.selector;
@@ -556,12 +717,19 @@ export class BrowserConnector extends PlatformConnector {
       }
 
       // Several controls can feed one field - dialects, instruments and
-      // hobbies are all just skills here.
-      if (Array.isArray(value) && Array.isArray(fields[field])) {
-        fields[field] = [...fields[field], ...value];
-      } else if (field.includes('.')) {
+      // hobbies are all just skills here, and IM OFF's seven picture slots are
+      // all one setcard. Nested targets merge too: writing setcard.photos once
+      // per slot used to replace the list each time, so seven pictures arrived
+      // as one and the count looked like an almost empty profile.
+      if (field.includes('.')) {
         const [head, tail] = field.split('.');
-        fields[head] = { ...(fields[head] || {}), [tail]: value };
+        const current = fields[head]?.[tail];
+        const merged = Array.isArray(value) && Array.isArray(current)
+          ? [...current, ...value]
+          : value;
+        fields[head] = { ...(fields[head] || {}), [tail]: merged };
+      } else if (Array.isArray(value) && Array.isArray(fields[field])) {
+        fields[field] = [...fields[field], ...value];
       } else {
         fields[field] = value;
       }
@@ -575,6 +743,7 @@ export class BrowserConnector extends PlatformConnector {
 
       for (const descriptor of page.fields) {
         const { field, selector, kind = 'value' } = descriptor;
+        const where = selector || (descriptor.selectors || []).join(' + ');
         let value;
 
         /* eslint-disable no-await-in-loop */
@@ -588,12 +757,28 @@ export class BrowserConnector extends PlatformConnector {
         } else if (kind === 'list') {
           const raw = await this.readValue(selector);
           value = (raw || '').split(/[,;]/).map((part) => part.trim()).filter(Boolean);
+        } else if (kind === 'images') {
+          value = await this.readImages(selector, descriptor);
+        } else if (kind === 'join') {
+          // One value of ours spread over several of theirs: an address is a
+          // street, a postal code and a town in three separate inputs.
+          const parts = [];
+          for (const one of descriptor.selectors || []) {
+            parts.push(await this.readValue(one));
+          }
+          // `separators` gives one per gap, because the gaps differ: a German
+          // address is "street, postcode town", not "street, postcode, town".
+          const present = parts.filter(Boolean);
+          const gaps = descriptor.separators || [];
+          value = present.reduce((text, part, index) => (index === 0
+            ? part
+            : text + (gaps[index - 1] ?? descriptor.separator ?? ', ') + part), '');
         } else {
           value = await this.readValue(selector);
         }
         /* eslint-enable no-await-in-loop */
 
-        add(field, value, `${page.path} ${selector}`);
+        add(field, value, `${page.path} ${where}`);
       }
     }
 
@@ -608,6 +793,15 @@ export class BrowserConnector extends PlatformConnector {
       found: Object.keys(fields),
       missing
     });
+
+    // The picture a platform marks as the main one is what this profile calls
+    // the avatar. Derived rather than declared, because it is the same
+    // convention everywhere and a descriptor should not have to repeat it.
+    const primary = (fields.setcard?.photos || []).find((photo) => photo.isPrimary);
+    if (primary && !fields.avatar) {
+      fields.avatar = primary.url;
+      sources.avatar = sources.setcard;
+    }
 
     // One field can be fed by several controls, so the same name can land in
     // `missing` more than once - report it once.
@@ -632,8 +826,8 @@ export class BrowserConnector extends PlatformConnector {
     }));
   }
 
-  async pushProfile(profile) {
-    return this.updateProfile(profile);
+  async pushProfile(profile, options = {}) {
+    return this.updateProfile(profile, options);
   }
 
   /**
@@ -642,9 +836,9 @@ export class BrowserConnector extends PlatformConnector {
    * Fails loudly when nothing landed: this is the one place where a scraper is
    * most tempted to report success it did not earn.
    */
-  async updateProfile(profile) {
+  async updateProfile(profile, { dryRun = false } = {}) {
     return this.withRateLimit(() => this.withRetry(async () => {
-      this.log('info', `Updating profile on ${this.manifest.name}`);
+      this.log('info', `${dryRun ? 'Dry run:' : 'Updating profile on'} ${this.manifest.name}`);
 
       if (!this.isAuthenticated || !this.page) {
         throw new Error('Not authenticated. Call authenticate() first.');
@@ -662,6 +856,28 @@ export class BrowserConnector extends PlatformConnector {
           + `(looked for: ${requestedFields.join(', ')})`,
           { platform: this.manifest.key }
         );
+      }
+
+      // A dry run stops here, with the form filled in and photographed. This
+      // is the only way to see what a push would actually publish before it
+      // publishes it - on a platform where "save" creates a public profile,
+      // finding out afterwards is too late.
+      if (dryRun) {
+        const shot = await this.captureFilledForm();
+        this.log('info', `Dry run finished for ${this.manifest.name}`, {
+          filled: updatedFields, notFilled: missingFields, screenshot: shot
+        });
+
+        return {
+          success: true,
+          dryRun: true,
+          submitted: false,
+          updatedFields,
+          missingFields,
+          screenshot: shot,
+          url: this.page.url(),
+          details: { dryRun: true, filled: updatedFields, notFilled: missingFields, screenshot: shot }
+        };
       }
 
       let submitted = false;
@@ -771,6 +987,202 @@ export class BrowserConnector extends PlatformConnector {
       else form.submit();
       return true;
     }, selector);
+  }
+
+  /**
+   * Photograph the filled form for a dry run.
+   *
+   * Written next to the failure captures, because it answers the same kind of
+   * question: what was actually on the screen. A field that looks filled in
+   * the log but empty in the picture means the write did not take - which is
+   * exactly what a custom widget does to a naive `type()`.
+   */
+  async captureFilledForm() {
+    const dir = process.env.CONNECTOR_FORENSICS_DIR
+      || path.join(process.cwd(), 'forensics');
+    const file = path.join(
+      dir,
+      `${new Date().toISOString().replace(/[:.]/g, '-')}_${this.manifest.key}_dry-run.png`
+    );
+
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      await this.page.screenshot({ path: file, fullPage: true });
+      return file;
+    } catch (error) {
+      // A dry run must not fail because a screenshot could not be written.
+      this.log('warn', 'Could not save the dry-run screenshot', { error: error.message });
+      return null;
+    }
+  }
+
+  /**
+   * Fetch one of the user's pictures to a temporary file.
+   *
+   * Through the page, not through a bare http request: these files sit behind
+   * the same login the connector just went through, and a plain fetch from the
+   * server would get a redirect to a sign-in form. Going through the page
+   * reuses the session that is already open.
+   *
+   * The file is temporary on purpose. This app propagates the user's pictures
+   * between the platforms they already gave them to; it does not become a
+   * second home for them.
+   */
+  async fetchMediaFile(url) {
+    const data = await this.page.evaluate(async (href) => {
+      const response = await fetch(href, { credentials: 'include' });
+      if (!response.ok) return null;
+      const buffer = await response.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+      return { base64: btoa(binary), type: response.headers.get('content-type') || '' };
+    }, url).catch(() => null);
+
+    if (!data?.base64) return null;
+
+    const extension = (data.type.includes('png') && '.png')
+      || (data.type.includes('webp') && '.webp')
+      || (url.match(/\.(jpe?g|png|webp)/i)?.[0])
+      || '.jpg';
+
+    const file = path.join(
+      os.tmpdir(),
+      `cpm-${this.manifest.key}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${extension}`
+    );
+    await fs.writeFile(file, Buffer.from(data.base64, 'base64'));
+    return file;
+  }
+
+  /**
+   * Put the user's pictures into this platform's upload slots.
+   *
+   * The descriptor lists the slots and what each one is for; the profile's
+   * setcard says which picture is what. Matching happens on those types, so a
+   * portrait lands in a portrait slot and nothing is uploaded on the strength
+   * of its position in a list.
+   *
+   * Uploading a picture is not like filling in a field: on most of these
+   * platforms it is immediately visible to everyone. So a dry run reports the
+   * plan - which picture would go into which slot - and touches nothing.
+   */
+  async pushMedia(profile, { dryRun = false } = {}) {
+    const slots = this.site.mediaFields || [];
+    if (slots.length === 0) {
+      throw new NotSupportedError(
+        `${this.manifest.name} declares no media slots`,
+        { platform: this.manifest.key }
+      );
+    }
+
+    return this.withRateLimit(() => this.withRetry(async () => {
+      if (!this.isAuthenticated || !this.page) {
+        throw new Error('Not authenticated. Call authenticate() first.');
+      }
+
+      // Open the upload page before planning, not after: the plan asks each
+      // slot what it accepts, and a control that is not on screen answers
+      // nothing - which read as "no restriction" and let an AVIF be planned
+      // into a slot that takes JPEG only. Navigating is read-only; a dry run
+      // may do it too.
+      await this.openPage(this.url(this.site.paths.media));
+
+      // One picture per slot, matched on what each is for. A picture already
+      // placed is not offered again, so three portraits fill three portrait
+      // slots rather than the same one three times.
+      const photos = (profile.setcard?.photos || []).filter((photo) => photo.url);
+      const used = new Set();
+      const plan = [];
+
+      for (const slot of slots) {
+        const photo = photos.find((candidate) => !used.has(candidate.url)
+          && (!slot.type || candidate.type === slot.type));
+        if (!photo) continue;
+
+        used.add(photo.url);
+        plan.push({
+          slot: slot.selector,
+          type: slot.type,
+          url: photo.url,
+          // What the slot takes, read off the page rather than assumed. IM OFF
+          // accepts image/jpeg; Filmmakers serves AVIF. Uploading it anyway
+          // would produce a rejection from the platform and a success in our
+          // log.
+          accepts: await this.readAttribute(slot.selector, 'accept')
+        });
+      }
+
+      const suitable = (step) => {
+        if (!step.accepts) return true;
+        const wanted = step.accepts.split(',').map((one) => one.trim().toLowerCase());
+        const extension = (step.url.match(/\.(jpe?g|png|webp|avif|gif)/i)?.[1] || '').toLowerCase();
+        const type = extension.startsWith('jp') ? 'image/jpeg' : `image/${extension}`;
+        return wanted.some((one) => one === type || one === 'image/*' || one === `.${extension}`);
+      };
+
+      const rejected = plan.filter((step) => !suitable(step));
+      const accepted = plan.filter(suitable);
+
+      if (plan.length === 0) {
+        return {
+          success: true, dryRun, uploaded: [], planned: [], skipped: slots.length,
+          details: { message: 'No picture in the profile matches a slot on this platform' }
+        };
+      }
+
+      if (dryRun) {
+        this.log('info', `Dry run: ${accepted.length} picture(s) would be uploaded to ${this.manifest.name}`, {
+          rejected: rejected.length
+        });
+        return {
+          success: true,
+          dryRun: true,
+          uploaded: [],
+          planned: accepted,
+          rejected,
+          details: { planned: accepted, rejected }
+        };
+      }
+
+      const uploaded = [];
+      const failed = rejected.map((step) => ({
+        ...step, reason: `the slot takes ${step.accepts}, this picture is not that`
+      }));
+      for (const step of accepted) {
+        const file = await this.fetchMediaFile(step.url);
+        if (!file) {
+          failed.push({ ...step, reason: 'could not be fetched' });
+          continue;
+        }
+        try {
+          const written = await this.writeField({ selector: step.slot, kind: 'file' }, file);
+          if (written) uploaded.push(step);
+          else failed.push({ ...step, reason: 'no such upload control on the page' });
+        } finally {
+          await fs.unlink(file).catch(() => {});
+        }
+      }
+
+      if (uploaded.length === 0) {
+        throw new PlatformChangedError(
+          `No picture could be uploaded to ${this.manifest.name} (${failed.map((f) => f.reason).join('; ')})`,
+          { platform: this.manifest.key }
+        );
+      }
+
+      this.log('info', `Uploaded ${uploaded.length} picture(s) to ${this.manifest.name}`, {
+        uploaded: uploaded.map((u) => u.type), failed: failed.length
+      });
+
+      return {
+        success: true,
+        dryRun: false,
+        uploaded,
+        failed,
+        count: uploaded.length,
+        details: { uploaded: uploaded.map((u) => u.type), failed }
+      };
+    }));
   }
 
   /** Format a date for a date input (YYYY-MM-DD). */

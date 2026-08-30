@@ -13,7 +13,7 @@ export class CastingNetworkConnector extends BrowserConnector {
   static manifest = Object.freeze({
     id: 2,
     key: 'casting-network',
-    name: 'Casting Network',
+    name: 'Casting Networks (international)',
     authType: 'credentials',
     credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
       { name: 'password', type: 'password', required: true, label: 'Passwort' }],

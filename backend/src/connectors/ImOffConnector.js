@@ -16,7 +16,7 @@ export class ImOffConnector extends BrowserConnector {
     // for a user name, so the UI does too.
     credentialFields: [{ name: 'username', type: 'text', required: true, label: 'Benutzername' },
       { name: 'password', type: 'password', required: true, label: 'Passwort' }],
-    capabilities: ['verify', 'pullProfile']
+    capabilities: ['verify', 'pullProfile', 'pushMedia']
   });
 
   /**
@@ -39,8 +39,27 @@ export class ImOffConnector extends BrowserConnector {
       submitTexts: ['login', 'anmelden', 'einloggen']
     },
     paths: {
-      profileEdit: '/external/extras'
+      profileEdit: '/external/extras',
+      media: '/external/extras/photos'
     },
+    /**
+     * The upload slots, in the order the page presents them. Each one takes a
+     * single image/jpeg and says in its name what it is for, so a portrait
+     * goes where portraits go.
+     *
+     * Writing back the rest of the profile is still not implemented: each page
+     * saves through its own button and nobody has watched what that does.
+     * Pictures are different - the slots are unambiguous, and keeping them in
+     * step across platforms is the point of this app.
+     */
+    mediaFields: [
+      { selector: 'input[name="picture_front1"]', type: 'portrait' },
+      { selector: 'input[name="picture_front2"]', type: 'portrait' },
+      { selector: 'input[name="picture_front3"]', type: 'portrait' },
+      { selector: 'input[name="picture_full"]', type: 'fullbody' },
+      { selector: 'input[name="picture_left"]', type: 'character' },
+      { selector: 'input[name="picture_right"]', type: 'character' }
+    ],
     profileRead: {
       pages: [
         {
@@ -64,6 +83,21 @@ export class ImOffConnector extends BrowserConnector {
             { field: 'height', selector: '#height' },
             { field: 'hairColor', selector: '#hair_color_id', kind: 'selected' },
             { field: 'eyeColor', selector: '#eye_color_id', kind: 'selected' }
+          ]
+        },
+        {
+          // Seven named slots, one picture each, all image/jpeg. The names say
+          // what they are, which is what makes the setcard types honest here
+          // rather than guessed.
+          path: '/external/extras/photos',
+          fields: [
+            { field: 'setcard.photos', selector: 'img[src*="front1"]', kind: 'images', type: 'portrait', primary: true },
+            { field: 'setcard.photos', selector: 'img[src*="front2"]', kind: 'images', type: 'portrait' },
+            { field: 'setcard.photos', selector: 'img[src*="front3"]', kind: 'images', type: 'portrait' },
+            { field: 'setcard.photos', selector: 'img[src*="full"]', kind: 'images', type: 'fullbody' },
+            { field: 'setcard.photos', selector: 'img[src*="left"]', kind: 'images', type: 'character' },
+            { field: 'setcard.photos', selector: 'img[src*="right"]', kind: 'images', type: 'character' },
+            { field: 'setcard.photos', selector: 'img[src*="hands"]', kind: 'images', type: 'other' }
           ]
         },
         {

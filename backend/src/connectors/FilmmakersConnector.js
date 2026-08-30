@@ -371,6 +371,23 @@ export class FilmmakersConnector extends BrowserConnector {
       set('gender', this.constructor.toProfileGender((await this.readSelected('#actor_profile_gender'))[0]), 'edit?section=personal_information');
       set('dateOfBirth', await this.readDateOfBirth(), 'edit?section=personal_information');
 
+      // ---- pictures --------------------------------------------------------
+      //
+      // The public profile is where the pictures are; the edit form only
+      // offers upload controls. Filmmakers calls it a sedcard and says so in
+      // its class names, which makes them a solid anchor: the large picture is
+      // the primary one, the strip below it is the rest of the set.
+      await this.openPage(`${this.baseUrl}/actors/${slug}`);
+      const photos = [
+        ...await this.readImages('.sedcard-image-link img', { type: 'portrait', primary: true, limit: 1 }),
+        ...await this.readImages('.sedcard-media-pictures--item img', { type: 'other' })
+      ];
+      // The same picture appears large and as a thumbnail; keep the first.
+      const seen = new Set();
+      const unique = photos.filter((photo) => !seen.has(photo.url) && seen.add(photo.url));
+      set('setcard', unique.length ? { photos: unique } : null, `/actors/${slug} (sedcard)`);
+      if (unique[0]) set('avatar', unique[0].url, `/actors/${slug} (sedcard)`);
+
       // ---- vita: credits and training --------------------------------------
       await this.openPage(`${editUrl}?edit_links=true&section=vita_entries`);
       const vita = await this.readVitaEntries();

@@ -81,12 +81,34 @@ const ProfileSchema = new mongoose.Schema({
     }],
     lastUpdated: Date,
   },
+  /**
+   * The one video a profile leads with. Kept because the profile view shows a
+   * single showreel; `videos` below holds everything, this points at the one
+   * that represents the actor.
+   */
   showreel: {
     url: String,
     description: String,
     platform: String,
     uploadedAt: Date,
   },
+  /**
+   * Every video the platforms hold. A profile is not limited to one - JobWork
+   * alone carries a reel that the old single field could not represent, and
+   * dropping the rest silently is how an import looks complete while losing
+   * things.
+   */
+  videos: [{
+    url: String,
+    title: String,
+    type: {
+      type: String,
+      enum: ['showreel', 'scene', 'selftape', 'other'],
+      default: 'other',
+    },
+    platform: String,
+    uploadedAt: Date,
+  }],
   socialMedia: {
     instagram: String,
     facebook: String,
