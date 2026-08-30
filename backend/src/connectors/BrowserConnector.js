@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import puppeteer from 'puppeteer';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
@@ -395,6 +396,13 @@ export class BrowserConnector extends PlatformConnector {
       .catch(() => []);
   }
 
+  /** One attribute of one element, or null when it is not there. */
+  async readAttribute(selector, attribute) {
+    return this.page
+      .$eval(selector, (el, name) => el.getAttribute(name), attribute)
+      .catch(() => null);
+  }
+
   /** Values of a repeated hidden input, as a tag widget writes them. */
   async readList(selector) {
     return this.page
@@ -540,6 +548,15 @@ export class BrowserConnector extends PlatformConnector {
     if (!await this.page.$(selector)) return false;
 
     if (kind === 'radio') return this.chooseOption(selector, String(value));
+
+    if (kind === 'file') {
+      // `value` is a path on this machine; the platform gets the bytes.
+      const input = await this.page.$(selector);
+      if (!input) return false;
+      await input.uploadFile(value);
+      await input.dispose();
+      return true;
+    }
 
     if (kind === 'select') {
       // page.select does not throw on a value the select does not offer - it
@@ -997,6 +1014,175 @@ export class BrowserConnector extends PlatformConnector {
       this.log('warn', 'Could not save the dry-run screenshot', { error: error.message });
       return null;
     }
+  }
+
+  /**
+   * Fetch one of the user's pictures to a temporary file.
+   *
+   * Through the page, not through a bare http request: these files sit behind
+   * the same login the connector just went through, and a plain fetch from the
+   * server would get a redirect to a sign-in form. Going through the page
+   * reuses the session that is already open.
+   *
+   * The file is temporary on purpose. This app propagates the user's pictures
+   * between the platforms they already gave them to; it does not become a
+   * second home for them.
+   */
+  async fetchMediaFile(url) {
+    const data = await this.page.evaluate(async (href) => {
+      const response = await fetch(href, { credentials: 'include' });
+      if (!response.ok) return null;
+      const buffer = await response.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+      return { base64: btoa(binary), type: response.headers.get('content-type') || '' };
+    }, url).catch(() => null);
+
+    if (!data?.base64) return null;
+
+    const extension = (data.type.includes('png') && '.png')
+      || (data.type.includes('webp') && '.webp')
+      || (url.match(/\.(jpe?g|png|webp)/i)?.[0])
+      || '.jpg';
+
+    const file = path.join(
+      os.tmpdir(),
+      `cpm-${this.manifest.key}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${extension}`
+    );
+    await fs.writeFile(file, Buffer.from(data.base64, 'base64'));
+    return file;
+  }
+
+  /**
+   * Put the user's pictures into this platform's upload slots.
+   *
+   * The descriptor lists the slots and what each one is for; the profile's
+   * setcard says which picture is what. Matching happens on those types, so a
+   * portrait lands in a portrait slot and nothing is uploaded on the strength
+   * of its position in a list.
+   *
+   * Uploading a picture is not like filling in a field: on most of these
+   * platforms it is immediately visible to everyone. So a dry run reports the
+   * plan - which picture would go into which slot - and touches nothing.
+   */
+  async pushMedia(profile, { dryRun = false } = {}) {
+    const slots = this.site.mediaFields || [];
+    if (slots.length === 0) {
+      throw new NotSupportedError(
+        `${this.manifest.name} declares no media slots`,
+        { platform: this.manifest.key }
+      );
+    }
+
+    return this.withRateLimit(() => this.withRetry(async () => {
+      if (!this.isAuthenticated || !this.page) {
+        throw new Error('Not authenticated. Call authenticate() first.');
+      }
+
+      // Open the upload page before planning, not after: the plan asks each
+      // slot what it accepts, and a control that is not on screen answers
+      // nothing - which read as "no restriction" and let an AVIF be planned
+      // into a slot that takes JPEG only. Navigating is read-only; a dry run
+      // may do it too.
+      await this.openPage(this.url(this.site.paths.media));
+
+      // One picture per slot, matched on what each is for. A picture already
+      // placed is not offered again, so three portraits fill three portrait
+      // slots rather than the same one three times.
+      const photos = (profile.setcard?.photos || []).filter((photo) => photo.url);
+      const used = new Set();
+      const plan = [];
+
+      for (const slot of slots) {
+        const photo = photos.find((candidate) => !used.has(candidate.url)
+          && (!slot.type || candidate.type === slot.type));
+        if (!photo) continue;
+
+        used.add(photo.url);
+        plan.push({
+          slot: slot.selector,
+          type: slot.type,
+          url: photo.url,
+          // What the slot takes, read off the page rather than assumed. IM OFF
+          // accepts image/jpeg; Filmmakers serves AVIF. Uploading it anyway
+          // would produce a rejection from the platform and a success in our
+          // log.
+          accepts: await this.readAttribute(slot.selector, 'accept')
+        });
+      }
+
+      const suitable = (step) => {
+        if (!step.accepts) return true;
+        const wanted = step.accepts.split(',').map((one) => one.trim().toLowerCase());
+        const extension = (step.url.match(/\.(jpe?g|png|webp|avif|gif)/i)?.[1] || '').toLowerCase();
+        const type = extension.startsWith('jp') ? 'image/jpeg' : `image/${extension}`;
+        return wanted.some((one) => one === type || one === 'image/*' || one === `.${extension}`);
+      };
+
+      const rejected = plan.filter((step) => !suitable(step));
+      const accepted = plan.filter(suitable);
+
+      if (plan.length === 0) {
+        return {
+          success: true, dryRun, uploaded: [], planned: [], skipped: slots.length,
+          details: { message: 'No picture in the profile matches a slot on this platform' }
+        };
+      }
+
+      if (dryRun) {
+        this.log('info', `Dry run: ${accepted.length} picture(s) would be uploaded to ${this.manifest.name}`, {
+          rejected: rejected.length
+        });
+        return {
+          success: true,
+          dryRun: true,
+          uploaded: [],
+          planned: accepted,
+          rejected,
+          details: { planned: accepted, rejected }
+        };
+      }
+
+      const uploaded = [];
+      const failed = rejected.map((step) => ({
+        ...step, reason: `the slot takes ${step.accepts}, this picture is not that`
+      }));
+      for (const step of accepted) {
+        const file = await this.fetchMediaFile(step.url);
+        if (!file) {
+          failed.push({ ...step, reason: 'could not be fetched' });
+          continue;
+        }
+        try {
+          const written = await this.writeField({ selector: step.slot, kind: 'file' }, file);
+          if (written) uploaded.push(step);
+          else failed.push({ ...step, reason: 'no such upload control on the page' });
+        } finally {
+          await fs.unlink(file).catch(() => {});
+        }
+      }
+
+      if (uploaded.length === 0) {
+        throw new PlatformChangedError(
+          `No picture could be uploaded to ${this.manifest.name} (${failed.map((f) => f.reason).join('; ')})`,
+          { platform: this.manifest.key }
+        );
+      }
+
+      this.log('info', `Uploaded ${uploaded.length} picture(s) to ${this.manifest.name}`, {
+        uploaded: uploaded.map((u) => u.type), failed: failed.length
+      });
+
+      return {
+        success: true,
+        dryRun: false,
+        uploaded,
+        failed,
+        count: uploaded.length,
+        details: { uploaded: uploaded.map((u) => u.type), failed }
+      };
+    }));
   }
 
   /** Format a date for a date input (YYYY-MM-DD). */

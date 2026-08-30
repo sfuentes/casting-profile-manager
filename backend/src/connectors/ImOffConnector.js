@@ -16,7 +16,7 @@ export class ImOffConnector extends BrowserConnector {
     // for a user name, so the UI does too.
     credentialFields: [{ name: 'username', type: 'text', required: true, label: 'Benutzername' },
       { name: 'password', type: 'password', required: true, label: 'Passwort' }],
-    capabilities: ['verify', 'pullProfile']
+    capabilities: ['verify', 'pullProfile', 'pushMedia']
   });
 
   /**
@@ -39,8 +39,27 @@ export class ImOffConnector extends BrowserConnector {
       submitTexts: ['login', 'anmelden', 'einloggen']
     },
     paths: {
-      profileEdit: '/external/extras'
+      profileEdit: '/external/extras',
+      media: '/external/extras/photos'
     },
+    /**
+     * The upload slots, in the order the page presents them. Each one takes a
+     * single image/jpeg and says in its name what it is for, so a portrait
+     * goes where portraits go.
+     *
+     * Writing back the rest of the profile is still not implemented: each page
+     * saves through its own button and nobody has watched what that does.
+     * Pictures are different - the slots are unambiguous, and keeping them in
+     * step across platforms is the point of this app.
+     */
+    mediaFields: [
+      { selector: 'input[name="picture_front1"]', type: 'portrait' },
+      { selector: 'input[name="picture_front2"]', type: 'portrait' },
+      { selector: 'input[name="picture_front3"]', type: 'portrait' },
+      { selector: 'input[name="picture_full"]', type: 'fullbody' },
+      { selector: 'input[name="picture_left"]', type: 'character' },
+      { selector: 'input[name="picture_right"]', type: 'character' }
+    ],
     profileRead: {
       pages: [
         {
