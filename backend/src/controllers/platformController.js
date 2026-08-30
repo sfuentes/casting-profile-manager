@@ -219,9 +219,11 @@ export const testPlatformConnection = catchAsync(async (req, res) => {
     timestamp: new Date()
   };
   platform.lastTested = new Date();
-  // A failed test means the stored credentials no longer work; stop reporting
-  // the platform as connected until they are fixed.
-  if (!result.ok) platform.connected = false;
+  // The test result decides the connection state in both directions. It only
+  // ever cleared the flag: a platform whose credentials were fixed and then
+  // tested successfully stayed "not connected" forever, and everything that
+  // requires a connected platform - syncing, importing - kept refusing to run.
+  platform.connected = result.ok;
   await platform.save();
 
   res.status(200).json({

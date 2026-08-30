@@ -74,20 +74,44 @@ const save = async (label, html) => {
   return file;
 };
 
-/** Load a URL and report what it is; returns false when it did not load. */
-const visit = async (label, url) => {
-  const response = await connector.page
-    .goto(url, { waitUntil: 'networkidle2', timeout: 45000 })
-    .catch((error) => ({ error }));
+/**
+ * Wait until a single-page app has put something on the screen.
+ *
+ * These apps serve an empty shell and render once their bundle runs, so
+ * reading straight after `networkidle2` captures a page with nothing in it -
+ * which is how the first JobWork run reported "no profile links" for an app
+ * that has plenty.
+ */
+const waitForContent = async () => {
+  await connector.page
+    .waitForFunction(() => document.body && document.body.innerText.trim().length > 200,
+      { timeout: 15000 })
+    .catch(() => {});
+};
 
-  if (response?.error) {
-    console.log(`\n### ${label}: ${response.error.message.slice(0, 80)}`);
-    return false;
+/**
+ * Report a page. Pass `navigate: false` to read the page that is already open
+ * rather than reloading it - reloading a single-page app throws away the state
+ * the login just reached.
+ */
+const visit = async (label, url, { navigate = true } = {}) => {
+  let response = null;
+
+  if (navigate) {
+    response = await connector.page
+      .goto(url, { waitUntil: 'networkidle2', timeout: 45000 })
+      .catch((error) => ({ error }));
+
+    if (response?.error) {
+      console.log(`\n### ${label}: ${response.error.message.slice(0, 80)}`);
+      return false;
+    }
   }
 
+  await waitForContent();
   const html = await connector.page.content();
   console.log(`\n### ${label}`);
-  console.log(`  ${response?.status()}  ${connector.page.url()}`);
+  console.log(`  ${response ? response.status() : '(already open)'}  ${connector.page.url()}`);
   console.log(`  title: ${await connector.page.title()}`);
   console.log(`  html -> ${await save(label, html)} (${html.length} bytes)`);
 
@@ -123,6 +147,7 @@ try {
 
   // What the site itself offers once logged in. This is how the profile URL is
   // found - never by trying paths.
+  await waitForContent();
   const links = await connector.page.$$eval('a[href]', (els) => {
     const seen = new Set();
     return els
@@ -138,12 +163,28 @@ try {
     console.log(`  ${link.href}  |  ${link.text}`);
   }
 
-  await visit('landing', connector.page.url());
+  if (interesting.length === 0) {
+    // Better to show everything than to report "nothing here": a single-page
+    // app may route through buttons rather than links.
+    console.log('  (none matched) every link on the page:');
+    for (const link of links.slice(0, 40)) console.log(`  ${link.href}  |  ${link.text}`);
 
+    const buttons = await connector.page.$$eval('button, [role="button"]', (els) => els
+      .map((el) => (el.innerText || el.getAttribute('aria-label') || '').trim())
+      .filter(Boolean)
+      .slice(0, 30));
+    console.log('  buttons on the page:', JSON.stringify(buttons));
+  }
+
+  await visit('landing', connector.page.url(), { navigate: false });
+
+  // Follow what matched, href or label. Filtering the candidates by href again
+  // dropped JobWork's profile link on the floor: it is `/you`, and only its
+  // text says "Profil".
   const base = new URL(connector.page.url()).origin;
   const candidates = [...new Set(interesting
     .map((l) => l.href)
-    .filter((href) => /profil|profile|edit|bearbeiten|vita|setcard/i.test(href))
+    .filter((href) => !href.startsWith('#') && !href.startsWith('mailto:'))
     .map((href) => (href.startsWith('http') ? href : new URL(href, base).href)))].slice(0, 8);
 
   console.log('\nfollowing:', candidates.length ? candidates.join('\n           ') : '(nothing looked like a profile link)');

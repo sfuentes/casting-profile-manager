@@ -49,6 +49,15 @@ const FIXTURES = {
       <input type="submit" value="Anmelden" onclick="window.clicked='input-submit'">
     </form>`),
 
+  'an icon button with no label is never mistaken for the submit': page404(`
+    <form onsubmit="window.clicked='submitted'; return false">
+      <button type="submit" style="display:none"></button>
+      <input name="identifier" type="text">
+      <input name="password" type="password">
+      <button onclick="window.clicked='eye-toggle'; return false"></button>
+      <button onclick="window.clicked='weiter'; return false">Weiter</button>
+    </form>`),
+
   'a form whose only submit control is hidden is submitted anyway': page404(`
     <form onsubmit="window.clicked='submitted-programmatically'; return false">
       <input name="password" type="password">
@@ -59,6 +68,7 @@ const FIXTURES = {
 const EXPECTED = {
   'visible button wins over a hidden submit (the JobWork shape)': 'weiter',
   'a plain visible submit is used when there is one': 'input-submit',
+  'an icon button with no label is never mistaken for the submit': 'weiter',
   'a form whose only submit control is hidden is submitted anyway': 'submitted-programmatically'
 };
 
