@@ -176,8 +176,8 @@ in one or two of them, never all four.
 | 5 | jobwork | jobwork.com`/de/login` | GraphQL `profile` payload | login, import, media |
 | 8 | sarah-weiss | online.castingagentur-weiss.de | — | login page only |
 | 9 | wanted | online.agentur-wanted.de | — | login page only |
-| 10 | filmpool | filmpool-casting.de`/users/sign_in` | — | login page only |
-| 11 | ufa-base | ufa-base.de`/users/sign_in` | — | login page only |
+| 10 | filmpool | filmpool-casting.de`/users/sign_in` | — | login (logged in 2026-08-31) |
+| 11 | ufa-base | ufa-base.de`/users/sign_in` | — | login (logged in 2026-08-31) |
 | 12 | im-off | app.im-off.de`/login` | multi-page form, 7 picture slots | login, import, pictures |
 | 13 | casting-network-de | casting-network.de`/login` | account page | login, import, push (dry run) |
 | 14 | backstage | Google OAuth — not automated | — | see below |
@@ -237,6 +237,29 @@ failure. A green badge for Backstage would claim a login that never happened.
 
 Each of these cost a debugging round and is now covered by a check:
 
+- **A cookie banner with nothing to decline.** filmpool and UFA Base (the same
+  white-label system) put one button - "OK - verstanden" - over a notice saying
+  only *necessary* cookies are set. No reject, no settings, no accept-all. The
+  banner declining was built around found nothing to click and left the overlay
+  covering the login form, so **neither platform could be logged into at all** -
+  and the two failures looked completely different: filmpool never reached its
+  submit and reported "still on the login page", UFA's click on Einloggen was
+  swallowed and came back as "Node is either not clickable". One cause, two
+  symptoms. The rule now runs in order: decline if there is anything to decline;
+  if a choice is offered and cannot be declined, **click nothing** and log it,
+  because consenting is not this code's to give; only a notice that asks nothing
+  is dismissed. `check:consent` pins all three against real Chromium.
+- **A submit that posts the form somewhere else.** Both sites put "Sende mir
+  einen Login-Link" in the login form as a second `button[type=submit]`,
+  distinguished only by `formaction="/passwordless/users/sign_in"`. Clicking it
+  mails the account holder a link instead of logging in. That attribute is now
+  what separates them - structural, not a label to recognise.
+- **`submitBy: 'text'` escaped the form.** It was added to avoid the login-link
+  button, and did it by skipping the form-scoped search and matching by label
+  across the whole page. UFA Base's header carries two `<a>Einloggen</a>`
+  navigation links, one of them hidden, so the click landed on a link: "Node is
+  either not clickable". It now means what it was meant to mean - the labels
+  decide *within* the form - and the page-wide search is only the last resort.
 - **A cookie banner in a shadow root.** JobWork's login sat behind Usercentrics.
   The fields underneath were fillable, the click on "Weiter" went into the
   overlay, and the failure read "could not be reached". Consent banners are now
@@ -464,7 +487,8 @@ outside, which nothing reads.
 
     npm run check:connectors     selectors, text selectors, submit, normaliser,
                                  block times, availability forms, media plan,
-                                 credit matching, manifests vs the schema
+                                 credit matching, manifests vs the schema,
+                                 consent banners
     npm run check:login-pages    every login page, live, no credentials
     npm run check:encryption-key inside the container
     node check-imports.mjs       every backend module loads

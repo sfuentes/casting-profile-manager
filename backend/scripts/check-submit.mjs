@@ -35,6 +35,27 @@ class TestConnector extends BrowserConnector {
 const page404 = (body) => `<!doctype html><html><body>${body}</body></html>`;
 
 const FIXTURES = {
+  'a submit with its own formaction is never taken for the login (the UFA shape)': page404(`
+    <a href="/users/sign_in" onclick="window.clicked='header-link'; return false"><span>Einloggen</span></a>
+    <form action="/users/sign_in" onsubmit="window.submitted = true; return false">
+      <input name="identifier" type="email">
+      <input name="password" type="password">
+      <button type="button" onclick="window.clicked='eye'"></button>
+      <button type="submit" onclick="window.clicked='einloggen'">Einloggen</button>
+      <button type="submit" formaction="/passwordless/users/sign_in"
+              onclick="window.clicked='login-link'">Sende mir einen Login-Link</button>
+    </form>`),
+
+  'the login link is refused even when it comes first': page404(`
+    <form action="/users/sign_in" onsubmit="window.submitted = true; return false">
+      <input name="identifier" type="email">
+      <input name="password" type="password">
+      <button type="submit" formaction="/passwordless/users/sign_in"
+              onclick="window.clicked='login-link'">Sende mir einen Login-Link</button>
+      <button type="submit" onclick="window.clicked='einloggen'">Einloggen</button>
+    </form>`),
+
+
   'visible button wins over a hidden submit (the JobWork shape)': page404(`
     <form onsubmit="window.submitted = true; return false">
       <button type="submit" style="display:none" onclick="window.clicked='hidden-submit'"></button>
@@ -66,6 +87,8 @@ const FIXTURES = {
 };
 
 const EXPECTED = {
+  'a submit with its own formaction is never taken for the login (the UFA shape)': 'einloggen',
+  'the login link is refused even when it comes first': 'einloggen',
   'visible button wins over a hidden submit (the JobWork shape)': 'weiter',
   'a plain visible submit is used when there is one': 'input-submit',
   'an icon button with no label is never mistaken for the submit': 'weiter',
@@ -103,6 +126,26 @@ try {
       failed += 1;
       console.log(`  FAIL  ${name}\n        expected ${EXPECTED[name]}, got ${clicked} (returned ${submitted})`);
     }
+  }
+
+  // Two plain submits and nothing structural to tell them apart: the caller's
+  // labels decide. Without labels the function cannot know, and takes the first
+  // - which is why the loop above does not cover this case.
+  await page.setContent(page404(`
+    <form action="/x" onsubmit="window.submitted = true; return false">
+      <input name="password" type="password">
+      <button type="submit" onclick="window.clicked='register'">Registrieren</button>
+      <button type="submit" onclick="window.clicked='einloggen'">Einloggen</button>
+    </form>`), { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => { window.clicked = null; });
+  await connector.submitFormOwning('input[type="password"]', ['einloggen', 'anmelden']);
+  const labelled = await page.evaluate(() => window.clicked);
+  if (labelled === 'einloggen') {
+    passed += 1;
+    console.log('  ok    with two plain submits the labels given decide');
+  } else {
+    failed += 1;
+    console.log(`  FAIL  with two plain submits the labels given decide (clicked ${labelled})`);
   }
 
   // No form at all: the caller must be told, not left assuming it submitted.
