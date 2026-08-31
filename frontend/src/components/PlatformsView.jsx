@@ -63,6 +63,20 @@ const isApiBased = (platform) => platform?.authType === 'apiKey';
 const canImportProfile = (platform) => Boolean(platform?.capabilities?.includes('pullProfile'));
 const canSyncCredits = (platform) => Boolean(platform?.capabilities?.includes('pushWorkHistory'));
 
+/**
+ * Where an imported value came from, in one line.
+ *
+ * The server sends { platform, platformName, location }. Older imports stored a
+ * bare locator string, so both shapes are read - a profile imported before this
+ * existed should still say what it can rather than render "[object Object]".
+ */
+const sourceLabel = (source) => {
+    if (!source) return '';
+    if (typeof source === 'string') return source;
+    const where = source.location ? ` · ${source.location}` : '';
+    return `${source.platformName || source.platform || 'Plattform'}${where}`;
+};
+
 /** German labels for the profile fields an import can return. */
 const IMPORT_FIELD_LABELS = {
     name: 'Name',
@@ -1049,7 +1063,9 @@ const PlatformsView = () => {
                         {creditQuestions.map((question) => (
                             <div key={question.path} className="space-y-1 border-t border-amber-200 pt-2">
                                 <p className="text-xs text-gray-900">
-                                    <strong>Ihr Eintrag:</strong> {question.credit}
+                                    <strong>
+                                        {question.from ? `Aus ${question.from}:` : 'Ihr Eintrag:'}
+                                    </strong> {question.credit}
                                 </p>
                                 <select
                                     className="w-full text-xs border border-gray-300 rounded px-2 py-1"
@@ -1063,7 +1079,7 @@ const PlatformsView = () => {
                                         <option key={option.value} value={option.value}>
                                             {option.value === '__add__'
                                                 ? option.label
-                                                : `Ist derselbe Credit wie: ${option.label}`}
+                                                : `Derselbe Credit wie${option.onPlatform ? ` auf ${option.onPlatform}` : ''}: ${option.label}`}
                                         </option>
                                     ))}
                                 </select>
@@ -1163,7 +1179,12 @@ const PlatformsView = () => {
                                             </span>
                                             {result.sources?.[key] && (
                                                 <span className="block text-[10px] text-gray-400">
-                                                    Quelle: {result.sources[key]}
+                                                    {/* The connector reports where on its own site a
+                                                        value sat; the platform name is stamped on by
+                                                        the server, because a locator like
+                                                        "graphql:profileExperienceRepeater" does not
+                                                        say which site it belongs to. */}
+                                                    Quelle: {sourceLabel(result.sources[key])}
                                                 </span>
                                             )}
                                         </span>

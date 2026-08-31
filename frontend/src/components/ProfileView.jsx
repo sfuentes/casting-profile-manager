@@ -27,6 +27,25 @@ import {useAppContext} from '../context/AppContext';
 import {Button, Modal, Input, Card, Badge} from './ui';
 
 /**
+ * Where a profile field came from, if it was not typed here.
+ *
+ * `profile.provenance` is written when an import is applied and keyed by field
+ * name. A field with no entry was the actor's own, which is why the absence
+ * renders nothing rather than "unbekannt": silence means "yours".
+ */
+const importedFrom = (profile, field) => {
+    const source = profile?.provenance?.[field];
+    if (!source) return '';
+    const name = source.platformName || source.platform;
+    if (!name) return '';
+    const when = source.importedAt ? new Date(source.importedAt) : null;
+    const date = when && !Number.isNaN(when.getTime())
+        ? ` am ${when.toLocaleDateString('de-DE')}` : '';
+    return `Übernommen von ${name}${date}`;
+};
+
+
+/**
  * A date for <input type="date">, which needs exactly YYYY-MM-DD and renders
  * nothing at all for the full ISO timestamp Mongo returns.
  */
@@ -301,6 +320,7 @@ const ProfileView = () => {
                             <div className="space-y-4">
                                 <Input
                                     label="Name"
+                                    hint={importedFrom(profile, 'name')}
                                     value={profile.name}
                                     onChange={(e) => handleProfileUpdate('name', e.target.value)}
                                 />
@@ -317,6 +337,7 @@ const ProfileView = () => {
                                 />
                                 <Input
                                     label="Wohnort"
+                                    hint={importedFrom(profile, 'location')}
                                     value={profile.location || ''}
                                     onChange={(e) => handleProfileUpdate('location', e.target.value)}
                                 />
@@ -327,6 +348,7 @@ const ProfileView = () => {
                                 />
                                 <Input
                                     label="Geburtsdatum"
+                                    hint={importedFrom(profile, 'dateOfBirth')}
                                     type="date"
                                     value={toDateInputValue(profile.dateOfBirth)}
                                     onChange={(e) => handleProfileUpdate('dateOfBirth', e.target.value)}
@@ -339,28 +361,33 @@ const ProfileView = () => {
                             <div className="space-y-4">
                                 <Input
                                     label="Körpergröße"
+                                    hint={importedFrom(profile, 'height')}
                                     value={profile.height || ''}
                                     onChange={(e) => handleProfileUpdate('height', e.target.value)}
                                     placeholder="z.B. 175 cm"
                                 />
                                 <Input
                                     label="Gewicht"
+                                    hint={importedFrom(profile, 'weight')}
                                     value={profile.weight || ''}
                                     onChange={(e) => handleProfileUpdate('weight', e.target.value)}
                                     placeholder="z.B. 70 kg"
                                 />
                                 <Input
                                     label="Augenfarbe"
+                                    hint={importedFrom(profile, 'eyeColor')}
                                     value={profile.eyeColor || ''}
                                     onChange={(e) => handleProfileUpdate('eyeColor', e.target.value)}
                                 />
                                 <Input
                                     label="Haarfarbe"
+                                    hint={importedFrom(profile, 'hairColor')}
                                     value={profile.hairColor || ''}
                                     onChange={(e) => handleProfileUpdate('hairColor', e.target.value)}
                                 />
                                 <Input
                                     label="Spielalter"
+                                    hint={importedFrom(profile, 'actingAge')}
                                     value={profile.actingAge || ''}
                                     onChange={(e) => handleProfileUpdate('actingAge', e.target.value)}
                                     placeholder="z.B. 25-35"

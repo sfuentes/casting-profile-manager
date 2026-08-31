@@ -190,14 +190,29 @@ export const mergeWorkHistory = (lists = []) => {
   const merged = [];
 
   for (const list of lists) {
-    for (const entry of list || []) {
+    // A list is either plain credits or credits with the platform they came
+    // from: [{ platform, platformName, credits }]. Both are accepted, because
+    // knowing the origin is worth recording but not worth forcing on callers
+    // that only want the union.
+    const credits = Array.isArray(list) ? list : (list?.credits || []);
+    const label = Array.isArray(list) ? null : {
+      platform: list?.platform, platformName: list?.platformName
+    };
+
+    for (const entry of credits) {
       if (!productionOf(entry)) continue;
       const existing = merged.find((kept) => isSameCredit(kept, entry));
       if (!existing) {
-        merged.push({ ...entry });
+        merged.push({ ...entry, ...(label?.platform ? { platforms: [label.platform] } : {}) });
         continue;
       }
+      // The same credit on a second platform: both are remembered, so a merged
+      // list can still say who has it and who is missing it.
+      if (label?.platform && !existing.platforms?.includes(label.platform)) {
+        existing.platforms = [...(existing.platforms || []), label.platform];
+      }
       for (const [key, value] of Object.entries(entry)) {
+        if (key === 'platforms') continue;
         const empty = existing[key] === undefined || existing[key] === null
           || existing[key] === '' || existing[key] === '-';
         if (empty && value !== undefined && value !== null && value !== '' && value !== '-') {
@@ -235,7 +250,7 @@ export const ADD_AS_NEW = '__add__';
  *   `missing` is safe to add on its own. `questions` each carry the credit, the
  *   candidates it might be, and the values an answer may take.
  */
-export const reconcileWorkHistory = (ours = [], theirs = []) => {
+export const reconcileWorkHistory = (ours = [], theirs = [], labels = {}) => {
   const { missing, shared, theirsOnly } = diffWorkHistory(ours, theirs);
 
   const certain = [];
@@ -252,11 +267,20 @@ export const reconcileWorkHistory = (ours = [], theirs = []) => {
     questions.push({
       path: `workHistory.${index === -1 ? questions.length : index}`,
       credit: describe(entry),
+      // Both sides are named. A question that shows two spellings without
+      // saying which site each is on cannot be answered: the answer depends on
+      // knowing that one of them is what this platform already publishes.
+      // A credit that came from a merge already knows which platforms carried
+      // it, so it can name itself without being told.
+      from: labels.ourName || labels.ourPlatform
+        || (entry.platforms?.length ? entry.platforms.join(', ') : null),
+      onPlatform: labels.theirName || labels.theirPlatform || null,
       entry,
       options: [
         ...candidates.map((candidate) => ({
           value: `same:${candidate.index}`,
           label: describe(candidate.entry),
+          onPlatform: labels.theirName || labels.theirPlatform || null,
           reason: candidate.reason
         })),
         { value: ADD_AS_NEW, label: 'Als eigenen Eintrag hinzufügen' }

@@ -210,5 +210,46 @@ check('a credit that matches outright is never also a question',
 check('edit distance gives up rather than running long',
   editDistance('abcdefgh', 'zzzzzzzz', 2) > 2, true);
 
+// ---- which platform an entry came from -------------------------------------
+
+const labelled = mergeWorkHistory([
+  { platform: 'filmmakers', platformName: 'Filmmakers',
+    credits: [{ production: 'GZSZ', role: 'Kinobesitzer', year: '2025', director: 'Regie Name' }] },
+  { platform: 'jobwork', platformName: 'JobWork',
+    credits: [{ production: 'GZSZ', role: 'Kinobesitzer', year: '2025', company: 'RTL' },
+      { production: 'ZERO', role: 'Bouncer', year: '2025' }] }
+]);
+
+check('a credit knows which platforms carry it',
+  labelled.find((e) => e.production === 'GZSZ').platforms, ['filmmakers', 'jobwork']);
+
+check('a credit only one platform has says so',
+  labelled.find((e) => e.production === 'ZERO').platforms, ['jobwork']);
+
+check('the merge still fills gaps across platforms',
+  [labelled[0].director, labelled[0].company], ['Regie Name', 'RTL']);
+
+check('plain lists without a platform still merge',
+  mergeWorkHistory([[{ production: 'X', role: 'y' }], [{ production: 'X', role: 'y' }]]).length, 1);
+
+check('a platform label is not mistaken for a field to fill in',
+  labelled.find((e) => e.production === 'ZERO').platforms.length, 1);
+
+const named = reconcileWorkHistory(
+  [{ production: 'Jefferey Bernard', role: 'Diverse Nebenrollen', year: '2025' }],
+  [{ production: 'Jeffrey Bernard', role: 'Diverse Nebenrollen', year: '2025' }],
+  { ourName: 'Filmmakers', theirName: 'JobWork' }
+);
+
+check('a question names where our entry comes from', named.questions[0].from, 'Filmmakers');
+check('a question names the platform being written to', named.questions[0].onPlatform, 'JobWork');
+check('each candidate names the platform it is on',
+  named.questions[0].options[0].onPlatform, 'JobWork');
+check('without labels a question still works', 
+  reconcileWorkHistory(
+    [{ production: 'A', role: 'b', year: '2025' }],
+    [{ production: 'A', role: 'c', year: '2025' }]
+  ).questions[0].from, null);
+
 console.log(`\n${passed}/${passed + failed} passed.`);
 process.exit(failed ? 1 : 0);

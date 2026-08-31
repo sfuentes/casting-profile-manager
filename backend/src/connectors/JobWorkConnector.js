@@ -257,7 +257,10 @@ export class JobWorkConnector extends BrowserConnector {
 
       // What the platform already has, read the way the importer reads it.
       const current = this.constructor.readExperience(await this.captureProfilePayload());
-      const { missing, shared, questions } = reconcileWorkHistory(ours, current);
+      const { missing, shared, questions } = reconcileWorkHistory(ours, current, {
+        theirPlatform: this.manifest.key,
+        theirName: this.manifest.name
+      });
 
       // A credit that resembles one already there is neither pushed nor
       // dropped: it comes back as a question. Only an answer the user gave to

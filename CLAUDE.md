@@ -277,6 +277,35 @@ written without someone saying so.
 `pushWorkHistory` adds only what is missing or answered, never edits and never
 deletes.
 
+### Where each value came from
+
+Every imported value is marked with the platform it was read from, and the mark
+survives into the profile.
+
+A connector reports the place inside its own site - `graphql:profileAbout`,
+`edit?section=vita_entries` - which says nothing about *which* site that was.
+`ConnectorService.importProfile` stamps the platform on, because that is the
+layer that knows it, so a source is `{ platform, platformName, location,
+readAt }` rather than a bare string. `applyImportedProfile` then writes
+`Profile.provenance[field] = { platform, platformName, location, importedAt }`.
+Before this, applying an import threw the origin away: the profile became a pile
+of values with no way to tell what the actor typed from what a scraper read off
+a casting site.
+
+A field with **no** provenance entry was the actor's own. That absence renders
+as nothing rather than "unknown" - silence means "yours".
+
+Credits carry it too. `mergeWorkHistory` accepts
+`[{ platform, platformName, credits }]` and records `platforms: [...]` on each
+merged credit, so a merged list still says who has a credit and who is missing
+it. A reconciliation question names both sides - which platform our entry came
+from, and which platform the candidate is already on - because a question
+showing two spellings without saying where each lives cannot be answered.
+
+The UI shows it: `Quelle: JobWork · graphql:profileAbout` in the import dialog,
+`Übernommen von Filmmakers am 31.8.2026` under the profile field, and
+`Derselbe Credit wie auf JobWork: ...` in the Vita dialog.
+
 ### Import, and what it must never do
 
 `POST /api/sync/media/:id` sends the **profile**, not a single media item: the

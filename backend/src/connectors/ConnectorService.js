@@ -225,15 +225,30 @@ class ConnectorService {
       // does not mean scraping the platform a second time - and so the values
       // the user confirms are the ones the server read, not whatever a client
       // sends back.
+      // Where each value came from, named so it stays readable once it is out
+      // of this run: a connector reports the place inside its own site
+      // ("graphql:profileExperienceRepeater"), which says nothing about which
+      // site that was. The platform is stamped on here, because this is the
+      // layer that knows it.
+      const sources = {};
+      for (const [field, location] of Object.entries(result.sources || {})) {
+        sources[field] = {
+          platform: connector.manifest.key,
+          platformName: connector.manifest.name,
+          location,
+          readAt: new Date()
+        };
+      }
+
       syncLog.metadata = {
-        details: result.details, sources: result.sources, fields, unmapped
+        details: result.details, sources, fields, unmapped
       };
       await syncLog.save();
 
       return {
         success: true,
         fields,
-        sources: result.sources || {},
+        sources,
         missing: result.missing || [],
         unmapped,
         syncLogId: String(syncLog._id)

@@ -146,6 +146,22 @@ const ProfileSchema = new mongoose.Schema({
     endYear: String,
     description: String,
   }],
+  /**
+   * Which platform each field was taken from, and when.
+   *
+   * Keyed by field name, e.g. `provenance.height = { platform: 'filmmakers',
+   * platformName: 'Filmmakers', location: 'edit', importedAt: ... }`. A field
+   * the actor typed in themselves has no entry, which is the honest default:
+   * absence means "this is theirs", not "unknown".
+   *
+   * It is stored rather than derived because the SyncLog it came from is a
+   * history that gets pruned, and because the question "where did this value
+   * come from" is asked long after the import that answered it.
+   */
+  provenance: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
   lastUpdated: {
     type: Date,
     default: Date.now,
