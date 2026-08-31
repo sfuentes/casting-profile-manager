@@ -180,12 +180,28 @@ const PlatformsView = () => {
         }
     };
 
+    /**
+     * Test one platform's stored credentials.
+     *
+     * Goes through the context rather than calling apiService directly: the
+     * context owns `syncing`, which is what disables the buttons and puts the
+     * spinner on this one, and it surfaces the error. Calling the service
+     * straight from here meant a test ran with no sign that anything was
+     * happening, and a request that never arrived was logged to the console and
+     * shown to the user as nothing at all - the previous badge just stayed up.
+     */
     const handleTestConnection = async (platform) => {
         try {
-            const result = await apiService.testPlatformConnection(platform.id, platform.authData);
+            const result = await testPlatformConnection(platform.id);
             setTestResults(prev => ({...prev, [platform.id]: result}));
         } catch (err) {
-            console.error('Connection test failed:', err);
+            // A test that could not be run is a failed test as far as the user
+            // is concerned, and the reason belongs on the badge.
+            setTestResults(prev => ({...prev, [platform.id]: {
+                success: false,
+                message: err.message,
+                lastTested: new Date().toISOString()
+            }}));
         }
     };
 
@@ -582,7 +598,8 @@ const PlatformsView = () => {
 
                                         <div className="flex items-center space-x-2">
                                             {testResult && (
-                                                <Badge color={testResult.success ? 'green' : 'red'} size="sm">
+                                                <Badge color={testResult.success ? 'green' : 'red'} size="sm"
+                                                       title={testResult.message || ''}>
                                                     {testResult.success ? 'Test OK' : 'Test fehlgeschlagen'}
                                                 </Badge>
                                             )}
@@ -709,8 +726,8 @@ const PlatformsView = () => {
                                                         </div>
                                                         <div className="flex justify-between">
                                                             <span className="text-gray-600">Letzter Test:</span>
-                                                            <span>{testResult?.lastTested ?
-                                                                new Date(testResult.lastTested).toLocaleString('de-DE') : 'Nie'}</span>
+                                                            <span>{(testResult?.lastTested || platform.lastTested) ?
+                                                                new Date(testResult?.lastTested || platform.lastTested).toLocaleString('de-DE') : 'Nie'}</span>
                                                         </div>
                                                     </div>
                                                 </div>

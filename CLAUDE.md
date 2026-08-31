@@ -327,6 +327,25 @@ Filmmakers serves AVIF, IM OFF accepts image/jpeg only — a picture sync betwee
 those two needs conversion, which means an image library and re-encoding
 someone's photographs. **That is a decision, not a workaround to slip in.**
 
+### The API envelope, and the field that keeps getting lost
+
+`handleResponse` in `apiService.js` unwraps `{ success, data }` and returns
+`data`. Anything an endpoint puts **beside** `data` is thrown away unless the
+caller passes `unwrap: false`.
+
+This has now bitten twice, both times as a UI that confidently reported the
+opposite of the truth. `/agent/health` carries status, message and timestamp on
+the envelope: the UI showed a permanent red "Agent: Unbekannt" with "Letzte
+Prüfung: Invalid Date" while the backend reported healthy. `/platforms/:id/test`
+carries `success`, `verified` and `message` on the envelope: `result.success`
+was always `undefined`, so **a login that actually succeeded was shown as "Test
+fehlgeschlagen"**, and "Letzter Test" read "Nie" straight after a test.
+
+Both are fixed. When adding an endpoint, either put everything the client reads
+inside `data`, or use `unwrap: false` and say why. The import endpoint gets this
+right - `fields` and `unmapped` live inside `data`, and only `message` sits
+outside, which nothing reads.
+
 ### Checks
 
     npm run check:connectors     selectors, text selectors, submit, normaliser,

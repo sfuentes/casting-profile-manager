@@ -381,13 +381,34 @@ export const apiService = {
         return handleResponse(response);
     },
 
-    testPlatformConnection: async (platformId, credentials) => {
+    /**
+     * Test a platform's stored credentials with a real login attempt.
+     *
+     * Read the unwrapping carefully before changing this. The endpoint answers
+     * `{ success, verified, message, data: { platform, testResult } }` - and
+     * `handleResponse` returns `data` when there is one, which dropped exactly
+     * the three fields every caller reads. `result.success` was always
+     * undefined, so a login that actually succeeded was shown to the user as
+     * "Test fehlgeschlagen", and `result.lastTested` was undefined, so the
+     * panel said "Letzter Test: Nie" straight after a test. The envelope is
+     * kept here and flattened into what the callers ask for.
+     *
+     * Nothing is sent in the body. The server tests the credentials it has
+     * stored; the browser is never given them, so it has nothing to send back.
+     */
+    testPlatformConnection: async (platformId) => {
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/test`, {
             method: 'POST',
-            headers: getHeaders(),
-            body: JSON.stringify(credentials)
+            headers: getHeaders()
         });
-        return handleResponse(response);
+        const body = await handleResponse(response, {unwrap: false});
+        return {
+            success: body.success === true,
+            verified: body.verified === true,
+            message: body.message,
+            lastTested: body.data?.testResult?.timestamp || body.data?.platform?.lastTested || null,
+            platform: body.data?.platform
+        };
     },
 
     syncToPlatform: async (platformId, dataTypes = ['profile', 'availability'], credentials) => {
