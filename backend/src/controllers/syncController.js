@@ -1,7 +1,18 @@
 import connectorService from '../connectors/ConnectorService.js';
 import Availability from '../models/Availability.js';
 import Profile from '../models/Profile.js';
+import { toBlockedPeriods } from '../connectors/blockedPeriods.js';
 import { asyncHandler as catchAsync } from '../middleware/asyncHandler.js';
+
+/**
+ * A dry run is a verification tool, not a feature of the app.
+ *
+ * `ConnectorService` takes `{ dryRun: true }` and the scripts use it to check a
+ * push before anything is published. The HTTP layer deliberately does not read
+ * it off the request: a sync route exists to sync, and a client that could ask
+ * for a dry run could also record one as if the platform had been updated.
+ * Nothing here forwards a caller-supplied dryRun.
+ */
 
 /**
  * Sync availability to a specific platform
@@ -23,7 +34,21 @@ export const syncAvailability = catchAsync(async (req, res) => {
     });
   }
 
+  // A calendar full of free days has no block times in it. Saying so beats
+  // recording a sync that sent nothing, which is how "synced" comes to mean
+  // nothing at all.
+  if (toBlockedPeriods(availability).length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'No block times to share. Only blocked periods are sent to platforms.'
+      }
+    });
+  }
+
   try {
+    // Only block times leave here - the service reduces the entries before any
+    // connector sees them. See connectors/blockedPeriods.js.
     const result = await connectorService.syncAvailability(
       userId,
       parseInt(platformId),
@@ -33,7 +58,7 @@ export const syncAvailability = catchAsync(async (req, res) => {
     res.status(200).json({
       success: true,
       data: result,
-      message: `Successfully synced ${result.itemsProcessed} availability items to platform`
+      message: `Successfully synced ${result.itemsProcessed} block times to platform`
     });
 
   } catch (error) {
@@ -48,31 +73,55 @@ export const syncAvailability = catchAsync(async (req, res) => {
 });
 
 /**
- * Sync media to a specific platform
+ * Sync the profile's pictures and videos to a platform
  * POST /api/sync/media/:platformId
+ *
+ * The payload is the profile, not a single media item. Which picture goes into
+ * which slot is the connector's decision - it is the only party that can see
+ * the slots and ask each one what it accepts - so the route's job is to hand
+ * over the profile and report what came back.
+ *
+ * This used to answer 501 with a TODO to fetch media from the database. There
+ * was nothing to fetch: only references are stored, because a picture stays on
+ * the platform hosting it, and the connector fetches it through the logged-in
+ * page at upload time.
  */
 export const syncMedia = catchAsync(async (req, res) => {
   const { platformId } = req.params;
   const userId = req.user.id;
-  const { mediaId, mediaType } = req.body;
 
-  if (!mediaId || !mediaType) {
+  const profile = await Profile.findOne({ user: userId }).lean();
+
+  if (!profile) {
     return res.status(400).json({
       success: false,
-      error: {
-        message: 'mediaId and mediaType are required'
-      }
+      error: { message: 'No profile to take pictures or videos from' }
     });
   }
 
-  // TODO: Fetch media from database
-  // For now, return not implemented
-  res.status(501).json({
-    success: false,
-    error: {
-      message: 'Media sync not yet implemented'
-    }
-  });
+  try {
+    const result = await connectorService.syncMedia(userId, parseInt(platformId), profile);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: `Successfully uploaded ${result.itemsProcessed} file(s) to platform`
+    });
+
+  } catch (error) {
+    // A platform whose uploader nobody has read yet is not a server fault, and
+    // it is not retryable either - it says so in the message.
+    const status = error.name === 'NotSupportedError' ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: {
+        message: error.message,
+        details: status === 400
+          ? 'This platform has no upload slots yet.'
+          : 'Upload failed. Please check platform connection and try again.'
+      }
+    });
+  }
 });
 
 /**

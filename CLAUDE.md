@@ -228,6 +228,15 @@ Each of these cost a debugging round and is now covered by a check:
 
 ### Import, and what it must never do
 
+`POST /api/sync/media/:id` sends the **profile**, not a single media item: the
+connector holds the slots and is the only party that can see what each accepts.
+It used to answer 501 with a TODO to fetch media from the database - there was
+nothing to fetch, since only references are stored and the picture is fetched
+through the logged-in page at upload time. A connector with no `mediaFields` is
+refused in `ConnectorService.syncMedia` with a sentence saying its uploader has
+not been read, rather than being handed a profile its older per-item `pushMedia`
+would crash on. That refusal lifts by itself once slots are declared.
+
 `GET /api/platforms/:id/profile` reads and returns; it writes nothing.
 `POST /api/platforms/:id/profile/apply` writes the fields the user ticked,
 taking the values from the import's SyncLog rather than the request body.
@@ -250,6 +259,15 @@ platforms in step is what this app is for. `pushMedia` fetches a picture
 **through the logged-in page** (a server-side fetch gets the sign-in form
 instead), uploads it, and deletes the temporary file.
 
+A slot says what it takes. `kind: 'video'` draws from the profile's videos
+(and the showreel, merged on the URL so the same reel is not offered twice)
+instead of the setcard; `write: 'url'` writes the address into a link field
+rather than downloading and uploading a file, which is how these portals
+usually take a showreel. A slot with neither is a picture slot uploaded as a
+file, which is what every descriptor written before videos existed meant.
+`check:media-plan` covers the plan: one file per slot, no file in two slots, an
+AVIF refused by a slot that accepts image/jpeg.
+
 **Only IM OFF has usable upload slots so far** — seven named `input[type=file]`.
 The others hide their uploader behind a click and were not reachable in the
 time available:
@@ -260,10 +278,46 @@ time available:
 
 **Nothing has ever been uploaded to any platform.** Every push was a dry run.
 
+### The calendar: only block times
+
+A platform learns that a period is not bookable, and nothing else. Not the
+reason, not the production, not whether it is a firm booking or a tentative
+option, and not the actor's notes. `connectors/blockedPeriods.js` reduces the
+Availability entries to `{start, end}` pairs and the reduction happens in
+`ConnectorService.syncAvailability` - the one place every platform passes
+through, so a connector cannot leak what it was never handed, and a connector
+added later inherits the rule without knowing it exists.
+
+Merging is part of the rule, not tidying. Five separate blocks in a month say
+"five separate jobs"; one merged block says "not available", which is the only
+question a casting platform needs answered. Blocks less than a day apart merge,
+periods entirely in the past are dropped, and `partially_available` counts as
+blocked - a day the actor cannot freely take is not advertised as free.
+
+This mattered: all four connectors that push availability write `item.notes`
+into a notes field and `item.status` into a status select, and one of them maps
+a status to `gebucht`. Their code is untouched; nothing reaches those fields any
+more. `check:availability-forms` runs each of those fillers against real
+Chromium and reads the page back - and runs them once with a raw entry too, so
+a green result means the reduction works rather than the fixture being empty.
+
 ### Dry runs
 
 `pushProfile(profile, { dryRun: true })` and `pushMedia(profile, { dryRun: true })`
-fill in or plan, photograph the page into `forensics/`, and submit nothing. On
+fill in or plan, photograph the page into `forensics/`, and submit nothing.
+
+`ConnectorService.#run` used to pass a single argument to the connector, so the
+options never arrived and a dry run could not be asked for at all. It forwards
+them now - but **only to the service, never from the HTTP layer**. A dry run is
+a verification tool for scripts and checks, not a feature of the app: a sync
+route exists to sync, and a client able to request a dry run could record one as
+though the platform had been updated. `syncController` deliberately does not
+read `dryRun` off the request.
+
+When one does run, it is recorded on the SyncLog as `dryRun`, counts zero items
+processed, and does **not** move `platform.lastSync` - it wrote nothing, and
+must not read as a sync afterwards. `getPlatformStatus` skips dry runs for the
+same reason. On
 these platforms "save" can mean publishing a public profile, so this is the only
 honest way to check a push. It has already earned itself twice: it caught the
 Radix radio that was not really set, and a format check that was asking an
@@ -273,9 +327,29 @@ Filmmakers serves AVIF, IM OFF accepts image/jpeg only — a picture sync betwee
 those two needs conversion, which means an image library and re-encoding
 someone's photographs. **That is a decision, not a workaround to slip in.**
 
+### The API envelope, and the field that keeps getting lost
+
+`handleResponse` in `apiService.js` unwraps `{ success, data }` and returns
+`data`. Anything an endpoint puts **beside** `data` is thrown away unless the
+caller passes `unwrap: false`.
+
+This has now bitten twice, both times as a UI that confidently reported the
+opposite of the truth. `/agent/health` carries status, message and timestamp on
+the envelope: the UI showed a permanent red "Agent: Unbekannt" with "Letzte
+Prüfung: Invalid Date" while the backend reported healthy. `/platforms/:id/test`
+carries `success`, `verified` and `message` on the envelope: `result.success`
+was always `undefined`, so **a login that actually succeeded was shown as "Test
+fehlgeschlagen"**, and "Letzter Test" read "Nie" straight after a test.
+
+Both are fixed. When adding an endpoint, either put everything the client reads
+inside `data`, or use `unwrap: false` and say why. The import endpoint gets this
+right - `fields` and `unmapped` live inside `data`, and only `message` sits
+outside, which nothing reads.
+
 ### Checks
 
-    npm run check:connectors     selectors, text selectors, submit, normaliser
+    npm run check:connectors     selectors, text selectors, submit, normaliser,
+                                 block times, availability forms, media plan
     npm run check:login-pages    every login page, live, no credentials
     npm run check:encryption-key inside the container
     node check-imports.mjs       every backend module loads

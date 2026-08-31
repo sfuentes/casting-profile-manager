@@ -31,6 +31,18 @@ const SyncLogSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  /**
+   * A dry run filled the forms, photographed the page and submitted nothing.
+   * It is recorded because it is the evidence a push was checked before it was
+   * published - but it must never be counted as a sync, which is why it is a
+   * field of its own rather than a note in `metadata`. `getPlatformStatus`
+   * skips these: "what happened to this platform last" means what was actually
+   * written to it.
+   */
+  dryRun: {
+    type: Boolean,
+    default: false
+  },
   error: {
     message: String,
     code: String,
@@ -74,7 +86,8 @@ SyncLogSchema.statics.getRecentHistory = function(userId, limit = 20) {
 SyncLogSchema.statics.getPlatformStatus = function(userId, platformId) {
   return this.findOne({
     user: userId,
-    platform: platformId
+    platform: platformId,
+    dryRun: { $ne: true }
   })
     .sort({ createdAt: -1 })
     .lean();

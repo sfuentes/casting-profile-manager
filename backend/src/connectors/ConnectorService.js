@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js';
 import { getConnector, listManifests } from './registry.js';
 import { AuthError, ConnectorError, NotSupportedError } from './errors.js';
 import { normalizeProfileFields } from './profileNormalizer.js';
+import { toBlockedFormItems } from './blockedPeriods.js';
 
 /**
  * The app's single entry point to every platform.
@@ -101,19 +102,62 @@ class ConnectorService {
     }
   }
 
-  /** Push profile data. */
-  syncProfile(userId, platformId, profile) {
-    return this.#run(userId, platformId, 'pushProfile', 'push_profile', profile);
+  /**
+   * Push profile data.
+   * `options.dryRun` fills the forms and submits nothing.
+   */
+  syncProfile(userId, platformId, profile, options = {}) {
+    return this.#run(userId, platformId, 'pushProfile', 'push_profile', profile, options);
   }
 
-  /** Push availability windows. */
-  syncAvailability(userId, platformId, availability) {
-    return this.#run(userId, platformId, 'pushAvailability', 'push_availability', availability);
+  /**
+   * Push the calendar - as block times, and only as block times.
+   *
+   * The reduction happens here rather than in the connectors, because here is
+   * the one place every platform passes through. A connector cannot leak a
+   * booking's reason or the actor's notes if it is never handed them, and that
+   * holds for the connectors that exist today and the ones added later, without
+   * each having to remember the rule. See blockedPeriods.js.
+   */
+  syncAvailability(userId, platformId, availability, options = {}) {
+    const blocked = toBlockedFormItems(availability);
+    return this.#run(userId, platformId, 'pushAvailability', 'push_availability', blocked, options);
   }
 
-  /** Push media items. */
-  syncMedia(userId, platformId, media) {
-    return this.#run(userId, platformId, 'pushMedia', 'push_media', media);
+  /**
+   * Push the profile's pictures and videos.
+   *
+   * The payload is the whole profile, not a single media item. That is the
+   * model the rest of the app uses - the connector holds the slots, decides
+   * which picture belongs in which, and asks each control what it accepts -
+   * and it is the model the remaining platforms are meant to arrive at.
+   *
+   * A connector with no `mediaFields` is refused here rather than downstream.
+   * Its `pushMedia` is the older per-item kind that wants the bytes of one
+   * file, and there are no bytes to give it: these pictures live on the
+   * platform that already holds them, and fetching one server-side returns the
+   * sign-in page rather than an image, which is why the descriptor-driven push
+   * fetches through the logged-in browser. Handing such a connector a profile
+   * would fail deep inside it with a TypeError about a missing buffer. The
+   * refusal lifts on its own once a platform's upload controls have been read
+   * and its slots declared - nothing here needs changing for that.
+   *
+   * `options.dryRun` plans the uploads and uploads nothing. It is not reachable
+   * from the HTTP layer; see syncController.
+   */
+  syncMedia(userId, platformId, profile, options = {}) {
+    const Connector = getConnector(platformId);
+    const slots = Connector?.site?.mediaFields || [];
+
+    if (slots.length === 0) {
+      throw new NotSupportedError(
+        `${Connector?.manifest?.name || `Platform ${platformId}`} has no upload slots yet: `
+        + 'its uploader has not been read, so there is nowhere to put a picture.',
+        { platform: Connector?.manifest?.key || platformId }
+      );
+    }
+
+    return this.#run(userId, platformId, 'pushMedia', 'push_media', profile, options);
   }
 
   /**
@@ -215,7 +259,7 @@ class ConnectorService {
    * capability, log the attempt, run it, record the outcome. Previously each
    * operation repeated this, which is how the three sync routes drifted apart.
    */
-  async #run(userId, platformId, capability, operation, payload) {
+  async #run(userId, platformId, capability, operation, payload, options = {}) {
     const platform = await Platform.findOne({
       user: userId,
       platformId: Number(platformId),
@@ -229,6 +273,7 @@ class ConnectorService {
     const connector = this.instantiate(platform);
     connector.assertSupports(capability);
 
+    const dryRun = options.dryRun === true;
     const itemsTotal = Array.isArray(payload) ? payload.length : 1;
     const syncLog = await SyncLog.create({
       user: userId,
@@ -236,25 +281,42 @@ class ConnectorService {
       operation,
       status: 'pending',
       startedAt: new Date(),
-      itemsTotal
+      itemsTotal,
+      dryRun
     });
 
     try {
       if (connector.supports('verify')) await connector.verify();
 
-      const result = (await connector[capability](payload)) || {};
+      // The options reach the connector. Without this a dry run could not be
+      // asked for through the app at all - `pushProfile(profile, {dryRun})` and
+      // `pushMedia(profile, {dryRun})` were reachable only from a script, so
+      // every push the API could make was a live one.
+      const result = (await connector[capability](payload, options)) || {};
 
       syncLog.status = 'success';
       syncLog.completedAt = new Date();
-      syncLog.itemsProcessed = result.itemsSynced ?? result.count ?? itemsTotal;
-      syncLog.metadata = { details: result.details, externalIds: result.externalIds };
+      // A dry run processed nothing, whatever it planned. Falling back to
+      // `itemsTotal` here would write "5 items synced" for a run that submitted
+      // nothing at all.
+      syncLog.itemsProcessed = dryRun ? 0 : (result.itemsSynced ?? result.count ?? itemsTotal);
+      syncLog.metadata = {
+        details: result.details,
+        externalIds: result.externalIds,
+        planned: result.planned
+      };
       await syncLog.save();
 
-      platform.lastSync = new Date();
-      await platform.save();
+      // Only a real push moves `lastSync`. A dry run that stamped it would tell
+      // the user their profile went out when nothing left the building.
+      if (!dryRun) {
+        platform.lastSync = new Date();
+        await platform.save();
+      }
 
       return {
         success: true,
+        dryRun,
         itemsProcessed: syncLog.itemsProcessed,
         syncLog: syncLog.toObject()
       };
