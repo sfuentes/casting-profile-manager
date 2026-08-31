@@ -161,6 +161,19 @@ class ConnectorService {
   }
 
   /**
+   * Add the credits a platform does not have.
+   *
+   * Only additions: what the platform already holds is left exactly as it is,
+   * and nothing is ever removed. Which credits count as the same one is decided
+   * in `workHistory.js`, so every platform is compared the same way.
+   *
+   * `options.dryRun` fills each form and cancels out of it.
+   */
+  syncWorkHistory(userId, platformId, profile, options = {}) {
+    return this.#run(userId, platformId, 'pushWorkHistory', 'push_profile', profile, options);
+  }
+
+  /**
    * Read the profile back off a platform.
    *
    * Deliberately not routed through #run: that dispatcher counts items and
@@ -212,15 +225,30 @@ class ConnectorService {
       // does not mean scraping the platform a second time - and so the values
       // the user confirms are the ones the server read, not whatever a client
       // sends back.
+      // Where each value came from, named so it stays readable once it is out
+      // of this run: a connector reports the place inside its own site
+      // ("graphql:profileExperienceRepeater"), which says nothing about which
+      // site that was. The platform is stamped on here, because this is the
+      // layer that knows it.
+      const sources = {};
+      for (const [field, location] of Object.entries(result.sources || {})) {
+        sources[field] = {
+          platform: connector.manifest.key,
+          platformName: connector.manifest.name,
+          location,
+          readAt: new Date()
+        };
+      }
+
       syncLog.metadata = {
-        details: result.details, sources: result.sources, fields, unmapped
+        details: result.details, sources, fields, unmapped
       };
       await syncLog.save();
 
       return {
         success: true,
         fields,
-        sources: result.sources || {},
+        sources,
         missing: result.missing || [],
         unmapped,
         syncLogId: String(syncLog._id)
@@ -303,7 +331,12 @@ class ConnectorService {
       syncLog.metadata = {
         details: result.details,
         externalIds: result.externalIds,
-        planned: result.planned
+        planned: result.planned,
+        // Credits the connector could not tell apart from ones already on the
+        // platform. They are questions for the user, not failures, and they are
+        // kept on the log so the answer can be applied without reading the
+        // platform a second time.
+        questions: result.questions
       };
       await syncLog.save();
 
@@ -318,6 +351,7 @@ class ConnectorService {
         success: true,
         dryRun,
         itemsProcessed: syncLog.itemsProcessed,
+        questions: result.questions || [],
         syncLog: syncLog.toObject()
       };
     } catch (error) {

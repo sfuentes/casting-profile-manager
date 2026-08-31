@@ -169,6 +169,61 @@ export const syncProfile = catchAsync(async (req, res) => {
 });
 
 /**
+ * Add the credits a platform is missing
+ * POST /api/sync/work-history/:platformId
+ *
+ * Answers to earlier questions come in the body as `resolutions`, keyed the way
+ * the questions were - the same contract the import dialog uses for values it
+ * could not map. A credit the connector cannot tell apart from one already on
+ * the platform is returned as a question and is neither added nor discarded:
+ * pushing it might duplicate a credit on a public profile, dropping it might
+ * lose a job from a CV, and only the user knows which.
+ */
+export const syncWorkHistory = catchAsync(async (req, res) => {
+  const { platformId } = req.params;
+  const userId = req.user.id;
+
+  const profile = await Profile.findOne({ user: userId }).lean();
+
+  if (!profile?.workHistory?.length) {
+    return res.status(400).json({
+      success: false,
+      error: { message: 'No credits in the profile to sync' }
+    });
+  }
+
+  try {
+    const result = await connectorService.syncWorkHistory(
+      userId,
+      parseInt(platformId),
+      profile,
+      { resolutions: req.body?.resolutions || {} }
+    );
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      questions: result.questions || [],
+      message: result.questions?.length
+        ? `${result.itemsProcessed} credit(s) added, ${result.questions.length} need a decision`
+        : `${result.itemsProcessed} credit(s) added`
+    });
+
+  } catch (error) {
+    const status = error.name === 'NotSupportedError' ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: {
+        message: error.message,
+        details: status === 400
+          ? 'This platform cannot receive credits yet.'
+          : 'Sync failed. Please check platform connection and try again.'
+      }
+    });
+  }
+});
+
+/**
  * Get sync history for the current user
  * GET /api/sync/history
  */

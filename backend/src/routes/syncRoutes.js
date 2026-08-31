@@ -3,6 +3,7 @@ import { protect } from '../middleware/auth.js';
 import {
   syncAvailability,
   syncMedia,
+  syncWorkHistory,
   syncProfile,
   getSyncHistory,
   getSyncStatus,
@@ -28,6 +29,14 @@ router.post('/availability/:platformId', syncAvailability);
  * @access  Private
  */
 router.post('/media/:platformId', syncMedia);
+
+/**
+ * @route   POST /api/sync/work-history/:platformId
+ * @desc    Add the credits a platform is missing; returns questions for the
+ *          ones that cannot be told apart from credits already there
+ * @access  Private
+ */
+router.post('/work-history/:platformId', syncWorkHistory);
 
 /**
  * @route   POST /api/sync/profile/:platformId

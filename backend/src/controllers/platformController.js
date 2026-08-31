@@ -414,6 +414,7 @@ export const applyImportedProfile = catchAsync(async (req, res) => {
 
   const applied = [];
   const skipped = [];
+  const provenance = { ...(profile.provenance || {}) };
 
   for (const key of keys) {
     if (!(key in imported)) {
@@ -430,13 +431,31 @@ export const applyImportedProfile = catchAsync(async (req, res) => {
       profile[key] = value;
     }
     applied.push(key);
+
+    // Remember where this value came from. Without it the profile is a pile of
+    // values with no way to tell what the actor typed from what a scraper read
+    // off a casting site - which is the difference between a value you trust
+    // and one you check.
+    const source = syncLog.metadata?.sources?.[key];
+    if (source) {
+      provenance[key] = {
+        platform: source.platform,
+        platformName: source.platformName,
+        location: source.location,
+        importedAt: new Date()
+      };
+    }
   }
 
+  // Mixed paths are not tracked by Mongoose unless the change is announced.
+  profile.provenance = provenance;
+  profile.markModified('provenance');
   profile.lastUpdated = new Date();
   await profile.save();
 
   res.status(200).json({
     success: true,
+    provenance,
     message: `Applied ${applied.length} field(s) to your profile`,
     data: { applied, skipped, profile }
   });

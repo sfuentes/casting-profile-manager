@@ -187,11 +187,15 @@ Three platforms, three completely different import sources — which is why
 - **Filmmakers** keeps the data in its edit form (`actor_profile[...]`), the
   pictures on the public sedcard, the vita under `?section=vita_entries`. The
   profile URL contains a slug that differs per user and is read from the header.
-- **JobWork** has no readable form at all: `/settings` carries zero controls,
-  editing happens in overlays, and the markup is generated utility classes. The
-  app is fed by GraphQL at `api.jobwork.com/graphql`, so the connector reads the
-  response the app itself receives. Values are option keys
-  (`profileEyeColorBrown`), not labels.
+- **JobWork** is read through GraphQL at `api.jobwork.com/graphql`: `/settings`
+  carries zero controls and the markup is generated utility classes, so the
+  connector reads the response the app itself receives. Values are option keys
+  (`profileEyeColorBrown`), not labels. **Writing is a different story than this
+  file used to tell.** Each profile section has a pencil that routes to
+  `/@<handle>/edit/<section>` - a real editor page, reachable by direct
+  navigation too. `/edit/experiences` opens a drawer with named inputs
+  (`meta.profileExperience*.value`), the same vocabulary the import already
+  reads. See "Credits" below.
 - **IM OFF** is an ordinary multi-page form — but every control is addressed by
   `id`, because the inputs carry no `name` at all.
 
@@ -225,6 +229,82 @@ Each of these cost a debugging round and is now covered by a check:
 - **`page.select` does not throw** on a value the select does not offer. It
   selects nothing and returns an empty array, which used to be reported as a
   successful write.
+
+### Credits, and matching them across platforms
+
+Every platform keeps the same career in its own words. `connectors/workHistory.js`
+answers one question for all of them: given what we hold and what a platform
+holds, which credits does that platform not have? Identity is production plus
+role plus year, canonicalised for case, dashes and punctuation - and a field
+that only one side records is not evidence of a different credit, so a missing
+role or year widens the match rather than splitting it.
+
+Both halves of that rule were paid for. This account has **"GZSZ" twice in one
+year** with two different roles - two jobs, so production alone cannot identify
+a credit. And the first real run matched **0 of 23 against 10**, because
+Filmmakers records no role at all in its own field: it prints the role, the
+part size, the director and the broadcaster into one block of prose
+(`Bösewicht, Jochen Bauer (ENR) Axel Hannemann Sender: Sat 1`), and puts the
+format and the production status into the title (`... (Serie)`,
+`... (AT) (Spielfilm) In Entwicklung`). `parseVitaBody` and
+`cleanProductionTitle` pull those apart - in the Filmmakers connector, because
+they are Filmmakers' habits and the cross-platform matcher must not learn one
+site's layout. The raw text stays on `title` and `description`. That took the
+run from 0 shared to 5.
+
+What is left over is real disagreement between the two sites, not a matching
+bug: `Jefferey Bernard` against `Jeffrey Bernard`, `Berlin Tag und Nacht - 2985`
+against `Berlin Tag und Nacht`, the same job billed as `Bösewicht, Jochen Bauer`
+on one site and `Jochen Bach` on the other. **Those are not guessed at — they
+are asked.** An episode number might be the difference between two jobs, and
+merging them would delete one from a CV silently; adding them would duplicate a
+credit on a public profile that someone then has to go and delete by hand.
+
+`reconcileWorkHistory` therefore splits the answer in three: credits that are
+certainly missing, credits the platform certainly has, and credits that
+resemble one already there. The third kind is neither pushed nor dropped. It
+comes back as a question carrying the credit, the candidates it might be, and
+why it is being asked - the same contract `profileNormalizer` uses for values it
+cannot map, down to "no answer means no action". `POST /api/sync/work-history/:id`
+returns them (on the envelope, beside `data`), the platform list renders them in
+a "Vita-Abgleich" dialog, and a second call carries the answers back in
+`resolutions`. Only an answer that was offered counts.
+
+On the real accounts this is not a corner case: **all five** credits Filmmakers
+had and JobWork appeared to lack turned out to be uncertain, and none of them is
+written without someone saying so.
+
+`pushWorkHistory` adds only what is missing or answered, never edits and never
+deletes.
+
+### Where each value came from
+
+Every imported value is marked with the platform it was read from, and the mark
+survives into the profile.
+
+A connector reports the place inside its own site - `graphql:profileAbout`,
+`edit?section=vita_entries` - which says nothing about *which* site that was.
+`ConnectorService.importProfile` stamps the platform on, because that is the
+layer that knows it, so a source is `{ platform, platformName, location,
+readAt }` rather than a bare string. `applyImportedProfile` then writes
+`Profile.provenance[field] = { platform, platformName, location, importedAt }`.
+Before this, applying an import threw the origin away: the profile became a pile
+of values with no way to tell what the actor typed from what a scraper read off
+a casting site.
+
+A field with **no** provenance entry was the actor's own. That absence renders
+as nothing rather than "unknown" - silence means "yours".
+
+Credits carry it too. `mergeWorkHistory` accepts
+`[{ platform, platformName, credits }]` and records `platforms: [...]` on each
+merged credit, so a merged list still says who has a credit and who is missing
+it. A reconciliation question names both sides - which platform our entry came
+from, and which platform the candidate is already on - because a question
+showing two spellings without saying where each lives cannot be answered.
+
+The UI shows it: `Quelle: JobWork · graphql:profileAbout` in the import dialog,
+`Übernommen von Filmmakers am 31.8.2026` under the profile field, and
+`Derselbe Credit wie auf JobWork: ...` in the Vita dialog.
 
 ### Import, and what it must never do
 
@@ -349,7 +429,8 @@ outside, which nothing reads.
 ### Checks
 
     npm run check:connectors     selectors, text selectors, submit, normaliser,
-                                 block times, availability forms, media plan
+                                 block times, availability forms, media plan,
+                                 credit matching
     npm run check:login-pages    every login page, live, no credentials
     npm run check:encryption-key inside the container
     node check-imports.mjs       every backend module loads
@@ -420,8 +501,12 @@ have caught all three:**
 - **Nothing has been pushed to any platform.** Every push is dry-run only.
 - **AVIF → JPEG conversion** for picture syncs between platforms that disagree
   on format.
-- **Writing back the profile** to JobWork and IM OFF: each page saves through
-  its own button and nobody has watched what that does.
+- **Writing back the profile** to JobWork and IM OFF beyond credits. JobWork's
+  editors are now known to be real routed pages; only `/edit/experiences` has
+  been driven. `/edit/about`, `/edit/basedata`, `/edit/skills`, `/edit/education`
+  and `/edit/awards` are the same shape and nobody has opened them.
+- **Nothing has been submitted to JobWork.** The credits push is verified only
+  as a dry run: it filled the drawer, photographed it and pressed Abbrechen.
 - **Casting Network (DE)'s actor profile does not exist yet** for this account;
   the page says "Schauspielprofil anlegen". The import reads the account page
   instead, and the descriptor for the profile page is deliberately absent until

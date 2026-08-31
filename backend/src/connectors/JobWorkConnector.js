@@ -1,6 +1,9 @@
 import { BrowserConnector } from './BrowserConnector.js';
 import { findByCssOrText } from './selectors.js';
 import { PlatformChangedError } from './errors.js';
+import {
+  reconcileWorkHistory, applyCreditResolutions, describe, productionOf, yearOf
+} from './workHistory.js';
 
 /**
  * JobWork Platform Adapter
@@ -17,7 +20,11 @@ export class JobWorkConnector extends BrowserConnector {
     authType: 'credentials',
     credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
       { name: 'password', type: 'password', required: true, label: 'Passwort' }],
-    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia', 'pullProfile']
+    // pushWorkHistory is new and, unlike the rest, has been driven: the
+    // profile's sections each route to a real editor at
+    // /@<handle>/edit/<section>, and a dry run filled every field of the
+    // credits drawer - including the two listboxes - and pressed Abbrechen.
+    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia', 'pullProfile', 'pushWorkHistory']
   });
 
   /**
@@ -47,6 +54,51 @@ export class JobWorkConnector extends BrowserConnector {
       baseUrl: 'https://app.jobwork.com',
       profilePath: '/you',
       graphqlUrl: 'api.jobwork.com/graphql'
+    },
+    /**
+     * The credits editor, read off the live page on 2026-08-31.
+     *
+     * CLAUDE.md said this app had no form to write into - that /settings has
+     * zero controls and editing happens in overlays. Half right, and the wrong
+     * half is the part that mattered. Each section of the profile has a pencil
+     * that routes to `/@<handle>/edit/<section>`, and those routes can also be
+     * navigated to directly. `/edit/experiences` is a real editor: a list, a
+     * category filter, and an "Hinzufügen" that opens a drawer holding a form
+     * with named inputs.
+     *
+     * The names are the same vocabulary the GraphQL import already reads
+     * (`profileExperienceRepeater` and its `profileExperience*` fields), so
+     * reading and writing speak the same language.
+     *
+     * Three of the controls are not what they look like. Category, Jahr and
+     * Jahr bis are Headless UI listboxes - a `div[aria-haspopup="listbox"]`
+     * with a span for the current value - not `<select>`. `page.select` would
+     * have found nothing and reported nothing, which is the failure this
+     * project has already met once with a Radix radio group.
+     */
+    experience: {
+      editPath: '/edit/experiences',
+      drawer: '#app-drawer-main',
+      // The add button is scoped by the section it belongs to: the page also
+      // carries an "Auszeichnungen hinzufügen" button, and taking the first
+      // match in DOM order opens the awards editor instead.
+      section: 'Erfahrung',
+      addTexts: ['hinzufügen'],
+      submitTexts: ['hinzufügen'],
+      cancelTexts: ['abbrechen'],
+      fields: {
+        production: 'meta.profileExperienceProduction.value',
+        role: 'meta.profileExperienceRole.value',
+        company: 'meta.profileExperienceChannel.value',
+        director: 'meta.profileExperienceDirection.value'
+      },
+      listboxes: {
+        category: 'meta.profileExperienceCategory.fieldName',
+        yearFrom: 'meta.profileExperienceYearFrom.fieldName',
+        yearTo: 'meta.profileExperienceYearTo.fieldName'
+      },
+      // What this app calls the categories its filter offers.
+      categories: { tv: 'Fernsehen', film: 'Film', theater: 'Theater' }
     },
     paths: {
       // NOT verified: reaching these needs an account, and nobody has logged in.
@@ -81,6 +133,264 @@ export class JobWorkConnector extends BrowserConnector {
   });
   async pullProfile() {
     return this.readProfile();
+  }
+
+  /**
+   * The account's own handle, e.g. "@sebastian-fuentes".
+   *
+   * Every edit route is namespaced under it and it differs per user, so it is
+   * read from the URL the app itself lands on rather than stored anywhere.
+   */
+  async profileHandle() {
+    const { app } = this.site;
+    if (!this.page.url().startsWith(app.baseUrl)) {
+      await this.openPage(`${app.baseUrl}${app.profilePath}`);
+    }
+    const handle = (this.page.url().match(/\/(@[^/]+)\//) || [])[1];
+    if (!handle) {
+      throw new PlatformChangedError(
+        'Could not read the account handle from the JobWork profile URL',
+        { platform: 'jobwork' }
+      );
+    }
+    return handle;
+  }
+
+  /**
+   * Choose a value in one of the drawer's listboxes.
+   *
+   * These are Headless UI listboxes: a div that opens a list of
+   * `[role="option"]`, with the chosen value shown in a span. Setting a value
+   * on them does nothing, so the control is opened, the option is clicked, and
+   * **the result is read back** - a click the component ignores would otherwise
+   * be reported as a value that was set.
+   */
+  async chooseInListbox(fieldNameSelector, wanted) {
+    const opened = await this.page.evaluate((marker) => {
+      const hidden = document.querySelector(`input[name="${marker}"]`);
+      if (!hidden) return false;
+      let node = hidden.parentElement;
+      for (let up = 0; up < 6 && node; up += 1) {
+        const box = node.querySelector('[aria-haspopup="listbox"]');
+        if (box) { box.click(); return true; }
+        node = node.parentElement;
+      }
+      return false;
+    }, fieldNameSelector);
+
+    if (!opened) return false;
+
+    await this.page.waitForSelector('[role="option"]', { timeout: 5000 }).catch(() => {});
+    const clicked = await this.page.evaluate((text) => {
+      const want = String(text).trim().toLowerCase();
+      const option = [...document.querySelectorAll('[role="option"]')]
+        .find((el) => (el.innerText || '').trim().toLowerCase() === want);
+      if (!option) return false;
+      option.click();
+      return true;
+    }, String(wanted));
+
+    if (!clicked) {
+      // Close the list again rather than leaving it open over the next field.
+      await this.page.keyboard.press('Escape').catch(() => {});
+      return false;
+    }
+
+    // Read it back. This is the check the Radix radio taught us to write.
+    return this.page.evaluate((marker, text) => {
+      const hidden = document.querySelector(`input[name="${marker}"]`);
+      let node = hidden?.parentElement;
+      for (let up = 0; up < 6 && node; up += 1) {
+        const box = node.querySelector('[aria-haspopup="listbox"]');
+        if (box) return (box.innerText || '').trim().toLowerCase() === String(text).trim().toLowerCase();
+        node = node.parentElement;
+      }
+      return false;
+    }, fieldNameSelector, String(wanted));
+  }
+
+  /** Click the button that belongs to a named section, not the first match. */
+  async clickSectionButton(section, texts) {
+    return this.page.evaluate((sectionName, wanted) => {
+      const buttons = [...document.querySelectorAll('button')]
+        .filter((el) => (el.offsetWidth || el.offsetHeight)
+          && wanted.some((t) => (el.innerText || '').trim().toLowerCase().includes(t)));
+      for (const button of buttons) {
+        let node = button;
+        for (let up = 0; up < 8 && node; up += 1) {
+          node = node.parentElement;
+          const text = (node?.innerText || '').replace(/\s+/g, ' ').trim();
+          if (text.length > 40) {
+            if (text.startsWith(sectionName)) { button.click(); return true; }
+            break;
+          }
+        }
+      }
+      return false;
+    }, section, texts);
+  }
+
+  /**
+   * Add the credits JobWork does not have.
+   *
+   * The diff is done by `workHistory.js`, which is where the question "is this
+   * the same credit" is answered for every platform. Only what is missing is
+   * written; nothing already there is touched, and nothing is ever deleted.
+   *
+   * A dry run fills the drawer, photographs it and presses Abbrechen. On a
+   * profile that is public, that is the only honest way to see what a push
+   * would do before doing it.
+   */
+  async pushWorkHistory(profile, { dryRun = false, limit = null, resolutions = {} } = {}) {
+    const spec = this.site.experience;
+
+    return this.withRateLimit(() => this.withRetry(async () => {
+      if (!this.isAuthenticated || !this.page) {
+        throw new Error('Not authenticated. Call authenticate() first.');
+      }
+
+      const ours = profile?.workHistory || [];
+      if (ours.length === 0) {
+        return { success: true, dryRun, added: [], planned: [], count: 0,
+          details: { message: 'No credits in the profile to push' } };
+      }
+
+      // What the platform already has, read the way the importer reads it.
+      const current = this.constructor.readExperience(await this.captureProfilePayload());
+      const { missing, shared, questions } = reconcileWorkHistory(ours, current, {
+        theirPlatform: this.manifest.key,
+        theirName: this.manifest.name
+      });
+
+      // A credit that resembles one already there is neither pushed nor
+      // dropped: it comes back as a question. Only an answer the user gave to
+      // that question can turn it into an addition.
+      const answered = applyCreditResolutions(questions, resolutions);
+      const toAdd = [...missing, ...answered.add];
+      const planned = limit ? toAdd.slice(0, limit) : toAdd;
+
+      if (planned.length === 0) {
+        return {
+          success: true, dryRun, added: [], planned: [], count: 0, questions,
+          details: {
+            message: questions.length > 0
+              ? `Nothing to add without an answer: ${questions.length} credit(s) need deciding`
+              : `JobWork already has all ${shared.length} credits`,
+            shared: shared.length,
+            questions: questions.length
+          }
+        };
+      }
+
+      const handle = await this.profileHandle();
+      await this.openPage(`${this.site.app.baseUrl}/${handle}${spec.editPath}`);
+      await this.page.waitForFunction(
+        () => document.body.innerText.trim().length > 200, { timeout: 20000 }
+      ).catch(() => {});
+
+      const added = [];
+      const failed = [];
+
+      for (const entry of planned) {
+        const opened = await this.clickSectionButton(spec.section, spec.addTexts);
+        if (!opened) {
+          failed.push({ entry: describe(entry), reason: 'the "Hinzufügen" button for Erfahrung was not found' });
+          continue;
+        }
+
+        await this.page.waitForSelector(`input[name="${spec.fields.production}"]`, { timeout: 10000 })
+          .catch(() => {});
+
+        const written = {};
+        for (const [key, name] of Object.entries(spec.fields)) {
+          const value = key === 'production' ? productionOf(entry) : entry[key];
+          // JobWork writes "-" where it has nothing; passing that on would put
+          // a dash into a field the actor left empty on the other platform.
+          if (!value || value === '-') continue;
+          written[key] = await this.writeField({ selector: `input[name="${name}"]`, kind: 'text' }, value);
+        }
+
+        const category = spec.categories[entry.type] || spec.categories.tv;
+        written.category = await this.chooseInListbox(spec.listboxes.category, category);
+
+        const year = yearOf(entry);
+        if (year) written.yearFrom = await this.chooseInListbox(spec.listboxes.yearFrom, year);
+
+        const unwritten = Object.entries(written).filter(([, ok]) => ok === false).map(([k]) => k);
+
+        if (dryRun) {
+          await this.captureFilledForm().catch(() => {});
+          await this.clickDrawerButton(spec.cancelTexts);
+          await this.page.waitForFunction(
+            (name) => !document.querySelector(`input[name="${name}"]`),
+            { timeout: 5000 }, spec.fields.production
+          ).catch(() => {});
+          added.push({ entry: describe(entry), category, year, unwritten });
+          continue;
+        }
+
+        if (unwritten.length > 0) {
+          // A field that did not take is a credit that would land incomplete on
+          // a public profile. Back out rather than submit it.
+          await this.clickDrawerButton(spec.cancelTexts);
+          failed.push({ entry: describe(entry), reason: `could not fill: ${unwritten.join(', ')}` });
+          continue;
+        }
+
+        const submitted = await this.clickDrawerButton(spec.submitTexts);
+        if (!submitted) {
+          failed.push({ entry: describe(entry), reason: 'no submit button in the drawer' });
+          continue;
+        }
+        await this.page.waitForFunction(
+          (name) => !document.querySelector(`input[name="${name}"]`),
+          { timeout: 15000 }, spec.fields.production
+        ).catch(() => {});
+        added.push({ entry: describe(entry), category, year });
+      }
+
+      this.log('info', `${dryRun ? 'Dry run: ' : ''}${added.length} credit(s) ${dryRun ? 'would be' : ''} added to JobWork`, {
+        planned: planned.length, failed: failed.length
+      });
+
+      return {
+        success: added.length > 0 || planned.length === 0,
+        dryRun,
+        added: dryRun ? [] : added,
+        planned: dryRun ? added : planned.map(describe),
+        failed,
+        // Still open after this run. The user has not answered them, so they
+        // were neither added nor discarded and will be asked again.
+        questions,
+        count: dryRun ? 0 : added.length,
+        details: {
+          alreadyThere: shared.length,
+          missing: missing.length,
+          attempted: planned.length,
+          questions: questions.length,
+          failed
+        }
+      };
+    }));
+  }
+
+  /** Click a button inside the drawer by its label. */
+  async clickDrawerButton(texts) {
+    return this.page.evaluate((drawerSelector, wanted) => {
+      const drawer = document.querySelector(drawerSelector)?.closest('div[role], body > div, div') || document;
+      const scope = drawer.querySelector?.(drawerSelector) ? drawer : document;
+      const buttons = [...scope.querySelectorAll('button')]
+        .filter((el) => el.offsetWidth || el.offsetHeight);
+      // The drawer's own action buttons sit after its heading; match on the
+      // label and take the last one, which is the drawer's rather than the
+      // page's behind it.
+      const matches = buttons.filter((el) => wanted
+        .some((t) => (el.innerText || '').trim().toLowerCase() === t));
+      const target = matches[matches.length - 1];
+      if (!target) return false;
+      target.click();
+      return true;
+    }, this.site.experience.drawer, texts);
   }
 
   /**

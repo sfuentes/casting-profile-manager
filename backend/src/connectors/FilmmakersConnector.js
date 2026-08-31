@@ -509,9 +509,18 @@ export class FilmmakersConnector extends BrowserConnector {
           continue;
         }
 
+        const parsed = this.constructor.parseVitaBody(entry.body);
         workHistory.push({
           title: entry.title,
-          production: entry.title,
+          // The title as rendered carries the format and the production status
+          // - "Lenßen hilft - Der tote Goldesel (Serie)", "Traue niemandem -
+          // Das Duo (AT) (Spielfilm)" - and the raw cell carries the line
+          // breaks and indentation of the markup. Other platforms hold the bare
+          // production name, and a credit cannot be recognised across two sites
+          // while one of them spells it with its layout attached. The raw text
+          // stays on `title`, so nothing is lost by cleaning this.
+          production: this.constructor.cleanProductionTitle(entry.title),
+          ...parsed,
           description: entry.body,
           year: entry.date,
           type: TYPES[categoryId] || 'other'
@@ -520,6 +529,71 @@ export class FilmmakersConnector extends BrowserConnector {
     }
 
     return { workHistory, education };
+  }
+
+  /**
+   * The production name, without what the site prints around it.
+   *
+   * Filmmakers renders the format and the status into the title cell. Both are
+   * dropped here and only here: this is Filmmakers' own way of writing a title,
+   * so the knowledge belongs in Filmmakers' connector rather than in the
+   * cross-platform matcher, which must not learn one site's habits.
+   */
+  static cleanProductionTitle(title) {
+    let text = String(title || '').replace(/\s+/g, ' ').trim();
+    // "In Entwicklung", "In Produktion" - a status, printed after the title.
+    text = text.replace(/\s+In\s+(Entwicklung|Produktion|Post|Postproduktion)\s*$/i, '');
+    // Trailing bracketed notes: the format ("(Serie)", "(Spielfilm)") and the
+    // working-title marker "(AT)". Repeated, because titles carry both.
+    let previous;
+    do {
+      previous = text;
+      text = text.replace(/\s*\([^()]{1,20}\)\s*$/, '').trim();
+    } while (text !== previous && text.length > 0);
+    return text || String(title || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Pull the role, the director and the broadcaster out of a vita entry's body.
+   *
+   * Read off the live vita on 2026-08-31. The body is one block of text laid
+   * out like this, with the line breaks being layout rather than structure:
+   *
+   *   Bösewicht, Jochen Bauer (ENR) Axel Hannemann Sender: Sat 1
+   *   Chef Karl Lech (ENR) Matthias Paffgen Sender: Sat 1
+   *   Diverse Nebenrollen (NR) Friederike Schröder Theater: Neue Kammerspiele
+   *   Komparse (AR)
+   *
+   * The bracketed code is the size of the part (ENR, AR, NR ...). It is the
+   * only reliable landmark in the string, so the role is what stands before it
+   * and the director is what stands after it, up to a "Sender:" or "Theater:"
+   * label if there is one.
+   *
+   * Everything here is a guess about someone's CV, so nothing is invented: a
+   * body that does not carry the landmark yields no role rather than a wrong
+   * one, and the untouched text stays on `description` either way.
+   */
+  static parseVitaBody(body) {
+    const text = String(body || '').replace(/\s+/g, ' ').trim();
+    if (!text) return {};
+
+    const out = {};
+
+    // "Sender: Sat 1" / "Theater: Neue Kammerspiele Kleinmachnow"
+    const venue = text.match(/(?:Sender|Sendern|Theater|Produktion)\s*:\s*(.+)$/i);
+    const head = venue ? text.slice(0, venue.index).trim() : text;
+    if (venue) out.company = venue[1].trim();
+
+    // The part-size code: one to four capitals in brackets.
+    const marker = head.match(/\(([A-ZÄÖÜ]{1,4})\)/);
+    if (!marker) return out;
+
+    const role = head.slice(0, marker.index).trim().replace(/[,;]\s*$/, '');
+    const director = head.slice(marker.index + marker[0].length).trim();
+
+    if (role) out.role = role;
+    if (director) out.director = director;
+    return out;
   }
 
   /**
