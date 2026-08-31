@@ -125,11 +125,39 @@ class ConnectorService {
   }
 
   /**
-   * Push media items.
-   * `options.dryRun` plans the uploads and uploads nothing.
+   * Push the profile's pictures and videos.
+   *
+   * The payload is the whole profile, not a single media item. That is the
+   * model the rest of the app uses - the connector holds the slots, decides
+   * which picture belongs in which, and asks each control what it accepts -
+   * and it is the model the remaining platforms are meant to arrive at.
+   *
+   * A connector with no `mediaFields` is refused here rather than downstream.
+   * Its `pushMedia` is the older per-item kind that wants the bytes of one
+   * file, and there are no bytes to give it: these pictures live on the
+   * platform that already holds them, and fetching one server-side returns the
+   * sign-in page rather than an image, which is why the descriptor-driven push
+   * fetches through the logged-in browser. Handing such a connector a profile
+   * would fail deep inside it with a TypeError about a missing buffer. The
+   * refusal lifts on its own once a platform's upload controls have been read
+   * and its slots declared - nothing here needs changing for that.
+   *
+   * `options.dryRun` plans the uploads and uploads nothing. It is not reachable
+   * from the HTTP layer; see syncController.
    */
-  syncMedia(userId, platformId, media, options = {}) {
-    return this.#run(userId, platformId, 'pushMedia', 'push_media', media, options);
+  syncMedia(userId, platformId, profile, options = {}) {
+    const Connector = getConnector(platformId);
+    const slots = Connector?.site?.mediaFields || [];
+
+    if (slots.length === 0) {
+      throw new NotSupportedError(
+        `${Connector?.manifest?.name || `Platform ${platformId}`} has no upload slots yet: `
+        + 'its uploader has not been read, so there is nowhere to put a picture.',
+        { platform: Connector?.manifest?.key || platformId }
+      );
+    }
+
+    return this.#run(userId, platformId, 'pushMedia', 'push_media', profile, options);
   }
 
   /**

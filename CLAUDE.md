@@ -228,6 +228,15 @@ Each of these cost a debugging round and is now covered by a check:
 
 ### Import, and what it must never do
 
+`POST /api/sync/media/:id` sends the **profile**, not a single media item: the
+connector holds the slots and is the only party that can see what each accepts.
+It used to answer 501 with a TODO to fetch media from the database - there was
+nothing to fetch, since only references are stored and the picture is fetched
+through the logged-in page at upload time. A connector with no `mediaFields` is
+refused in `ConnectorService.syncMedia` with a sentence saying its uploader has
+not been read, rather than being handed a profile its older per-item `pushMedia`
+would crash on. That refusal lifts by itself once slots are declared.
+
 `GET /api/platforms/:id/profile` reads and returns; it writes nothing.
 `POST /api/platforms/:id/profile/apply` writes the fields the user ticked,
 taking the values from the import's SyncLog rather than the request body.
@@ -297,14 +306,18 @@ a green result means the reduction works rather than the fixture being empty.
 `pushProfile(profile, { dryRun: true })` and `pushMedia(profile, { dryRun: true })`
 fill in or plan, photograph the page into `forensics/`, and submit nothing.
 
-**They are now reachable through the app, not only from a script.**
-`ConnectorService.#run` passed a single argument to the connector, so the
-options never arrived and every push the API could make was a live one. It
-forwards them now: `POST /api/sync/profile/:id` and
-`/api/sync/availability/:id` take `dryRun: true`. A dry run is recorded on the
-SyncLog as `dryRun`, counts zero items processed, and does **not** move
-`platform.lastSync` - it wrote nothing, and must not read as a sync afterwards.
-`getPlatformStatus` skips dry runs for the same reason. On
+`ConnectorService.#run` used to pass a single argument to the connector, so the
+options never arrived and a dry run could not be asked for at all. It forwards
+them now - but **only to the service, never from the HTTP layer**. A dry run is
+a verification tool for scripts and checks, not a feature of the app: a sync
+route exists to sync, and a client able to request a dry run could record one as
+though the platform had been updated. `syncController` deliberately does not
+read `dryRun` off the request.
+
+When one does run, it is recorded on the SyncLog as `dryRun`, counts zero items
+processed, and does **not** move `platform.lastSync` - it wrote nothing, and
+must not read as a sync afterwards. `getPlatformStatus` skips dry runs for the
+same reason. On
 these platforms "save" can mean publishing a public profile, so this is the only
 honest way to check a push. It has already earned itself twice: it caught the
 Radix radio that was not really set, and a format check that was asking an

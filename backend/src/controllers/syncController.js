@@ -5,18 +5,14 @@ import { toBlockedPeriods } from '../connectors/blockedPeriods.js';
 import { asyncHandler as catchAsync } from '../middleware/asyncHandler.js';
 
 /**
- * Whether the caller asked for a dry run.
+ * A dry run is a verification tool, not a feature of the app.
  *
- * On these platforms "save" can mean publishing a public profile, so a dry run
- * - fill everything in, photograph the page, submit nothing - is the only way
- * to see what a push would do. It was reachable from a script and not through
- * the API, which meant every push the app itself could make was a live one.
+ * `ConnectorService` takes `{ dryRun: true }` and the scripts use it to check a
+ * push before anything is published. The HTTP layer deliberately does not read
+ * it off the request: a sync route exists to sync, and a client that could ask
+ * for a dry run could also record one as if the platform had been updated.
+ * Nothing here forwards a caller-supplied dryRun.
  */
-const wantsDryRun = (req) => req.body?.dryRun === true || req.query?.dryRun === 'true';
-
-const said = (result, done) => (result?.dryRun
-  ? 'Dry run: nothing was submitted to the platform.'
-  : done);
 
 /**
  * Sync availability to a specific platform
@@ -56,14 +52,13 @@ export const syncAvailability = catchAsync(async (req, res) => {
     const result = await connectorService.syncAvailability(
       userId,
       parseInt(platformId),
-      availability,
-      { dryRun: wantsDryRun(req) }
+      availability
     );
 
     res.status(200).json({
       success: true,
       data: result,
-      message: said(result, `Successfully synced ${result.itemsProcessed} block times to platform`)
+      message: `Successfully synced ${result.itemsProcessed} block times to platform`
     });
 
   } catch (error) {
@@ -78,31 +73,55 @@ export const syncAvailability = catchAsync(async (req, res) => {
 });
 
 /**
- * Sync media to a specific platform
+ * Sync the profile's pictures and videos to a platform
  * POST /api/sync/media/:platformId
+ *
+ * The payload is the profile, not a single media item. Which picture goes into
+ * which slot is the connector's decision - it is the only party that can see
+ * the slots and ask each one what it accepts - so the route's job is to hand
+ * over the profile and report what came back.
+ *
+ * This used to answer 501 with a TODO to fetch media from the database. There
+ * was nothing to fetch: only references are stored, because a picture stays on
+ * the platform hosting it, and the connector fetches it through the logged-in
+ * page at upload time.
  */
 export const syncMedia = catchAsync(async (req, res) => {
   const { platformId } = req.params;
   const userId = req.user.id;
-  const { mediaId, mediaType } = req.body;
 
-  if (!mediaId || !mediaType) {
+  const profile = await Profile.findOne({ user: userId }).lean();
+
+  if (!profile) {
     return res.status(400).json({
       success: false,
-      error: {
-        message: 'mediaId and mediaType are required'
-      }
+      error: { message: 'No profile to take pictures or videos from' }
     });
   }
 
-  // TODO: Fetch media from database
-  // For now, return not implemented
-  res.status(501).json({
-    success: false,
-    error: {
-      message: 'Media sync not yet implemented'
-    }
-  });
+  try {
+    const result = await connectorService.syncMedia(userId, parseInt(platformId), profile);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: `Successfully uploaded ${result.itemsProcessed} file(s) to platform`
+    });
+
+  } catch (error) {
+    // A platform whose uploader nobody has read yet is not a server fault, and
+    // it is not retryable either - it says so in the message.
+    const status = error.name === 'NotSupportedError' ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: {
+        message: error.message,
+        details: status === 400
+          ? 'This platform has no upload slots yet.'
+          : 'Upload failed. Please check platform connection and try again.'
+      }
+    });
+  }
 });
 
 /**
@@ -129,14 +148,13 @@ export const syncProfile = catchAsync(async (req, res) => {
     const result = await connectorService.syncProfile(
       userId,
       parseInt(platformId),
-      profile,
-      { dryRun: wantsDryRun(req) }
+      profile
     );
 
     res.status(200).json({
       success: true,
       data: result,
-      message: said(result, 'Successfully synced profile to platform')
+      message: 'Successfully synced profile to platform'
     });
 
   } catch (error) {
