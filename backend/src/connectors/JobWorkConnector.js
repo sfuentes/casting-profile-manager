@@ -1,7 +1,9 @@
 import { BrowserConnector } from './BrowserConnector.js';
 import { findByCssOrText } from './selectors.js';
 import { PlatformChangedError } from './errors.js';
-import { diffWorkHistory, describe, productionOf, yearOf } from './workHistory.js';
+import {
+  reconcileWorkHistory, applyCreditResolutions, describe, productionOf, yearOf
+} from './workHistory.js';
 
 /**
  * JobWork Platform Adapter
@@ -239,7 +241,7 @@ export class JobWorkConnector extends BrowserConnector {
    * profile that is public, that is the only honest way to see what a push
    * would do before doing it.
    */
-  async pushWorkHistory(profile, { dryRun = false, limit = null } = {}) {
+  async pushWorkHistory(profile, { dryRun = false, limit = null, resolutions = {} } = {}) {
     const spec = this.site.experience;
 
     return this.withRateLimit(() => this.withRetry(async () => {
@@ -255,13 +257,26 @@ export class JobWorkConnector extends BrowserConnector {
 
       // What the platform already has, read the way the importer reads it.
       const current = this.constructor.readExperience(await this.captureProfilePayload());
-      const { missing, shared } = diffWorkHistory(ours, current);
+      const { missing, shared, questions } = reconcileWorkHistory(ours, current);
 
-      const planned = limit ? missing.slice(0, limit) : missing;
+      // A credit that resembles one already there is neither pushed nor
+      // dropped: it comes back as a question. Only an answer the user gave to
+      // that question can turn it into an addition.
+      const answered = applyCreditResolutions(questions, resolutions);
+      const toAdd = [...missing, ...answered.add];
+      const planned = limit ? toAdd.slice(0, limit) : toAdd;
 
       if (planned.length === 0) {
-        return { success: true, dryRun, added: [], planned: [], count: 0,
-          details: { message: `JobWork already has all ${shared.length} credits`, shared: shared.length } };
+        return {
+          success: true, dryRun, added: [], planned: [], count: 0, questions,
+          details: {
+            message: questions.length > 0
+              ? `Nothing to add without an answer: ${questions.length} credit(s) need deciding`
+              : `JobWork already has all ${shared.length} credits`,
+            shared: shared.length,
+            questions: questions.length
+          }
+        };
       }
 
       const handle = await this.profileHandle();
@@ -341,11 +356,15 @@ export class JobWorkConnector extends BrowserConnector {
         added: dryRun ? [] : added,
         planned: dryRun ? added : planned.map(describe),
         failed,
+        // Still open after this run. The user has not answered them, so they
+        // were neither added nor discarded and will be asked again.
+        questions,
         count: dryRun ? 0 : added.length,
         details: {
           alreadyThere: shared.length,
           missing: missing.length,
           attempted: planned.length,
+          questions: questions.length,
           failed
         }
       };

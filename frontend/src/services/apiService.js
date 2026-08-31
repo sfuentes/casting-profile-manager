@@ -453,6 +453,29 @@ export const apiService = {
         return handleResponse(response);
     },
 
+    /**
+     * Add the credits a platform is missing.
+     *
+     * The envelope is kept: `questions` sits beside `data`, and the default
+     * unwrapping would drop it - which is exactly how the connection test came
+     * to report successful logins as failures. `resolutions` carries the user's
+     * answers to questions from an earlier call, keyed by the question's path.
+     */
+    syncWorkHistory: async (platformId, resolutions = {}) => {
+        const response = await fetch(`${API_BASE_URL}/sync/work-history/${platformId}`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({resolutions})
+        });
+        const body = await handleResponse(response, {unwrap: false});
+        return {
+            success: body.success === true,
+            message: body.message,
+            questions: body.questions || [],
+            added: body.data?.itemsProcessed ?? 0
+        };
+    },
+
     checkAgentHealth: async () => {
         const response = await fetch(`${API_BASE_URL}/agent/health`, {headers: getHeaders()});
         // Keep the envelope: status, message and timestamp are on it.

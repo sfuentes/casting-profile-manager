@@ -316,7 +316,12 @@ class ConnectorService {
       syncLog.metadata = {
         details: result.details,
         externalIds: result.externalIds,
-        planned: result.planned
+        planned: result.planned,
+        // Credits the connector could not tell apart from ones already on the
+        // platform. They are questions for the user, not failures, and they are
+        // kept on the log so the answer can be applied without reading the
+        // platform a second time.
+        questions: result.questions
       };
       await syncLog.save();
 
@@ -331,6 +336,7 @@ class ConnectorService {
         success: true,
         dryRun,
         itemsProcessed: syncLog.itemsProcessed,
+        questions: result.questions || [],
         syncLog: syncLog.toObject()
       };
     } catch (error) {

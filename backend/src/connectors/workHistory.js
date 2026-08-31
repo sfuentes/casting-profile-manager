@@ -78,6 +78,83 @@ export const isSameCredit = (a, b) => {
 };
 
 /**
+ * How far apart two strings are, counted in single-character edits, and given
+ * up on past `cap`.
+ *
+ * Used only to notice that two spellings might be the same word - "Jefferey"
+ * against "Jeffrey" - never to decide that they are. The decision is the
+ * user's.
+ */
+export const editDistance = (a, b, cap = 3) => {
+  if (a === b) return 0;
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const row = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      row[j] = Math.min(row[j - 1] + 1, previous[j] + 1, previous[j - 1] + cost);
+      if (row[j] < best) best = row[j];
+    }
+    if (best > cap) return cap + 1;
+    previous = row;
+  }
+  return previous[b.length];
+};
+
+/**
+ * Credits that might be the same as this one, without being sure enough to say
+ * so.
+ *
+ * These are the cases the two real accounts actually produced, and each is a
+ * reason to ask rather than decide:
+ *
+ *   Jefferey Bernard fühlt sich nicht   vs  Jeffrey Bernard fühlt sich nicht
+ *   Berlin Tag und Nacht - 2985         vs  Berlin Tag und Nacht
+ *   ... als Bösewicht, Jochen Bauer     vs  ... als Jochen Bach
+ *
+ * The first looks like a typo. The second may be one episode against the whole
+ * series - or two different jobs, and merging them would delete one from
+ * someone's CV without saying so. The third is the same person billed two ways,
+ * or two different parts. Nothing here can tell which, so nothing here decides.
+ */
+export const nearMatches = (entry, theirs = []) => {
+  const mine = identityOf(entry);
+  if (!mine.production) return [];
+
+  const out = [];
+
+  theirs.forEach((other, index) => {
+    const theirId = identityOf(other);
+    if (!theirId.production) return;
+    if (isSameCredit(entry, other)) return;
+
+    const sameProduction = mine.production === theirId.production;
+    const oneContainsTheOther = !sameProduction
+      && (mine.production.startsWith(theirId.production)
+        || theirId.production.startsWith(mine.production));
+    const nearlySpelled = !sameProduction && !oneContainsTheOther
+      && editDistance(mine.production, theirId.production, 2) <= 2;
+
+    if (!sameProduction && !oneContainsTheOther && !nearlySpelled) return;
+
+    // A year both sides record and disagree on means different credits, not an
+    // uncertain one - that is the one thing here that is decidable.
+    if (mine.year && theirId.year && mine.year !== theirId.year) return;
+
+    const reason = sameProduction
+      ? 'same production, different role'
+      : (oneContainsTheOther ? 'one title is part of the other' : 'the titles are spelled almost the same');
+
+    out.push({ index, entry: other, reason });
+  });
+
+  return out;
+};
+
+/**
  * What `theirs` is missing from `ours`.
  *
  * @returns {{missing: Array, shared: Array, theirsOnly: Array}}
@@ -141,4 +218,80 @@ export const describe = (entry) => [
   entry?.company && entry.company !== '-' && `(${entry.company})`
 ].filter(Boolean).join(' ');
 
-export default { canonical, identityOf, isSameCredit, diffWorkHistory, mergeWorkHistory, describe };
+
+/** The answer that means "this really is a credit of its own - add it". */
+export const ADD_AS_NEW = '__add__';
+
+/**
+ * The full answer for one platform: what to add, what it already has, and what
+ * nobody can decide without the user.
+ *
+ * A credit with a plausible near match is taken out of `missing` and put into
+ * `questions` instead. That is the whole point: pushing it might duplicate a
+ * credit onto a public profile, and dropping it might lose a job from a CV, so
+ * it is neither pushed nor dropped until someone says which.
+ *
+ * @returns {{missing, shared, theirsOnly, questions}}
+ *   `missing` is safe to add on its own. `questions` each carry the credit, the
+ *   candidates it might be, and the values an answer may take.
+ */
+export const reconcileWorkHistory = (ours = [], theirs = []) => {
+  const { missing, shared, theirsOnly } = diffWorkHistory(ours, theirs);
+
+  const certain = [];
+  const questions = [];
+
+  for (const entry of missing) {
+    const candidates = nearMatches(entry, theirs);
+    if (candidates.length === 0) {
+      certain.push(entry);
+      continue;
+    }
+
+    const index = ours.indexOf(entry);
+    questions.push({
+      path: `workHistory.${index === -1 ? questions.length : index}`,
+      credit: describe(entry),
+      entry,
+      options: [
+        ...candidates.map((candidate) => ({
+          value: `same:${candidate.index}`,
+          label: describe(candidate.entry),
+          reason: candidate.reason
+        })),
+        { value: ADD_AS_NEW, label: 'Als eigenen Eintrag hinzufügen' }
+      ]
+    });
+  }
+
+  return { missing: certain, shared, theirsOnly, questions };
+};
+
+/**
+ * Turn the user's answers into the credits to add.
+ *
+ * Only an answer that was offered counts, and no answer means no action - the
+ * same contract the import dialog already uses for unmapped values. A question
+ * left alone therefore adds nothing, which is the safe direction: the credit
+ * stays where it is and can be asked about again next time.
+ */
+export const applyCreditResolutions = (questions = [], answers = {}) => {
+  const add = [];
+  const treatedAsSame = [];
+
+  for (const question of questions) {
+    const answer = answers[question.path];
+    if (!answer) continue;
+    if (!question.options.some((option) => option.value === answer)) continue;
+
+    if (answer === ADD_AS_NEW) add.push(question.entry);
+    else treatedAsSame.push({ path: question.path, answer });
+  }
+
+  return { add, treatedAsSame };
+};
+
+export default {
+  canonical, identityOf, isSameCredit, diffWorkHistory, mergeWorkHistory, describe,
+  nearMatches, reconcileWorkHistory, applyCreditResolutions, ADD_AS_NEW
+};

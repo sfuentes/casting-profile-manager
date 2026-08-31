@@ -61,6 +61,7 @@ const isApiBased = (platform) => platform?.authType === 'apiKey';
  * anywhere else would produce a button that can only fail.
  */
 const canImportProfile = (platform) => Boolean(platform?.capabilities?.includes('pullProfile'));
+const canSyncCredits = (platform) => Boolean(platform?.capabilities?.includes('pushWorkHistory'));
 
 /** German labels for the profile fields an import can return. */
 const IMPORT_FIELD_LABELS = {
@@ -110,6 +111,13 @@ const PlatformsView = () => {
     const [testResults, setTestResults] = useState({});
     const [agentStatus, setAgentStatus] = useState(null);
     const [importResults, setImportResults] = useState({});
+    // Credits the platform could not be told apart from ones it already has.
+    // They are questions, not failures: nothing is added or dropped until the
+    // user answers.
+    const [creditQuestions, setCreditQuestions] = useState([]);
+    const [creditAnswers, setCreditAnswers] = useState({});
+    const [creditBusy, setCreditBusy] = useState(false);
+    const [creditSummary, setCreditSummary] = useState('');
     const [importSelection, setImportSelection] = useState([]);
     // The user's answers to values the normaliser could not map, keyed by the
     // question's path (e.g. "eyeColor", "languages.0.level").
@@ -248,6 +256,38 @@ const PlatformsView = () => {
      * a profile without showing them first is how an import quietly destroys
      * data the user typed by hand.
      */
+    /**
+     * Push the credits this platform is missing.
+     *
+     * Runs twice by design. The first call adds everything that is certain and
+     * brings back the ones it could not tell apart from credits already on the
+     * platform; the second call carries the user's answers. A question left
+     * unanswered adds nothing - the credit stays as it is and is asked about
+     * again next time.
+     */
+    const handleSyncCredits = async (platform, answers = {}) => {
+        setCreditBusy(true);
+        try {
+            const result = await apiService.syncWorkHistory(platform.id, answers);
+            setCreditSummary(result.message || '');
+            setCreditQuestions(result.questions);
+            setSelectedPlatform(platform);
+
+            if (result.questions.length > 0) {
+                setCreditAnswers({});
+                setModalType('credits');
+                setShowModal(true);
+            } else {
+                setShowModal(false);
+                alert(result.message || `${result.added} Credits übertragen.`);
+            }
+        } catch (error) {
+            alert(`Vita-Abgleich fehlgeschlagen: ${error.message}`);
+        } finally {
+            setCreditBusy(false);
+        }
+    };
+
     const handleImportProfile = async (platform) => {
         if (!platform.connected) {
             alert('Bitte stellen Sie zuerst eine Verbindung zur Plattform her.');
@@ -620,6 +660,18 @@ const PlatformsView = () => {
                                                     {importing ? 'Lese...' : 'Import'}
                                                 </Button>
                                             )}
+                                            {canSyncCredits(platform) && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => handleSyncCredits(platform)}
+                                                    disabled={syncing || importing || creditBusy}
+                                                    icon={creditBusy ? Loader : Upload}
+                                                    title="Fehlende Credits auf die Plattform übertragen"
+                                                >
+                                                    {creditBusy ? 'Gleicht ab...' : 'Vita'}
+                                                </Button>
+                                            )}
                                             <Button
                                                 size="sm"
                                                 variant="outline"
@@ -966,6 +1018,69 @@ const PlatformsView = () => {
                             icon={X}
                         >
                             Abbrechen
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Credits the platform could not be told apart from its own. */}
+            <Modal
+                isOpen={showModal && modalType === 'credits'}
+                onClose={() => setShowModal(false)}
+                title={`Vita-Abgleich mit ${selectedPlatform?.name}`}
+            >
+                <div className="space-y-4">
+                    {creditSummary && (
+                        <div className="p-3 bg-blue-50 rounded text-xs text-blue-900">
+                            <AlertCircle size={14} className="inline mr-1"/>
+                            {creditSummary}
+                        </div>
+                    )}
+
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded space-y-3">
+                        <p className="text-xs text-amber-900">
+                            <AlertTriangle size={14} className="inline mr-1"/>
+                            Diese Einträge ähneln Credits, die {selectedPlatform?.name} bereits
+                            hat. Ob es derselbe Job ist, kann nur entschieden werden - eine
+                            Folgennummer kann der Unterschied zwischen zwei Engagements sein.
+                            Ohne Auswahl wird nichts übertragen und nichts gelöscht.
+                        </p>
+
+                        {creditQuestions.map((question) => (
+                            <div key={question.path} className="space-y-1 border-t border-amber-200 pt-2">
+                                <p className="text-xs text-gray-900">
+                                    <strong>Ihr Eintrag:</strong> {question.credit}
+                                </p>
+                                <select
+                                    className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                                    value={creditAnswers[question.path] || ''}
+                                    onChange={(e) => setCreditAnswers(prev => ({
+                                        ...prev, [question.path]: e.target.value
+                                    }))}
+                                >
+                                    <option value="">nichts tun</option>
+                                    {question.options.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.value === '__add__'
+                                                ? option.label
+                                                : `Ist derselbe Credit wie: ${option.label}`}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={() => setShowModal(false)}>
+                            Abbrechen
+                        </Button>
+                        <Button
+                            onClick={() => handleSyncCredits(selectedPlatform, creditAnswers)}
+                            disabled={creditBusy || Object.values(creditAnswers).every((a) => !a)}
+                            icon={creditBusy ? Loader : Upload}
+                        >
+                            {creditBusy ? 'Überträgt...' : 'Auswahl übertragen'}
                         </Button>
                     </div>
                 </div>

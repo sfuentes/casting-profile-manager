@@ -14,7 +14,10 @@
  *
  *   node scripts/check-work-history.mjs
  */
-import { canonical, isSameCredit, diffWorkHistory, mergeWorkHistory, describe } from '../src/connectors/workHistory.js';
+import {
+  canonical, isSameCredit, diffWorkHistory, mergeWorkHistory, describe,
+  nearMatches, reconcileWorkHistory, applyCreditResolutions, ADD_AS_NEW, editDistance
+} from '../src/connectors/workHistory.js';
 
 let passed = 0;
 let failed = 0;
@@ -144,6 +147,68 @@ check('a credit reads back as one line',
   '2025 Lenßen hilft als Sascha Krüger (SAT1)');
 
 check('canonical collapses spacing and punctuation', canonical(' GZSZ –  Das Maß! '), 'gzsz das maß');
+
+// ---- what cannot be decided is asked, not guessed ---------------------------
+
+const mine = [
+  { production: 'Jefferey Bernard fühlt sich nicht', role: 'Diverse Nebenrollen', year: '2025' },
+  { production: 'Berlin Tag und Nacht - 2985', role: 'Inkasso Mitarbeiter', year: '2023' },
+  { production: 'Ein völlig neuer Film', role: 'Hauptrolle', year: '2026' },
+  { production: 'Lenßen hilft - Der tote Goldesel', role: 'Bösewicht, Jochen Bauer', year: '2024' }
+];
+const platform = [
+  { production: 'Jeffrey Bernard fühlt sich nicht', role: 'Diverse Nebenrollen', year: '2025' },
+  { production: 'Berlin Tag und Nacht', role: 'Inkasso Mitarbeiter', year: '2023' },
+  { production: 'Lenßen hilft - Der tote Goldesel', role: 'Jochen Bach', year: '2024' }
+];
+const plan = reconcileWorkHistory(mine, platform);
+
+check('a credit nothing resembles is added without asking',
+  plan.missing.map((e) => e.production), ['Ein völlig neuer Film']);
+
+check('a one-letter difference in the title is asked about, not merged',
+  plan.questions.some((q) => q.credit.includes('Jefferey')), true);
+
+check('an episode number against a bare series title is asked about',
+  plan.questions.some((q) => q.credit.includes('2985')), true);
+
+check('the same production with a different role is asked about',
+  plan.questions.some((q) => q.credit.includes('Goldesel')), true);
+
+check('every question offers the credit it might be, and "add anyway"',
+  plan.questions[0].options.map((o) => o.value), ['same:0', ADD_AS_NEW]);
+
+check('a question says why it is being asked',
+  plan.questions.find((q) => q.credit.includes('2985')).options[0].reason,
+  'one title is part of the other');
+
+check('an uncertain credit is never quietly in the additions', plan.missing.length, 1);
+
+// ---- the answers ----------------------------------------------------------
+
+check('no answer adds nothing - a question left alone changes nothing',
+  applyCreditResolutions(plan.questions, {}).add, []);
+
+check('"add anyway" adds exactly that credit',
+  applyCreditResolutions(plan.questions, { [plan.questions[0].path]: ADD_AS_NEW })
+    .add.map((e) => e.production), ['Jefferey Bernard fühlt sich nicht']);
+
+check('answering "it is the same credit" adds nothing',
+  applyCreditResolutions(plan.questions, { [plan.questions[0].path]: 'same:0' }).add, []);
+
+check('an answer that was never offered is ignored',
+  applyCreditResolutions(plan.questions, { [plan.questions[0].path]: 'same:99' }).add, []);
+
+check('a year both sides record and disagree on is not an open question',
+  nearMatches({ production: 'Tatort', role: 'A', year: '2024' },
+    [{ production: 'Tatort', role: 'B', year: '2025' }]), []);
+
+check('a credit that matches outright is never also a question',
+  nearMatches({ production: 'X', role: 'y', year: '2025' },
+    [{ production: 'X', role: 'y', year: '2025' }]), []);
+
+check('edit distance gives up rather than running long',
+  editDistance('abcdefgh', 'zzzzzzzz', 2) > 2, true);
 
 console.log(`\n${passed}/${passed + failed} passed.`);
 process.exit(failed ? 1 : 0);

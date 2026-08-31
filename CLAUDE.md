@@ -255,11 +255,27 @@ run from 0 shared to 5.
 What is left over is real disagreement between the two sites, not a matching
 bug: `Jefferey Bernard` against `Jeffrey Bernard`, `Berlin Tag und Nacht - 2985`
 against `Berlin Tag und Nacht`, the same job billed as `Bösewicht, Jochen Bauer`
-on one site and `Jochen Bach` on the other. **Those are not guessed at.** An
-episode number might be the difference between two jobs, and merging them would
-delete one from a CV silently.
+on one site and `Jochen Bach` on the other. **Those are not guessed at — they
+are asked.** An episode number might be the difference between two jobs, and
+merging them would delete one from a CV silently; adding them would duplicate a
+credit on a public profile that someone then has to go and delete by hand.
 
-`pushWorkHistory` adds only what is missing, never edits and never deletes.
+`reconcileWorkHistory` therefore splits the answer in three: credits that are
+certainly missing, credits the platform certainly has, and credits that
+resemble one already there. The third kind is neither pushed nor dropped. It
+comes back as a question carrying the credit, the candidates it might be, and
+why it is being asked - the same contract `profileNormalizer` uses for values it
+cannot map, down to "no answer means no action". `POST /api/sync/work-history/:id`
+returns them (on the envelope, beside `data`), the platform list renders them in
+a "Vita-Abgleich" dialog, and a second call carries the answers back in
+`resolutions`. Only an answer that was offered counts.
+
+On the real accounts this is not a corner case: **all five** credits Filmmakers
+had and JobWork appeared to lack turned out to be uncertain, and none of them is
+written without someone saying so.
+
+`pushWorkHistory` adds only what is missing or answered, never edits and never
+deletes.
 
 ### Import, and what it must never do
 
