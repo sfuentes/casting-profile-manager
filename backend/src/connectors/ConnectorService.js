@@ -161,6 +161,19 @@ class ConnectorService {
   }
 
   /**
+   * Add the credits a platform does not have.
+   *
+   * Only additions: what the platform already holds is left exactly as it is,
+   * and nothing is ever removed. Which credits count as the same one is decided
+   * in `workHistory.js`, so every platform is compared the same way.
+   *
+   * `options.dryRun` fills each form and cancels out of it.
+   */
+  syncWorkHistory(userId, platformId, profile, options = {}) {
+    return this.#run(userId, platformId, 'pushWorkHistory', 'push_profile', profile, options);
+  }
+
+  /**
    * Read the profile back off a platform.
    *
    * Deliberately not routed through #run: that dispatcher counts items and
