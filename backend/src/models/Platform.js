@@ -30,9 +30,21 @@ const PlatformSchema = new mongoose.Schema({
     message: String,
     timestamp: Date,
   },
+  /**
+   * How a platform is signed into, in the connector registry's own words.
+   *
+   * The registry is the source of truth for this and the client already reads
+   * it that way - PlatformsView tests for 'manual' and 'apiKey' by name. This
+   * enum did not, so three of the registry's own manifests could not be stored:
+   * schauspielervideos ('apiKey') and the two manual agencies ('manual') failed
+   * validation. That made `npm run add-platforms` - which builds this list from
+   * the registry - throw on the platforms it was meant to create.
+   *
+   * 'api' stays because rows written by the seeder already use it.
+   */
   authType: {
     type: String,
-    enum: ['oauth', 'credentials', 'api'],
+    enum: ['oauth', 'credentials', 'api', 'apiKey', 'manual'],
     required: true,
   },
   authData: {

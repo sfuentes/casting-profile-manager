@@ -464,7 +464,7 @@ outside, which nothing reads.
 
     npm run check:connectors     selectors, text selectors, submit, normaliser,
                                  block times, availability forms, media plan,
-                                 credit matching
+                                 credit matching, manifests vs the schema
     npm run check:login-pages    every login page, live, no credentials
     npm run check:encryption-key inside the container
     node check-imports.mjs       every backend module loads
@@ -490,6 +490,24 @@ because they are the account holder's personal data.
 is a 404; `wanted.de` does not resolve; `jobwork.de` has no working certificate
 and only redirects to `.com`; `home.castingnetworks.com` is a marketing site.
 All four were guesses that survived for months.
+
+### The registry and the schema have to agree
+
+`Platform.authType` allowed `['oauth', 'credentials', 'api']` while the registry
+produced five values. Three of its own manifests therefore could not be stored:
+schauspielervideos declares `apiKey`, and the two manual agencies declare
+`manual`. Nothing said so - it surfaced only when something tried to write one.
+
+Two paths ran into it. `npm run add-platforms` builds a user's platform list
+*from the registry*, so it threw on the platforms it existed to create. And
+connecting a platform the user has no row for takes `name` and `authType` from
+the manifest, so connecting any manual platform failed validation.
+
+The enum was widened rather than the manifests renamed: the registry is the
+source of truth, and the client already reads its vocabulary - `PlatformsView`
+tests for `'manual'` and `'apiKey'` by name. `'api'` stays because seeded rows
+use it. `check:manifests` now walks the registry and validates each manifest
+against the real schema, so the two cannot drift apart again quietly.
 
 ## Security
 
