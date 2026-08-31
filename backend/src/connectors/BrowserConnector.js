@@ -1066,6 +1066,54 @@ export class BrowserConnector extends PlatformConnector {
    * platforms it is immediately visible to everyone. So a dry run reports the
    * plan - which picture would go into which slot - and touches nothing.
    */
+  /**
+   * Every video on the profile, as one list, newest field first.
+   *
+   * `showreel` is the one video that represents the actor and `videos` holds
+   * all of them - including, usually, the showreel again. A profile whose
+   * showreel is also in `videos` must not offer the same file to two slots, so
+   * they are merged on the URL. The showreel keeps its type when it only
+   * appears in the dedicated field, because a slot asking for a showreel has to
+   * be able to find one.
+   */
+  profileVideos(profile) {
+    const byUrl = new Map();
+
+    if (profile.showreel?.url) {
+      byUrl.set(profile.showreel.url, {
+        url: profile.showreel.url,
+        title: profile.showreel.description,
+        type: 'showreel'
+      });
+    }
+
+    for (const video of profile.videos || []) {
+      if (!video?.url || byUrl.has(video.url)) continue;
+      byUrl.set(video.url, { url: video.url, title: video.title, type: video.type || 'other' });
+    }
+
+    return [...byUrl.values()];
+  }
+
+  /**
+   * What a URL is, as far as an upload control is concerned.
+   *
+   * Read off the address because that is all there is before fetching: these
+   * pictures and videos live on the platform that already holds them, and
+   * asking that platform for a HEAD request to learn a content type is a
+   * request nobody needs to make. An address that says nothing returns no
+   * extension, and the caller then lets the platform decide.
+   */
+  mediaTypeOf(url) {
+    const extension = (String(url).match(/\.(jpe?g|png|webp|avif|gif|mp4|mov|m4v|webm)(?:[?#]|$)/i)?.[1] || '')
+      .toLowerCase();
+    if (!extension) return { extension: '', type: '', group: '' };
+
+    const group = ['mp4', 'mov', 'm4v', 'webm'].includes(extension) ? 'video' : 'image';
+    const canonical = { jpg: 'jpeg', jpe: 'jpeg', mov: 'quicktime', m4v: 'mp4' }[extension] || extension;
+    return { extension, group, type: `${group}/${canonical}` };
+  }
+
   async pushMedia(profile, { dryRun = false } = {}) {
     const slots = this.site.mediaFields || [];
     if (slots.length === 0) {
@@ -1087,37 +1135,51 @@ export class BrowserConnector extends PlatformConnector {
       // may do it too.
       await this.openPage(this.url(this.site.paths.media));
 
-      // One picture per slot, matched on what each is for. A picture already
+      // One file per slot, matched on what each slot is for. A file already
       // placed is not offered again, so three portraits fill three portrait
       // slots rather than the same one three times.
+      //
+      // A slot says which medium it takes with `kind`. Without one it is a
+      // picture slot, which is what every descriptor written before videos
+      // existed meant.
       const photos = (profile.setcard?.photos || []).filter((photo) => photo.url);
+      const videos = this.profileVideos(profile);
       const used = new Set();
       const plan = [];
 
       for (const slot of slots) {
-        const photo = photos.find((candidate) => !used.has(candidate.url)
+        const kind = slot.kind === 'video' ? 'video' : 'photo';
+        const pool = kind === 'video' ? videos : photos;
+        const item = pool.find((candidate) => !used.has(candidate.url)
           && (!slot.type || candidate.type === slot.type));
-        if (!photo) continue;
+        if (!item) continue;
 
-        used.add(photo.url);
+        used.add(item.url);
         plan.push({
           slot: slot.selector,
-          type: slot.type,
-          url: photo.url,
+          kind,
+          type: slot.type || item.type,
+          url: item.url,
+          // How the slot takes it. Most are file inputs; a video is often a
+          // link the platform fetches itself, and pasting a URL into a text
+          // field is a different act from uploading a file.
+          write: slot.write === 'url' ? 'url' : 'file',
           // What the slot takes, read off the page rather than assumed. IM OFF
           // accepts image/jpeg; Filmmakers serves AVIF. Uploading it anyway
           // would produce a rejection from the platform and a success in our
           // log.
-          accepts: await this.readAttribute(slot.selector, 'accept')
+          accepts: slot.write === 'url' ? null : await this.readAttribute(slot.selector, 'accept')
         });
       }
 
       const suitable = (step) => {
-        if (!step.accepts) return true;
+        // A URL slot is handed a link, not a file; there is no file type for
+        // the control to object to.
+        if (step.write === 'url' || !step.accepts) return true;
         const wanted = step.accepts.split(',').map((one) => one.trim().toLowerCase());
-        const extension = (step.url.match(/\.(jpe?g|png|webp|avif|gif)/i)?.[1] || '').toLowerCase();
-        const type = extension.startsWith('jp') ? 'image/jpeg' : `image/${extension}`;
-        return wanted.some((one) => one === type || one === 'image/*' || one === `.${extension}`);
+        const { extension, type, group } = this.mediaTypeOf(step.url);
+        if (!extension) return true;
+        return wanted.some((one) => one === type || one === `${group}/*` || one === `.${extension}`);
       };
 
       const rejected = plan.filter((step) => !suitable(step));
@@ -1126,12 +1188,12 @@ export class BrowserConnector extends PlatformConnector {
       if (plan.length === 0) {
         return {
           success: true, dryRun, uploaded: [], planned: [], skipped: slots.length,
-          details: { message: 'No picture in the profile matches a slot on this platform' }
+          details: { message: 'No picture or video in the profile matches a slot on this platform' }
         };
       }
 
       if (dryRun) {
-        this.log('info', `Dry run: ${accepted.length} picture(s) would be uploaded to ${this.manifest.name}`, {
+        this.log('info', `Dry run: ${accepted.length} file(s) would be sent to ${this.manifest.name}`, {
           rejected: rejected.length
         });
         return {
@@ -1146,9 +1208,19 @@ export class BrowserConnector extends PlatformConnector {
 
       const uploaded = [];
       const failed = rejected.map((step) => ({
-        ...step, reason: `the slot takes ${step.accepts}, this picture is not that`
+        ...step, reason: `the slot takes ${step.accepts}, this file is not that`
       }));
       for (const step of accepted) {
+        // A link slot is filled with the address itself. Nothing is downloaded
+        // and nothing is re-hosted: the video stays where the actor put it,
+        // which is the same rule the imported pictures follow.
+        if (step.write === 'url') {
+          const written = await this.writeField({ selector: step.slot, kind: 'text' }, step.url);
+          if (written) uploaded.push(step);
+          else failed.push({ ...step, reason: 'no such link field on the page' });
+          continue;
+        }
+
         const file = await this.fetchMediaFile(step.url);
         if (!file) {
           failed.push({ ...step, reason: 'could not be fetched' });
@@ -1165,13 +1237,13 @@ export class BrowserConnector extends PlatformConnector {
 
       if (uploaded.length === 0) {
         throw new PlatformChangedError(
-          `No picture could be uploaded to ${this.manifest.name} (${failed.map((f) => f.reason).join('; ')})`,
+          `Nothing could be uploaded to ${this.manifest.name} (${failed.map((f) => f.reason).join('; ')})`,
           { platform: this.manifest.key }
         );
       }
 
-      this.log('info', `Uploaded ${uploaded.length} picture(s) to ${this.manifest.name}`, {
-        uploaded: uploaded.map((u) => u.type), failed: failed.length
+      this.log('info', `Uploaded ${uploaded.length} file(s) to ${this.manifest.name}`, {
+        uploaded: uploaded.map((u) => `${u.kind}:${u.type}`), failed: failed.length
       });
 
       return {

@@ -250,6 +250,15 @@ platforms in step is what this app is for. `pushMedia` fetches a picture
 **through the logged-in page** (a server-side fetch gets the sign-in form
 instead), uploads it, and deletes the temporary file.
 
+A slot says what it takes. `kind: 'video'` draws from the profile's videos
+(and the showreel, merged on the URL so the same reel is not offered twice)
+instead of the setcard; `write: 'url'` writes the address into a link field
+rather than downloading and uploading a file, which is how these portals
+usually take a showreel. A slot with neither is a picture slot uploaded as a
+file, which is what every descriptor written before videos existed meant.
+`check:media-plan` covers the plan: one file per slot, no file in two slots, an
+AVIF refused by a slot that accepts image/jpeg.
+
 **Only IM OFF has usable upload slots so far** — seven named `input[type=file]`.
 The others hide their uploader behind a click and were not reachable in the
 time available:
@@ -260,10 +269,42 @@ time available:
 
 **Nothing has ever been uploaded to any platform.** Every push was a dry run.
 
+### The calendar: only block times
+
+A platform learns that a period is not bookable, and nothing else. Not the
+reason, not the production, not whether it is a firm booking or a tentative
+option, and not the actor's notes. `connectors/blockedPeriods.js` reduces the
+Availability entries to `{start, end}` pairs and the reduction happens in
+`ConnectorService.syncAvailability` - the one place every platform passes
+through, so a connector cannot leak what it was never handed, and a connector
+added later inherits the rule without knowing it exists.
+
+Merging is part of the rule, not tidying. Five separate blocks in a month say
+"five separate jobs"; one merged block says "not available", which is the only
+question a casting platform needs answered. Blocks less than a day apart merge,
+periods entirely in the past are dropped, and `partially_available` counts as
+blocked - a day the actor cannot freely take is not advertised as free.
+
+This mattered: all four connectors that push availability write `item.notes`
+into a notes field and `item.status` into a status select, and one of them maps
+a status to `gebucht`. Their code is untouched; nothing reaches those fields any
+more. `check:availability-forms` runs each of those fillers against real
+Chromium and reads the page back - and runs them once with a raw entry too, so
+a green result means the reduction works rather than the fixture being empty.
+
 ### Dry runs
 
 `pushProfile(profile, { dryRun: true })` and `pushMedia(profile, { dryRun: true })`
-fill in or plan, photograph the page into `forensics/`, and submit nothing. On
+fill in or plan, photograph the page into `forensics/`, and submit nothing.
+
+**They are now reachable through the app, not only from a script.**
+`ConnectorService.#run` passed a single argument to the connector, so the
+options never arrived and every push the API could make was a live one. It
+forwards them now: `POST /api/sync/profile/:id` and
+`/api/sync/availability/:id` take `dryRun: true`. A dry run is recorded on the
+SyncLog as `dryRun`, counts zero items processed, and does **not** move
+`platform.lastSync` - it wrote nothing, and must not read as a sync afterwards.
+`getPlatformStatus` skips dry runs for the same reason. On
 these platforms "save" can mean publishing a public profile, so this is the only
 honest way to check a push. It has already earned itself twice: it caught the
 Radix radio that was not really set, and a format check that was asking an
@@ -275,7 +316,8 @@ someone's photographs. **That is a decision, not a workaround to slip in.**
 
 ### Checks
 
-    npm run check:connectors     selectors, text selectors, submit, normaliser
+    npm run check:connectors     selectors, text selectors, submit, normaliser,
+                                 block times, availability forms, media plan
     npm run check:login-pages    every login page, live, no credentials
     npm run check:encryption-key inside the container
     node check-imports.mjs       every backend module loads

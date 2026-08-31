@@ -1,7 +1,22 @@
 import connectorService from '../connectors/ConnectorService.js';
 import Availability from '../models/Availability.js';
 import Profile from '../models/Profile.js';
+import { toBlockedPeriods } from '../connectors/blockedPeriods.js';
 import { asyncHandler as catchAsync } from '../middleware/asyncHandler.js';
+
+/**
+ * Whether the caller asked for a dry run.
+ *
+ * On these platforms "save" can mean publishing a public profile, so a dry run
+ * - fill everything in, photograph the page, submit nothing - is the only way
+ * to see what a push would do. It was reachable from a script and not through
+ * the API, which meant every push the app itself could make was a live one.
+ */
+const wantsDryRun = (req) => req.body?.dryRun === true || req.query?.dryRun === 'true';
+
+const said = (result, done) => (result?.dryRun
+  ? 'Dry run: nothing was submitted to the platform.'
+  : done);
 
 /**
  * Sync availability to a specific platform
@@ -23,17 +38,32 @@ export const syncAvailability = catchAsync(async (req, res) => {
     });
   }
 
+  // A calendar full of free days has no block times in it. Saying so beats
+  // recording a sync that sent nothing, which is how "synced" comes to mean
+  // nothing at all.
+  if (toBlockedPeriods(availability).length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'No block times to share. Only blocked periods are sent to platforms.'
+      }
+    });
+  }
+
   try {
+    // Only block times leave here - the service reduces the entries before any
+    // connector sees them. See connectors/blockedPeriods.js.
     const result = await connectorService.syncAvailability(
       userId,
       parseInt(platformId),
-      availability
+      availability,
+      { dryRun: wantsDryRun(req) }
     );
 
     res.status(200).json({
       success: true,
       data: result,
-      message: `Successfully synced ${result.itemsProcessed} availability items to platform`
+      message: said(result, `Successfully synced ${result.itemsProcessed} block times to platform`)
     });
 
   } catch (error) {
@@ -99,13 +129,14 @@ export const syncProfile = catchAsync(async (req, res) => {
     const result = await connectorService.syncProfile(
       userId,
       parseInt(platformId),
-      profile
+      profile,
+      { dryRun: wantsDryRun(req) }
     );
 
     res.status(200).json({
       success: true,
       data: result,
-      message: 'Successfully synced profile to platform'
+      message: said(result, 'Successfully synced profile to platform')
     });
 
   } catch (error) {

@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js';
 import { getConnector, listManifests } from './registry.js';
 import { AuthError, ConnectorError, NotSupportedError } from './errors.js';
 import { normalizeProfileFields } from './profileNormalizer.js';
+import { toBlockedFormItems } from './blockedPeriods.js';
 
 /**
  * The app's single entry point to every platform.
@@ -101,19 +102,34 @@ class ConnectorService {
     }
   }
 
-  /** Push profile data. */
-  syncProfile(userId, platformId, profile) {
-    return this.#run(userId, platformId, 'pushProfile', 'push_profile', profile);
+  /**
+   * Push profile data.
+   * `options.dryRun` fills the forms and submits nothing.
+   */
+  syncProfile(userId, platformId, profile, options = {}) {
+    return this.#run(userId, platformId, 'pushProfile', 'push_profile', profile, options);
   }
 
-  /** Push availability windows. */
-  syncAvailability(userId, platformId, availability) {
-    return this.#run(userId, platformId, 'pushAvailability', 'push_availability', availability);
+  /**
+   * Push the calendar - as block times, and only as block times.
+   *
+   * The reduction happens here rather than in the connectors, because here is
+   * the one place every platform passes through. A connector cannot leak a
+   * booking's reason or the actor's notes if it is never handed them, and that
+   * holds for the connectors that exist today and the ones added later, without
+   * each having to remember the rule. See blockedPeriods.js.
+   */
+  syncAvailability(userId, platformId, availability, options = {}) {
+    const blocked = toBlockedFormItems(availability);
+    return this.#run(userId, platformId, 'pushAvailability', 'push_availability', blocked, options);
   }
 
-  /** Push media items. */
-  syncMedia(userId, platformId, media) {
-    return this.#run(userId, platformId, 'pushMedia', 'push_media', media);
+  /**
+   * Push media items.
+   * `options.dryRun` plans the uploads and uploads nothing.
+   */
+  syncMedia(userId, platformId, media, options = {}) {
+    return this.#run(userId, platformId, 'pushMedia', 'push_media', media, options);
   }
 
   /**
@@ -215,7 +231,7 @@ class ConnectorService {
    * capability, log the attempt, run it, record the outcome. Previously each
    * operation repeated this, which is how the three sync routes drifted apart.
    */
-  async #run(userId, platformId, capability, operation, payload) {
+  async #run(userId, platformId, capability, operation, payload, options = {}) {
     const platform = await Platform.findOne({
       user: userId,
       platformId: Number(platformId),
@@ -229,6 +245,7 @@ class ConnectorService {
     const connector = this.instantiate(platform);
     connector.assertSupports(capability);
 
+    const dryRun = options.dryRun === true;
     const itemsTotal = Array.isArray(payload) ? payload.length : 1;
     const syncLog = await SyncLog.create({
       user: userId,
@@ -236,25 +253,42 @@ class ConnectorService {
       operation,
       status: 'pending',
       startedAt: new Date(),
-      itemsTotal
+      itemsTotal,
+      dryRun
     });
 
     try {
       if (connector.supports('verify')) await connector.verify();
 
-      const result = (await connector[capability](payload)) || {};
+      // The options reach the connector. Without this a dry run could not be
+      // asked for through the app at all - `pushProfile(profile, {dryRun})` and
+      // `pushMedia(profile, {dryRun})` were reachable only from a script, so
+      // every push the API could make was a live one.
+      const result = (await connector[capability](payload, options)) || {};
 
       syncLog.status = 'success';
       syncLog.completedAt = new Date();
-      syncLog.itemsProcessed = result.itemsSynced ?? result.count ?? itemsTotal;
-      syncLog.metadata = { details: result.details, externalIds: result.externalIds };
+      // A dry run processed nothing, whatever it planned. Falling back to
+      // `itemsTotal` here would write "5 items synced" for a run that submitted
+      // nothing at all.
+      syncLog.itemsProcessed = dryRun ? 0 : (result.itemsSynced ?? result.count ?? itemsTotal);
+      syncLog.metadata = {
+        details: result.details,
+        externalIds: result.externalIds,
+        planned: result.planned
+      };
       await syncLog.save();
 
-      platform.lastSync = new Date();
-      await platform.save();
+      // Only a real push moves `lastSync`. A dry run that stamped it would tell
+      // the user their profile went out when nothing left the building.
+      if (!dryRun) {
+        platform.lastSync = new Date();
+        await platform.save();
+      }
 
       return {
         success: true,
+        dryRun,
         itemsProcessed: syncLog.itemsProcessed,
         syncLog: syncLog.toObject()
       };
