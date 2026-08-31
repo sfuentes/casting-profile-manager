@@ -9,6 +9,7 @@ import { FilmpoolConnector } from './FilmpoolConnector.js';
 import { UfaBaseConnector } from './UfaBaseConnector.js';
 import { ImOffConnector } from './ImOffConnector.js';
 import { CastingNetworkDeConnector } from './CastingNetworkDeConnector.js';
+import { BackstageConnector } from './BackstageConnector.js';
 import { ManualConnector } from './ManualConnector.js';
 
 /**
@@ -35,6 +36,9 @@ const CONNECTORS = [
   // casting-network.de - the German site, not the international
   // castingnetworks.com that CastingNetworkConnector drives.
   CastingNetworkDeConnector,
+  // Backstage signs in with Google and is behind Cloudflare: recorded here so
+  // it is a platform like any other, automated by nothing.
+  BackstageConnector,
   ManualConnector.forPlatform(6, 'Agentur (manuell)'),
   ManualConnector.forPlatform(7, 'Agentur (manuell)')
 ];

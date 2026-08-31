@@ -134,7 +134,7 @@ add cert handling to the repo.
 
 ## Platform integrations
 
-Thirteen platforms, two of them (ids 6–7) agencies kept by hand. The rest are
+Fourteen platforms, three of them (ids 6–7, 14) kept by hand. The rest are
 browser-driven and were, on 2026-08-30, verified against their live login pages
 for the first time. **Nothing below is guessed: every URL and selector here was
 read off the page it belongs to.**
@@ -180,6 +180,7 @@ in one or two of them, never all four.
 | 11 | ufa-base | ufa-base.de`/users/sign_in` | — | login page only |
 | 12 | im-off | app.im-off.de`/login` | multi-page form, 7 picture slots | login, import, pictures |
 | 13 | casting-network-de | casting-network.de`/login` | account page | login, import, push (dry run) |
+| 14 | backstage | Google OAuth — not automated | — | see below |
 
 Three platforms, three completely different import sources — which is why
 "look at the page first" is not a slogan here:
@@ -198,6 +199,39 @@ Three platforms, three completely different import sources — which is why
   reads. See "Credits" below.
 - **IM OFF** is an ordinary multi-page form — but every control is addressed by
   `id`, because the inputs carry no `name` at all.
+
+### Backstage (id 14): recorded, not automated
+
+Two independent reasons, either enough on its own.
+
+**The sign-in is Google OAuth.** Driving it means typing the account holder's
+Google password into a Google form. That is not a platform credential like the
+others here: it is the key to their identity and their mail. This app encrypts
+platform passwords because connectors replay them into a login form - a Google
+password is not something to take custody of on those terms, and Google treats
+automated sign-in as a compromise and locks the account.
+
+**The site is behind Cloudflare.** Checked 2026-08-31: the first request to
+www.backstage.com answered 200, everything after it 403 "Sorry, you have been
+blocked", and a fresh browser was blocked on its first page load. The login page
+could not be read at all. Working around a bot check is not something this
+project does, and the account that gets suspended for it is the user's.
+
+So there is **no `site` descriptor with a login path** - no login page has been
+seen. The nine paths a first attempt tried all answered 403, which says nothing
+about whether any of them exist. `capabilities: []`, and every sync path refuses
+it by name.
+
+If it is ever wanted for real, the only honest route is a session the user
+establishes themselves in their own browser - and Cloudflare blocks unattended
+requests on fingerprint, not just on authentication, so that would likely fail
+too. It is a decision, not a workaround to slip in.
+
+**A platform that is recorded is not a platform that was verified.** `verify()`
+returns `ok: true, verified: false`, and the platform list now renders three
+outcomes rather than two: green "Test OK" only when something was actually
+logged into, grey "Nicht prüfbar" for the ones kept by hand, red for a real
+failure. A green badge for Backstage would claim a login that never happened.
 
 ### Traps these platforms actually sprung
 

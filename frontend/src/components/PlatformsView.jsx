@@ -652,9 +652,19 @@ const PlatformsView = () => {
 
                                         <div className="flex items-center space-x-2">
                                             {testResult && (
-                                                <Badge color={testResult.success ? 'green' : 'red'} size="sm"
-                                                       title={testResult.message || ''}>
-                                                    {testResult.success ? 'Test OK' : 'Test fehlgeschlagen'}
+                                                /* Three outcomes, not two. A platform the app does not
+                                                   log into - the agencies, and Backstage with its Google
+                                                   sign-in - answers ok without anything having been
+                                                   verified, and a green "Test OK" there would claim a
+                                                   login that never happened. */
+                                                <Badge
+                                                    color={!testResult.success ? 'red'
+                                                        : (testResult.verified ? 'green' : 'gray')}
+                                                    size="sm"
+                                                    title={testResult.message || ''}
+                                                >
+                                                    {!testResult.success ? 'Test fehlgeschlagen'
+                                                        : (testResult.verified ? 'Test OK' : 'Nicht prüfbar')}
                                                 </Badge>
                                             )}
                                             {importResult && (
