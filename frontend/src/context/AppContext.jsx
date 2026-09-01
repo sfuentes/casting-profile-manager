@@ -688,6 +688,16 @@ export const AppProvider = ({children}) => {
     };
 
     // Platform management functions
+    /**
+     * Store credentials for a platform and try them.
+     *
+     * A rejected login does not roll the state back any more. The server has
+     * saved the credentials by then, so rolling back made the client disagree
+     * with the database: the platform disappeared from the list and the only
+     * way forward was to type the password again. It now keeps the saved record
+     * - not connected, credentials present - which is what makes retrying with
+     * "Test" possible, and it surfaces the reason instead of a generic message.
+     */
     const connectPlatform = async (platformId, authData) => {
         const oldPlatforms = platforms;
         setPlatforms(prev => prev.map(p =>
@@ -696,15 +706,23 @@ export const AppProvider = ({children}) => {
         setSaving(true);
 
         try {
-            // The API returns the saved platform record itself (apiService
-            // unwraps the `data` envelope), not a `platform` property - reading
-            // `result.platform` spread `undefined` and left the optimistic
-            // "connected" state in place regardless of what the server said.
-            const platform = await apiService.connectPlatform(platformId, authData);
-            setPlatforms(prev => prev.map(p =>
-                p.id === platformId ? {...p, ...platform} : p
-            ));
-            setLastSaved(new Date());
+            const result = await apiService.connectPlatform(platformId, authData);
+
+            if (result.platform) {
+                setPlatforms(prev => prev.map(p =>
+                    p.id === platformId ? {...p, ...result.platform} : p
+                ));
+            } else {
+                setPlatforms(oldPlatforms);
+            }
+
+            if (result.success) {
+                setLastSaved(new Date());
+            } else if (!apiService.demoMode) {
+                setError(result.message || 'Die Zugangsdaten wurden nicht akzeptiert.');
+            }
+
+            return result;
         } catch (err) {
             console.error('Failed to connect platform:', err);
             setPlatforms(oldPlatforms);
@@ -717,56 +735,22 @@ export const AppProvider = ({children}) => {
         }
     };
 
-    const disconnectPlatform = async (platformId) => {
-        const oldPlatforms = platforms;
-        setPlatforms(prev => prev.map(p =>
-            p.id === platformId ? {...p, connected: false, authData: {}, lastSync: null} : p
-        ));
-        setSaving(true);
-
-        try {
-            await apiService.disconnectPlatform(platformId);
-            setLastSaved(new Date());
-        } catch (err) {
-            console.error('Failed to disconnect platform:', err);
-            setPlatforms(oldPlatforms);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Trennen der Plattform');
-            }
-            throw err;
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const updatePlatformSettings = async (platformId, settings) => {
-        const oldPlatforms = platforms;
-        setPlatforms(prev => prev.map(p =>
-            p.id === platformId ? {...p, syncSettings: {...p.syncSettings, ...settings}} : p
-        ));
-        setSaving(true);
-
-        try {
-            await apiService.updatePlatformSettings(platformId, settings);
-            setLastSaved(new Date());
-        } catch (err) {
-            console.error('Failed to update platform settings:', err);
-            setPlatforms(oldPlatforms);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Aktualisieren der Plattform-Einstellungen');
-            }
-        } finally {
-            setSaving(false);
-        }
-    };
-
     const testPlatformConnection = async (platformId) => {
         setSyncing(true);
         try {
             const result = await apiService.testPlatformConnection(platformId);
-            setPlatforms(prev => prev.map(p =>
-                p.id === platformId ? {...p, lastTested: result.lastTested, testResult: result} : p
-            ));
+            setPlatforms(prev => prev.map(p => (p.id === platformId
+                ? {
+                    ...p,
+                    lastTested: result.lastTested,
+                    testResult: result,
+                    // The server decides this from the same attempt: a login
+                    // that works connects the platform, one that stops working
+                    // disconnects it. Without carrying it back, a successful
+                    // test left the card sitting under "not connected".
+                    connected: result.platform?.connected ?? p.connected
+                }
+                : p)));
             return result;
         } catch (err) {
             console.error('Failed to test platform connection:', err);
