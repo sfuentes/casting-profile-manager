@@ -464,6 +464,30 @@ Filmmakers serves AVIF, IM OFF accepts image/jpeg only — a picture sync betwee
 those two needs conversion, which means an image library and re-encoding
 someone's photographs. **That is a decision, not a workaround to slip in.**
 
+### Testing a login that does not work yet
+
+The Test button was reachable only from the connected list, and a platform is
+connected only after a login has succeeded. So the one situation a connection
+test exists for - the login does not work and nobody knows why - was the one
+situation it could not be used in.
+
+The credentials were never the problem: `connectPlatform` saves them and *then*
+verifies, so a rejected login still leaves them stored. Three things above that
+threw the fact away. The endpoint answers 400, and `handleResponse` throws on
+any non-2xx, discarding the message, the final URL and the saved record with it.
+The context caught that and rolled its state back, so the platform vanished from
+the list. And the card for a platform that is not connected offered only
+"Verbinden", which meant typing the password again to find out anything.
+
+Now: a rejected login is an outcome rather than an exception (the same wording
+`ConnectorService.verify` already used for the same reason), the saved record is
+kept, the dialog stays open with the reason and the final URL, and a platform
+holding credentials offers **Test** on its card whether or not it is connected.
+`toJSON` already sent `hasPassword` / `hasApiKey` for exactly this - the client
+can tell that a retry is possible without ever seeing the secret. A test that
+succeeds carries `connected` back, so the card moves to the connected list by
+itself.
+
 ### Diagnosing a failed login on the server
 
 `AuthError` says "the credentials were rejected, or the login form changed",

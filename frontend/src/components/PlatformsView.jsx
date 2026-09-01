@@ -64,6 +64,17 @@ const canImportProfile = (platform) => Boolean(platform?.capabilities?.includes(
 const canSyncCredits = (platform) => Boolean(platform?.capabilities?.includes('pushWorkHistory'));
 
 /**
+ * Whether the app already holds credentials for a platform.
+ *
+ * `toJSON` never sends the secrets themselves, only these flags - which is
+ * exactly enough to know that a login can be retried without asking the user to
+ * type their password again.
+ */
+const hasStoredCredentials = (platform) => Boolean(
+    platform?.authData?.hasPassword || platform?.authData?.hasApiKey || platform?.authData?.hasToken
+);
+
+/**
  * Where an imported value came from, in one line.
  *
  * The server sends { platform, platformName, location }. Older imports stored a
@@ -132,6 +143,8 @@ const PlatformsView = () => {
     const [creditAnswers, setCreditAnswers] = useState({});
     const [creditBusy, setCreditBusy] = useState(false);
     const [creditSummary, setCreditSummary] = useState('');
+    // Why the last connect attempt was refused, shown on the dialog itself.
+    const [connectError, setConnectError] = useState('');
     const [importSelection, setImportSelection] = useState([]);
     // The user's answers to values the normaliser could not map, keyed by the
     // question's path (e.g. "eyeColor", "languages.0.level").
@@ -162,6 +175,7 @@ const PlatformsView = () => {
 
         if (type === 'connect') {
             setFormData({});
+            setConnectError('');
         } else if (type === 'settings') {
             setFormData(platform.syncSettings || {});
         }
@@ -171,13 +185,25 @@ const PlatformsView = () => {
 
     const handleConnect = async () => {
         try {
-            // Connecting now verifies the credentials against the platform, so
-            // it takes a few seconds and can legitimately fail.
-            await connectPlatform(selectedPlatform.id, formData);
-            setShowModal(false);
+            // Connecting verifies the credentials against the platform, so it
+            // takes a few seconds and can legitimately fail. A rejected login is
+            // no longer thrown - it comes back as an outcome, because the
+            // credentials are saved either way and the platform can be retried
+            // from its card without typing the password again.
+            const result = await connectPlatform(selectedPlatform.id, formData);
+
+            if (result?.success) {
+                setShowModal(false);
+                return;
+            }
+
+            // Stay on the dialog with the reason: the password may simply have a
+            // typo in it, and closing would hide both the message and the field.
+            setConnectError([result?.message, result?.finalUrl && `Endete auf: ${result.finalUrl}`]
+                .filter(Boolean).join(String.fromCharCode(10)));
         } catch (err) {
             console.error('Connection failed:', err);
-            alert(`Verbindung fehlgeschlagen: ${err.message}`);
+            setConnectError(err.message);
         }
     };
 
@@ -870,6 +896,36 @@ const PlatformsView = () => {
                                             {platform.description || 'Professionelle Casting-Plattform'}
                                         </p>
 
+                                        {/* A platform whose credentials were rejected still has
+                                            those credentials stored. Showing why it failed, and
+                                            letting it be retried without retyping the password, is
+                                            the whole point of a test - the connected list is the
+                                            one place it is not needed. */}
+                                        {(() => {
+                                            const failed = testResults[platform.id] || (platform.testResult?.success === false
+                                                ? {
+                                                    success: false,
+                                                    message: platform.testResult.message,
+                                                    finalUrl: platform.testResult.url,
+                                                    errorType: platform.testResult.errorType
+                                                }
+                                                : null);
+                                            if (!failed || failed.success) return null;
+                                            return (
+                                                <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded">
+                                                    <p className="text-xs text-red-900 break-words">
+                                                        <AlertTriangle size={12} className="inline mr-1"/>
+                                                        {failed.message}
+                                                    </p>
+                                                    {failed.finalUrl && (
+                                                        <p className="text-[10px] text-red-700 mt-1 break-all">
+                                                            Endete auf: {failed.finalUrl}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
+
                                         <div className="flex space-x-2">
                                             <Button
                                                 size="sm"
@@ -877,16 +933,20 @@ const PlatformsView = () => {
                                                 disabled={saving}
                                                 icon={saving ? Loader : Plus}
                                             >
-                                                Verbinden
+                                                {hasStoredCredentials(platform) ? 'Zugangsdaten ändern' : 'Verbinden'}
                                             </Button>
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                icon={ExternalLink}
-                                                onClick={() => window.open('#', '_blank')}
-                                            >
-                                                Info
-                                            </Button>
+                                            {hasStoredCredentials(platform) && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => handleTestConnection(platform)}
+                                                    disabled={syncing}
+                                                    icon={syncing ? Loader : Activity}
+                                                    title="Die gespeicherten Zugangsdaten erneut versuchen"
+                                                >
+                                                    Test
+                                                </Button>
+                                            )}
                                         </div>
                                     </div>
                                 </Card>
@@ -903,6 +963,18 @@ const PlatformsView = () => {
                 title={`Verbindung zu ${selectedPlatform?.name}`}
             >
                 <div className="space-y-4">
+                    {/* The reason the platform refused, kept on the dialog. The
+                        credentials are stored either way, so this is a retry, not
+                        a fresh start - and a rejected password usually just needs
+                        correcting in the field below. */}
+                    {connectError && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded">
+                            <p className="text-sm text-red-900 whitespace-pre-line break-words">
+                                <AlertTriangle size={14} className="inline mr-1"/>
+                                {connectError}
+                            </p>
+                        </div>
+                    )}
                     {isAutomated(selectedPlatform) && (
                         <div className="p-4 bg-blue-50 rounded-lg flex items-start space-x-3">
                             <Bot className="w-6 h-6 text-blue-600 mt-1"/>

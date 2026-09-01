@@ -349,6 +349,17 @@ export const apiService = {
         return handleResponse(response);
     },
 
+    /**
+     * Store credentials for a platform and try them.
+     *
+     * A rejected login is an outcome, not an exception, so this does not throw
+     * on it - the server answers 400, saves the credentials anyway, and returns
+     * both the reason and the saved record. Throwing here discarded all of it:
+     * the caller saw a generic failure, rolled its state back, and the platform
+     * vanished from the list along with the credentials that had in fact been
+     * stored. That left "Test" reachable only for platforms already logging in,
+     * which is the one case where it is not needed.
+     */
     connectPlatform: async (platformId, authData) => {
         const response = await fetch(`${API_BASE_URL}/platforms/${platformId}/connect`, {
             method: 'POST',
@@ -357,11 +368,25 @@ export const apiService = {
             // reads them (`const { authData } = req.body`). Posting the bare
             // credential object put email and password at the top level, so the
             // backend saw no credentials at all and rejected every connect with
-            // "Missing credentials" - before it ever opened a browser. Connecting
-            // a platform through the UI could not work.
+            // "Missing credentials" - before it ever opened a browser.
             body: JSON.stringify({authData})
         });
-        return handleResponse(response);
+
+        const body = await response.json().catch(() => ({}));
+
+        // A server fault is still an exception; a rejected login is not.
+        if (!response.ok && response.status >= 500) {
+            throw new Error(body.error?.message || body.message || 'API request failed');
+        }
+
+        return {
+            success: body.success === true,
+            verified: body.verified === true,
+            message: body.message,
+            errorType: body.errorType,
+            finalUrl: body.finalUrl || body.data?.testResult?.url || null,
+            platform: body.data || null
+        };
     },
 
     disconnectPlatform: async (platformId) => {
