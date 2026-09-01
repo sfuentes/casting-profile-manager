@@ -1,21 +1,36 @@
 import React from 'react';
+import Chip from '@mui/material/Chip';
 
-// `title` is forwarded so a badge can carry the reason behind it - a failed
-// connection test says why on hover instead of only that it failed.
-const Badge = ({children, color = 'blue', title}) => {
-    const colorClasses = {
-        blue: 'bg-blue-100 text-blue-800',
-        green: 'bg-green-100 text-green-800',
-        yellow: 'bg-yellow-100 text-yellow-800',
-        red: 'bg-red-100 text-red-800',
-        gray: 'bg-gray-100 text-gray-800'
-    };
-
-    return (
-        <span title={title} className={`px-2 py-1 text-xs font-medium rounded-full ${colorClasses[color]}`}>
-            {children}
-        </span>
-    );
+/**
+ * A small status pill.
+ *
+ * The colours are the app's own words - the call sites compute them, e.g.
+ * `color={testResult.success ? 'green' : 'red'}` - so they are mapped here
+ * rather than changed at forty call sites.
+ *
+ * `icon`, `size` and `variant` were being passed by several views and silently
+ * dropped by the old component, which is the same family of bug as the `title`
+ * that never reached a failed connection test. They work now.
+ */
+const COLORS = {
+  blue: 'primary',
+  green: 'success',
+  yellow: 'warning',
+  red: 'error',
+  purple: 'secondary',
+  gray: 'default'
 };
+
+const Badge = ({ children, color = 'blue', title, icon: Icon, size = 'sm', variant }) => (
+  <Chip
+    label={children}
+    title={title}
+    size={size === 'sm' ? 'small' : 'medium'}
+    color={COLORS[color] || 'default'}
+    variant={variant === 'outline' ? 'outlined' : 'filled'}
+    icon={Icon ? <Icon size={14} /> : undefined}
+    sx={{ fontWeight: 500 }}
+  />
+);
 
 export default Badge;

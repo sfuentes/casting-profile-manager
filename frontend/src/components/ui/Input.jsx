@@ -1,29 +1,38 @@
 import React from 'react';
+import TextField from '@mui/material/TextField';
 
 /**
- * `placeholder` was being passed by callers and silently dropped - ProfileView
- * asks for "z.B. 175 cm" on several fields and none of them ever showed one.
+ * A labelled text field.
  *
- * `hint` is a small line under the field. It carries where a value came from:
- * a field imported from a casting platform is not the same as one the actor
- * typed, and the difference is worth seeing without having to remember it.
+ * `placeholder` was being passed by ProfileView and silently dropped by the old
+ * component, so none of its "z.B. 175 cm" hints ever appeared. `hint` is the
+ * line underneath that says where an imported value came from.
+ *
+ * Date and time fields get a shrunk label: MUI floats the label over the input
+ * until it has a value, and a native date control always shows its placeholder
+ * text, so the two would sit on top of each other.
  */
+const ALWAYS_FILLED = ['date', 'time', 'datetime-local', 'month', 'week'];
+
 const Input = ({
-    label, value, onChange, type = 'text', disabled = false, className = '',
-    placeholder, hint
+  label, value, onChange, type = 'text', disabled = false, className = '',
+  placeholder, hint
 }) => (
-    <div className={className}>
-        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-        <input
-            type={type}
-            value={value}
-            onChange={onChange}
-            disabled={disabled}
-            placeholder={placeholder}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-        />
-        {hint && <span className="block mt-1 text-[10px] text-gray-400">{hint}</span>}
-    </div>
+  <TextField
+    label={label}
+    value={value ?? ''}
+    onChange={onChange}
+    type={type}
+    disabled={disabled}
+    placeholder={placeholder}
+    helperText={hint || undefined}
+    className={className}
+    fullWidth
+    size="small"
+    slotProps={{
+      inputLabel: ALWAYS_FILLED.includes(type) ? { shrink: true } : undefined
+    }}
+  />
 );
 
 export default Input;

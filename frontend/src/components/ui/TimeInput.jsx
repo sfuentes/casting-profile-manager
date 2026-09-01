@@ -1,16 +1,19 @@
 import React from 'react';
+import TextField from '@mui/material/TextField';
 
-const TimeInput = ({label, value, onChange, disabled = false, className = ''}) => (
-    <div className={className}>
-        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-        <input
-            type="time"
-            value={value || ''}
-            onChange={onChange}
-            disabled={disabled}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-        />
-    </div>
+/** A time field. Same shape as Input, fixed to type="time". */
+const TimeInput = ({ label, value, onChange, disabled = false, className = '' }) => (
+  <TextField
+    label={label}
+    type="time"
+    value={value || ''}
+    onChange={onChange}
+    disabled={disabled}
+    className={className}
+    fullWidth
+    size="small"
+    slotProps={{ inputLabel: { shrink: true } }}
+  />
 );
 
 export default TimeInput;

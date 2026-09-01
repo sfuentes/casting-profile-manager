@@ -532,6 +532,42 @@ stored password then decrypts to something else and is genuinely rejected -
 without revealing the key), a consent banner that differs by IP or region, or
 the platform treating a datacenter address differently from a home one.
 
+### The UI: MUI, migrated from the primitives up
+
+The frontend is being moved to Material UI. The move is deliberately staged,
+and the seam is `components/ui/`: every view already draws its buttons, cards,
+inputs, badges and dialogs through those seven primitives, so reimplementing
+them on MUI put the whole app onto MUI controls without touching 3,900 lines of
+view markup.
+
+**The prop contracts did not change.** `variant="outline"`, `color="green"`,
+`size="sm"`, `icon={Download}` are the app's own words and are mapped inside the
+primitives - `green` to MUI's `success`, `outline` to `outlined`, and so on. A
+migration that also renamed props at four hundred call sites would be two
+changes tangled together, and only one of them reviewable.
+
+Three details worth keeping:
+
+- A `Button` with an icon and **no** children becomes an `IconButton`. The
+  settings, expand and disconnect controls pass only an icon, and a Button with
+  a `startIcon` and no label keeps the label's spacing and renders lopsided.
+- `Badge` now honours `icon` and `variant`, which several views were passing and
+  the old component silently dropped - the same family as the `title` that never
+  reached a failed connection test, and the `placeholder` ProfileView asked for.
+- `Input` shrinks the label for date and time types. MUI floats a label over an
+  empty field, and a native date control always shows its own placeholder, so
+  the two would sit on top of each other.
+
+`theme.js` holds the palette the Tailwind classes used (blue-600 primary,
+red-600 danger, the green/amber/red of the sync badges) so the change is which
+library draws a control, not what the app looks like.
+
+**Tailwind is still in the build and still lays the views out.** The two coexist
+on purpose for now. What remains is the view markup itself - PlatformsView
+(1,305 lines), ProfileView (906) and CalendarView (681) are the bulk - and
+`Login.jsx` and `Register.jsx`, which build their own inputs rather than using
+the primitives and so were not affected by this stage at all.
+
 ### The API envelope, and the field that keeps getting lost
 
 `handleResponse` in `apiService.js` unwraps `{ success, data }` and returns
