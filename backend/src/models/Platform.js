@@ -29,6 +29,19 @@ const PlatformSchema = new mongoose.Schema({
     success: Boolean,
     message: String,
     timestamp: Date,
+    /**
+     * Where the browser actually ended up when a login failed.
+     *
+     * "The credentials were rejected, or the login form changed" cannot be
+     * acted on; the final URL usually settles it - a redirect back to the login
+     * path means one thing, a page that is not the login page means another.
+     * On a server this is the only part of the forensics anyone can read, since
+     * the screenshot sits in a container filesystem that the next deploy wipes.
+     */
+    url: String,
+    title: String,
+    errorType: String,
+    artifacts: String,
   },
   /**
    * How a platform is signed into, in the connector registry's own words.

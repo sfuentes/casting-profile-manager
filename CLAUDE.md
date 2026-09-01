@@ -464,6 +464,33 @@ Filmmakers serves AVIF, IM OFF accepts image/jpeg only — a picture sync betwee
 those two needs conversion, which means an image library and re-encoding
 someone's photographs. **That is a decision, not a workaround to slip in.**
 
+### Diagnosing a failed login on the server
+
+`AuthError` says "the credentials were rejected, or the login form changed",
+and it says so deliberately: from inside `authenticate()` the two are
+indistinguishable. What tells them apart is **the URL the browser ended on**,
+which is why forensics exist.
+
+`ConnectorService.verify` used to take that capture and throw the return value
+away. Locally that was survivable - the screenshot is in `backend/forensics/`.
+On the server it was not: the capture went into a container filesystem nobody
+can reach and the next deploy wipes, so a failed login in production reported a
+sentence and nothing else. The summary is now carried out of `verify`, stored on
+`platform.testResult` (`url`, `title`, `errorType`), returned on the envelope as
+`finalUrl`, and shown on the badge. The screenshot stays where it is - it is the
+account holder's page and does not belong in a database.
+
+**What to read first, in order:** the final URL, then the backend container log
+for that request. The connector logs each step it takes - which consent banner
+it declined or dismissed, that it loaded the login page, that it entered
+credentials - so the log says how far it got. Local success and production
+failure with the same credentials usually means one of: a different
+`CREDENTIAL_ENCRYPTION_KEY` than the one the credentials were saved with (the
+stored password then decrypts to something else and is genuinely rejected -
+`npm run check:encryption-key` inside the container reports a fingerprint
+without revealing the key), a consent banner that differs by IP or region, or
+the platform treating a datacenter address differently from a home one.
+
 ### The API envelope, and the field that keeps getting lost
 
 `handleResponse` in `apiService.js` unwraps `{ success, data }` and returns

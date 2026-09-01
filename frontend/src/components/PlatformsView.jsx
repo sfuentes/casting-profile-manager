@@ -661,7 +661,10 @@ const PlatformsView = () => {
                                                     color={!testResult.success ? 'red'
                                                         : (testResult.verified ? 'green' : 'gray')}
                                                     size="sm"
-                                                    title={testResult.message || ''}
+                                                    title={[testResult.message,
+                                                        testResult.finalUrl && `Endete auf: ${testResult.finalUrl}`,
+                                                        testResult.errorType]
+                                                        .filter(Boolean).join(String.fromCharCode(10))}
                                                 >
                                                     {!testResult.success ? 'Test fehlgeschlagen'
                                                         : (testResult.verified ? 'Test OK' : 'Nicht prüfbar')}
