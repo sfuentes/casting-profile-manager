@@ -134,7 +134,7 @@ add cert handling to the repo.
 
 ## Platform integrations
 
-Thirteen platforms, two of them (ids 6–7) agencies kept by hand. The rest are
+Fourteen platforms, three of them (ids 6–7, 14) kept by hand. The rest are
 browser-driven and were, on 2026-08-30, verified against their live login pages
 for the first time. **Nothing below is guessed: every URL and selector here was
 read off the page it belongs to.**
@@ -176,10 +176,11 @@ in one or two of them, never all four.
 | 5 | jobwork | jobwork.com`/de/login` | GraphQL `profile` payload | login, import, media |
 | 8 | sarah-weiss | online.castingagentur-weiss.de | — | login page only |
 | 9 | wanted | online.agentur-wanted.de | — | login page only |
-| 10 | filmpool | filmpool-casting.de`/users/sign_in` | — | login page only |
-| 11 | ufa-base | ufa-base.de`/users/sign_in` | — | login page only |
+| 10 | filmpool | filmpool-casting.de`/users/sign_in` | — | login (logged in 2026-08-31) |
+| 11 | ufa-base | ufa-base.de`/users/sign_in` | — | login (logged in 2026-08-31) |
 | 12 | im-off | app.im-off.de`/login` | multi-page form, 7 picture slots | login, import, pictures |
 | 13 | casting-network-de | casting-network.de`/login` | account page | login, import, push (dry run) |
+| 14 | backstage | Google OAuth — not automated | — | see below |
 
 Three platforms, three completely different import sources — which is why
 "look at the page first" is not a slogan here:
@@ -199,10 +200,66 @@ Three platforms, three completely different import sources — which is why
 - **IM OFF** is an ordinary multi-page form — but every control is addressed by
   `id`, because the inputs carry no `name` at all.
 
+### Backstage (id 14): recorded, not automated
+
+Two independent reasons, either enough on its own.
+
+**The sign-in is Google OAuth.** Driving it means typing the account holder's
+Google password into a Google form. That is not a platform credential like the
+others here: it is the key to their identity and their mail. This app encrypts
+platform passwords because connectors replay them into a login form - a Google
+password is not something to take custody of on those terms, and Google treats
+automated sign-in as a compromise and locks the account.
+
+**The site is behind Cloudflare.** Checked 2026-08-31: the first request to
+www.backstage.com answered 200, everything after it 403 "Sorry, you have been
+blocked", and a fresh browser was blocked on its first page load. The login page
+could not be read at all. Working around a bot check is not something this
+project does, and the account that gets suspended for it is the user's.
+
+So there is **no `site` descriptor with a login path** - no login page has been
+seen. The nine paths a first attempt tried all answered 403, which says nothing
+about whether any of them exist. `capabilities: []`, and every sync path refuses
+it by name.
+
+If it is ever wanted for real, the only honest route is a session the user
+establishes themselves in their own browser - and Cloudflare blocks unattended
+requests on fingerprint, not just on authentication, so that would likely fail
+too. It is a decision, not a workaround to slip in.
+
+**A platform that is recorded is not a platform that was verified.** `verify()`
+returns `ok: true, verified: false`, and the platform list now renders three
+outcomes rather than two: green "Test OK" only when something was actually
+logged into, grey "Nicht prüfbar" for the ones kept by hand, red for a real
+failure. A green badge for Backstage would claim a login that never happened.
+
 ### Traps these platforms actually sprung
 
 Each of these cost a debugging round and is now covered by a check:
 
+- **A cookie banner with nothing to decline.** filmpool and UFA Base (the same
+  white-label system) put one button - "OK - verstanden" - over a notice saying
+  only *necessary* cookies are set. No reject, no settings, no accept-all. The
+  banner declining was built around found nothing to click and left the overlay
+  covering the login form, so **neither platform could be logged into at all** -
+  and the two failures looked completely different: filmpool never reached its
+  submit and reported "still on the login page", UFA's click on Einloggen was
+  swallowed and came back as "Node is either not clickable". One cause, two
+  symptoms. The rule now runs in order: decline if there is anything to decline;
+  if a choice is offered and cannot be declined, **click nothing** and log it,
+  because consenting is not this code's to give; only a notice that asks nothing
+  is dismissed. `check:consent` pins all three against real Chromium.
+- **A submit that posts the form somewhere else.** Both sites put "Sende mir
+  einen Login-Link" in the login form as a second `button[type=submit]`,
+  distinguished only by `formaction="/passwordless/users/sign_in"`. Clicking it
+  mails the account holder a link instead of logging in. That attribute is now
+  what separates them - structural, not a label to recognise.
+- **`submitBy: 'text'` escaped the form.** It was added to avoid the login-link
+  button, and did it by skipping the form-scoped search and matching by label
+  across the whole page. UFA Base's header carries two `<a>Einloggen</a>`
+  navigation links, one of them hidden, so the click landed on a link: "Node is
+  either not clickable". It now means what it was meant to mean - the labels
+  decide *within* the form - and the page-wide search is only the last resort.
 - **A cookie banner in a shadow root.** JobWork's login sat behind Usercentrics.
   The fields underneath were fillable, the click on "Weiter" went into the
   overlay, and the failure read "could not be reached". Consent banners are now
@@ -407,6 +464,33 @@ Filmmakers serves AVIF, IM OFF accepts image/jpeg only — a picture sync betwee
 those two needs conversion, which means an image library and re-encoding
 someone's photographs. **That is a decision, not a workaround to slip in.**
 
+### Diagnosing a failed login on the server
+
+`AuthError` says "the credentials were rejected, or the login form changed",
+and it says so deliberately: from inside `authenticate()` the two are
+indistinguishable. What tells them apart is **the URL the browser ended on**,
+which is why forensics exist.
+
+`ConnectorService.verify` used to take that capture and throw the return value
+away. Locally that was survivable - the screenshot is in `backend/forensics/`.
+On the server it was not: the capture went into a container filesystem nobody
+can reach and the next deploy wipes, so a failed login in production reported a
+sentence and nothing else. The summary is now carried out of `verify`, stored on
+`platform.testResult` (`url`, `title`, `errorType`), returned on the envelope as
+`finalUrl`, and shown on the badge. The screenshot stays where it is - it is the
+account holder's page and does not belong in a database.
+
+**What to read first, in order:** the final URL, then the backend container log
+for that request. The connector logs each step it takes - which consent banner
+it declined or dismissed, that it loaded the login page, that it entered
+credentials - so the log says how far it got. Local success and production
+failure with the same credentials usually means one of: a different
+`CREDENTIAL_ENCRYPTION_KEY` than the one the credentials were saved with (the
+stored password then decrypts to something else and is genuinely rejected -
+`npm run check:encryption-key` inside the container reports a fingerprint
+without revealing the key), a consent banner that differs by IP or region, or
+the platform treating a datacenter address differently from a home one.
+
 ### The API envelope, and the field that keeps getting lost
 
 `handleResponse` in `apiService.js` unwraps `{ success, data }` and returns
@@ -430,7 +514,8 @@ outside, which nothing reads.
 
     npm run check:connectors     selectors, text selectors, submit, normaliser,
                                  block times, availability forms, media plan,
-                                 credit matching
+                                 credit matching, manifests vs the schema,
+                                 consent banners
     npm run check:login-pages    every login page, live, no credentials
     npm run check:encryption-key inside the container
     node check-imports.mjs       every backend module loads
@@ -456,6 +541,24 @@ because they are the account holder's personal data.
 is a 404; `wanted.de` does not resolve; `jobwork.de` has no working certificate
 and only redirects to `.com`; `home.castingnetworks.com` is a marketing site.
 All four were guesses that survived for months.
+
+### The registry and the schema have to agree
+
+`Platform.authType` allowed `['oauth', 'credentials', 'api']` while the registry
+produced five values. Three of its own manifests therefore could not be stored:
+schauspielervideos declares `apiKey`, and the two manual agencies declare
+`manual`. Nothing said so - it surfaced only when something tried to write one.
+
+Two paths ran into it. `npm run add-platforms` builds a user's platform list
+*from the registry*, so it threw on the platforms it existed to create. And
+connecting a platform the user has no row for takes `name` and `authType` from
+the manifest, so connecting any manual platform failed validation.
+
+The enum was widened rather than the manifests renamed: the registry is the
+source of truth, and the client already reads its vocabulary - `PlatformsView`
+tests for `'manual'` and `'apiKey'` by name. `'api'` stays because seeded rows
+use it. `check:manifests` now walks the registry and validates each manifest
+against the real schema, so the two cannot drift apart again quietly.
 
 ## Security
 

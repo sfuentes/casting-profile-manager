@@ -19,12 +19,14 @@
     "check:text-selectors": "node scripts/check-text-selectors.mjs",
     "check:normalizer": "node scripts/check-normalizer.mjs",
     "check:work-history": "node scripts/check-work-history.mjs",
+    "check:manifests": "node scripts/check-manifests.mjs",
     "check:submit": "node scripts/check-submit.mjs",
+    "check:consent": "node scripts/check-consent.mjs",
     "check:blocked-periods": "node scripts/check-blocked-periods.mjs",
     "check:availability-forms": "node scripts/check-availability-forms.mjs",
     "check:media-plan": "node scripts/check-media-plan.mjs",
     "check:encryption-key": "node scripts/check-encryption-key.mjs",
-    "check:connectors": "npm run check:selectors && npm run check:text-selectors && npm run check:submit && npm run check:normalizer && npm run check:blocked-periods && npm run check:availability-forms && npm run check:media-plan && npm run check:work-history"
+    "check:connectors": "npm run check:selectors && npm run check:text-selectors && npm run check:submit && npm run check:normalizer && npm run check:blocked-periods && npm run check:availability-forms && npm run check:media-plan && npm run check:work-history && npm run check:manifests && npm run check:consent"
   },
   "keywords": [
     "platform",

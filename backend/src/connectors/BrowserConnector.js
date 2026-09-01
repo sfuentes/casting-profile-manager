@@ -55,6 +55,54 @@ export class BrowserConnector extends PlatformConnector {
    * Ordered by preference: refusing outright beats saving a set of switches
    * that some banners pre-tick. Nothing here accepts anything.
    */
+  /**
+   * Banners that acknowledge rather than ask.
+   *
+   * filmpool and UFA Base (the same white-label system) put up one button -
+   * "OK - verstanden" - over a notice saying only **necessary** cookies are
+   * set. There is no choice on it: no reject, no settings, no accept-all. The
+   * overlay covers the login form, so leaving it up means the platform cannot
+   * be used at all - which is exactly what happened: filmpool never reached its
+   * submit, and UFA's click on "Einloggen" was swallowed by the banner and came
+   * back as "Node is either not clickable".
+   *
+   * Clicking this grants nothing that was not already set. It is only used when
+   * the page offers no alternative - see ACCEPT_TEXTS.
+   */
+  static ACKNOWLEDGE_TEXTS = Object.freeze([
+    'ok',
+    'okay',
+    'ok - verstanden',
+    'ok – verstanden',
+    'verstanden',
+    'alles klar',
+    'got it',
+    'understood'
+  ]);
+
+  /**
+   * Consent, which this connector never gives.
+   *
+   * If one of these is on the page, a choice is being asked for, and making it
+   * on the account holder's behalf is not this code's business. The banner is
+   * left standing and said so in the log. "Einverstanden" is consent and lives
+   * here; "verstanden" is not and lives above - which is why these are matched
+   * whole rather than by substring.
+   */
+  static ACCEPT_TEXTS = Object.freeze([
+    'alle akzeptieren',
+    'alle cookies akzeptieren',
+    'akzeptieren',
+    'zustimmen',
+    'einverstanden',
+    'accept',
+    'accept all',
+    'accept all cookies',
+    'allow all',
+    'i agree',
+    'agree'
+  ]);
+
   static DECLINE_TEXTS = Object.freeze([
     'ablehnen',
     'alle ablehnen',
@@ -295,7 +343,14 @@ export class BrowserConnector extends PlatformConnector {
     // and UFA Base put "Einloggen" and "Sende mir einen Login-Link" in the same
     // form: clicking blindly would mail the account holder a login link.
     const labels = login.submitTexts || ['anmelden', 'einloggen', 'login', 'sign in'];
-    if (login.submitBy !== 'text' && await this.submitFormOwning(login.password, labels)) return true;
+
+    // Always inside the form first, `submitBy: 'text'` included. That flag used
+    // to skip this and search the whole page by label, which is how UFA Base
+    // failed: its header carries two <a>Einloggen</a> navigation links, one of
+    // them hidden, and the click landed on a link rather than the form's own
+    // button - "Node is either not clickable". The flag now means what it was
+    // meant to mean, that the labels decide *within* the form.
+    if (await this.submitFormOwning(login.password, labels)) return true;
 
     const button = await findByCssOrText(this.page, {
       css: ['button[type="submit"]', 'input[type="submit"]'],
@@ -342,7 +397,7 @@ export class BrowserConnector extends PlatformConnector {
    * not this code's decision to make.
    */
   async dismissConsentBanner() {
-    const declined = await this.page.evaluate((texts) => {
+    const outcome = await this.page.evaluate((vocab) => {
       const buttons = [];
       const visit = (root, depth) => {
         if (!root || depth > 12) return;
@@ -362,24 +417,58 @@ export class BrowserConnector extends PlatformConnector {
           && box.width > 0 && box.height > 0;
       };
 
-      for (const wanted of texts) {
-        const match = buttons.find((el) => visible(el)
-          && (el.innerText || el.textContent || '').trim().toLowerCase() === wanted);
-        if (match) {
-          match.click();
-          return match.innerText.trim();
-        }
-      }
-      return null;
-    }, this.site.consent?.declineTexts || BrowserConnector.DECLINE_TEXTS);
+      const label = (el) => (el.innerText || el.textContent || '').trim().toLowerCase();
+      const shown = buttons.filter(visible);
+      const matching = (list) => shown.find((el) => list.includes(label(el)));
 
-    if (declined) {
-      this.log('info', `Declined a consent banner ("${declined}")`);
+      // Declining always wins, and is tried first.
+      const decline = matching(vocab.decline);
+      if (decline) {
+        decline.click();
+        return { action: 'declined', label: decline.innerText.trim() };
+      }
+
+      // No decline. If the page is asking for consent, that is a decision for
+      // the account holder, not for a scraper: leave it standing and say so.
+      const accept = matching(vocab.accept);
+      if (accept) return { action: 'left-standing', label: accept.innerText.trim() };
+
+      // Nothing to decline and nothing being asked - a notice with a single
+      // button acknowledging it. Dismissing it is the only way past, and it
+      // grants nothing that was not already set.
+      const acknowledge = matching(vocab.acknowledge);
+      if (acknowledge) {
+        acknowledge.click();
+        return { action: 'acknowledged', label: acknowledge.innerText.trim() };
+      }
+
+      return null;
+    }, {
+      decline: this.site.consent?.declineTexts || BrowserConnector.DECLINE_TEXTS,
+      accept: BrowserConnector.ACCEPT_TEXTS,
+      acknowledge: this.site.consent?.acknowledgeTexts || BrowserConnector.ACKNOWLEDGE_TEXTS
+    });
+
+    if (outcome?.action === 'left-standing') {
+      // Not a failure, but worth seeing in the log: whatever this banner covers
+      // stays covered, and a click into it will fail somewhere further down.
+      this.log('warn',
+        `A consent banner offers a choice ("${outcome.label}") and no way to decline. `
+        + 'Leaving it alone: giving consent is not something this connector does.');
+      return false;
+    }
+
+    if (outcome) {
+      this.log('info', outcome.action === 'declined'
+        ? `Declined a consent banner ("${outcome.label}")`
+        : `Dismissed a cookie notice that offered no choice ("${outcome.label}")`);
       // The overlay unmounts asynchronously; give it a moment before anything
       // tries to click what it was covering.
       await this.delay(500);
+      return true;
     }
-    return Boolean(declined);
+
+    return false;
   }
 
   /** Trimmed value of an input, or null when it is absent or empty. */
@@ -955,7 +1044,32 @@ export class BrowserConnector extends PlatformConnector {
 
       const typed = [...form.querySelectorAll('input[type="submit"], button[type="submit"]')]
         .filter(isVisible);
-      if (typed.length > 0) return typed[0];
+
+      if (typed.length > 0) {
+        // A submit carrying its own `formaction` posts the form somewhere else
+        // entirely. UFA Base and filmpool put "Sende mir einen Login-Link"
+        // beside "Einloggen" in one form, and it is a submit like any other -
+        // except for formaction="/passwordless/users/sign_in". Clicking it
+        // mails the account holder a link instead of logging in. The attribute
+        // says so structurally, which beats recognising the label.
+        const ownAction = form.getAttribute('action') || '';
+        const staysHere = typed.filter((el) => {
+          const elsewhere = el.getAttribute('formaction');
+          return !elsewhere || elsewhere === ownAction;
+        });
+
+        const candidates = staysHere.length > 0 ? staysHere : typed;
+
+        // With more than one left, the caller's labels decide. Taking the first
+        // in DOM order is only right when there is nothing to tell them apart.
+        if (candidates.length > 1 && wanted.length > 0) {
+          const expected = candidates.find((el) => wanted.some((text) => labelOf(el) === text
+            || labelOf(el).includes(text)));
+          if (expected) return expected;
+        }
+
+        return candidates[0];
+      }
 
       const bare = [...form.querySelectorAll('button:not([type])')]
         .filter((el) => isVisible(el) && labelOf(el).length > 0);

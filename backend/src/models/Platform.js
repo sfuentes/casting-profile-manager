@@ -29,10 +29,35 @@ const PlatformSchema = new mongoose.Schema({
     success: Boolean,
     message: String,
     timestamp: Date,
+    /**
+     * Where the browser actually ended up when a login failed.
+     *
+     * "The credentials were rejected, or the login form changed" cannot be
+     * acted on; the final URL usually settles it - a redirect back to the login
+     * path means one thing, a page that is not the login page means another.
+     * On a server this is the only part of the forensics anyone can read, since
+     * the screenshot sits in a container filesystem that the next deploy wipes.
+     */
+    url: String,
+    title: String,
+    errorType: String,
+    artifacts: String,
   },
+  /**
+   * How a platform is signed into, in the connector registry's own words.
+   *
+   * The registry is the source of truth for this and the client already reads
+   * it that way - PlatformsView tests for 'manual' and 'apiKey' by name. This
+   * enum did not, so three of the registry's own manifests could not be stored:
+   * schauspielervideos ('apiKey') and the two manual agencies ('manual') failed
+   * validation. That made `npm run add-platforms` - which builds this list from
+   * the registry - throw on the platforms it was meant to create.
+   *
+   * 'api' stays because rows written by the seeder already use it.
+   */
   authType: {
     type: String,
-    enum: ['oauth', 'credentials', 'api'],
+    enum: ['oauth', 'credentials', 'api', 'apiKey', 'manual'],
     required: true,
   },
   authData: {

@@ -87,14 +87,23 @@ class ConnectorService {
     } catch (error) {
       // A failed login is the failure users hit first and the one hardest to
       // reason about remotely, so it gets the same treatment as a failed sync.
-      await connector.captureFailure(error, 'verify');
-      logger.warn(`[connectors] verify failed for ${manifest.key}`, { error: error.message });
+      //
+      // The capture used to be taken and thrown away. On a server that meant
+      // the one thing needed to tell a dead session from moved markup - the URL
+      // the browser actually ended on - was written into a container filesystem
+      // that nobody can reach and that the next deploy wipes. It is carried out
+      // of here now.
+      const forensics = await connector.captureFailure(error, 'verify');
+      logger.warn(`[connectors] verify failed for ${manifest.key}`, {
+        error: error.message, url: forensics?.url, title: forensics?.title
+      });
       return {
         ok: false,
         verified: false,
         message: error.message,
         errorType: error instanceof ConnectorError ? error.name : 'UnknownError',
         retryable: error instanceof ConnectorError ? error.retryable : false,
+        forensics,
         capabilities: manifest.capabilities
       };
     } finally {

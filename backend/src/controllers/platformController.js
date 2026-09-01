@@ -130,7 +130,14 @@ export const connectPlatform = catchAsync(async (req, res) => {
   platform.testResult = {
     success: result.ok,
     message: result.message,
-    timestamp: new Date()
+    timestamp: new Date(),
+    // Kept so a failure can be diagnosed from the database rather than from a
+    // container filesystem nobody can reach. Only the URL, the page title and
+    // the error type - never the page itself, which is the user's own data.
+    url: result.forensics?.url,
+    title: result.forensics?.title,
+    errorType: result.errorType,
+    artifacts: result.forensics?.artifacts?.screenshot
   };
   platform.lastTested = new Date();
   if (result.ok) platform.lastSync = platform.lastSync || null;
@@ -230,6 +237,10 @@ export const testPlatformConnection = catchAsync(async (req, res) => {
     success: result.ok,
     verified: result.verified,
     message: result.message,
+    // On the envelope beside the rest of the outcome. The client keeps the
+    // envelope for this endpoint deliberately - see apiService.
+    errorType: result.errorType,
+    finalUrl: result.forensics?.url,
     data: {
       platform,
       testResult: platform.testResult

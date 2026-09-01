@@ -406,6 +406,11 @@ export const apiService = {
             success: body.success === true,
             verified: body.verified === true,
             message: body.message,
+            // Where the browser ended up when a login failed. "Rejected or the
+            // form changed" is not actionable on its own; the final URL usually
+            // is, and on a server it is the only forensic anyone can read.
+            errorType: body.errorType,
+            finalUrl: body.finalUrl || body.data?.testResult?.url || null,
             lastTested: body.data?.testResult?.timestamp || body.data?.platform?.lastTested || null,
             platform: body.data?.platform
         };
