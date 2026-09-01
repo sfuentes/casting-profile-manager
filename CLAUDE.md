@@ -51,6 +51,23 @@ EOF
 node check.mjs
 ```
 
+**`npm run build` is not a check that the frontend works.** Vite compiles each
+module without resolving names across them, so an identifier that is referenced
+but no longer defined builds cleanly and throws `X is not defined` in the
+browser on first render. That is exactly how `disconnectPlatform` was deleted
+out of `AppContext.jsx` while still being exported and called: the build passed,
+and the app broke on the platforms page. `cd frontend && npm run lint` reports
+it as `no-undef` in a second. Run it for any frontend change - the build is a
+compile, the lint is the check.
+
+Beware of editing by replacing everything between two anchors, which is how that
+deletion happened: two other functions sat between them and went with it. After
+such an edit, compare what the file defines before and after:
+
+```bash
+diff <(git show HEAD:path/to/File.jsx | grep -oE "const [a-zA-Z]+ = ")      <(grep -oE "const [a-zA-Z]+ = " path/to/File.jsx)
+```
+
 **A patch series can apply partially and commit clean.** The stack was
 flattened onto `master` with **12 of its 47 files silently skipped**, and the
 result was committed. `git status` was clean, the tree looked plausible, and the

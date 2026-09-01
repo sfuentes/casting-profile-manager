@@ -735,6 +735,49 @@ export const AppProvider = ({children}) => {
         }
     };
 
+    const updatePlatformSettings = async (platformId, settings) => {
+        const oldPlatforms = platforms;
+        setPlatforms(prev => prev.map(p =>
+            p.id === platformId ? {...p, syncSettings: {...p.syncSettings, ...settings}} : p
+        ));
+        setSaving(true);
+
+        try {
+            await apiService.updatePlatformSettings(platformId, settings);
+            setLastSaved(new Date());
+        } catch (err) {
+            console.error('Failed to update platform settings:', err);
+            setPlatforms(oldPlatforms);
+            if (!apiService.demoMode) {
+                setError('Fehler beim Aktualisieren der Plattform-Einstellungen');
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const disconnectPlatform = async (platformId) => {
+        const oldPlatforms = platforms;
+        setPlatforms(prev => prev.map(p =>
+            p.id === platformId ? {...p, connected: false, authData: {}, lastSync: null} : p
+        ));
+        setSaving(true);
+
+        try {
+            await apiService.disconnectPlatform(platformId);
+            setLastSaved(new Date());
+        } catch (err) {
+            console.error('Failed to disconnect platform:', err);
+            setPlatforms(oldPlatforms);
+            if (!apiService.demoMode) {
+                setError('Fehler beim Trennen der Plattform');
+            }
+            throw err;
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const testPlatformConnection = async (platformId) => {
         setSyncing(true);
         try {
