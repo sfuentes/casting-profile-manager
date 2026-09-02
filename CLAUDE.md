@@ -562,11 +562,21 @@ Three details worth keeping:
 red-600 danger, the green/amber/red of the sync badges) so the change is which
 library draws a control, not what the app looks like.
 
-**Tailwind is still in the build and still lays the views out.** The two coexist
-on purpose for now. What remains is the view markup itself - PlatformsView
-(1,305 lines), ProfileView (906) and CalendarView (681) are the bulk - and
-`Login.jsx` and `Register.jsx`, which build their own inputs rather than using
-the primitives and so were not affected by this stage at all.
+`Button` forwards `type`. MUI defaults a button to `type="button"` while a bare
+`<button>` inside a form defaults to submit, so the first migration silently
+stopped `Login` and `Register` from submitting at all - both put a `Button` in a
+`<form onSubmit>` and rely on it. Checked by clicking the empty form and
+watching the validation message appear.
+
+`Login` and `Register` built their own inputs out of Tailwind and absolute-
+positioned icons while already importing `Input` from the primitives. They use
+it now, which is where 146 of the 208 lines went.
+
+**Tailwind is still in the build and still lays the views out, and that is where
+it stays.** Rewriting `className="flex items-center gap-2"` into `<Stack>` across
+PlatformsView (1,305 lines), ProfileView (906) and CalendarView (681) changes
+nothing anyone can see and is a large diff over code that works. Layout in
+Tailwind and controls in MUI is the arrangement, not a half-finished migration.
 
 ### The API envelope, and the field that keeps getting lost
 

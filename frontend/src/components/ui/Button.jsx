@@ -30,6 +30,10 @@ const Button = ({
   className = '',
   disabled = false,
   title,
+  // Forwarded because MUI defaults to type="button" while a bare <button> in a
+  // form defaults to submit - Login and Register put a Button inside a <form
+  // onSubmit> and stopped submitting without this.
+  type = 'button',
   icon: Icon
 }) => {
   const look = VARIANTS[variant] || VARIANTS.primary;
@@ -42,6 +46,7 @@ const Button = ({
   if (!children && glyph) {
     return (
       <IconButton
+        type={type}
         onClick={onClick}
         disabled={disabled}
         size={muiSize}
@@ -56,6 +61,7 @@ const Button = ({
 
   return (
     <MuiButton
+      type={type}
       onClick={onClick}
       disabled={disabled}
       variant={look.variant}
