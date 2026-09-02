@@ -127,7 +127,7 @@ export const AppProvider = ({children}) => {
 
         } catch (err) {
             console.error('Failed to load data:', err);
-            if (!apiService.demoMode && isAuthenticated) {
+            if (isAuthenticated) {
                 setError('Fehler beim Laden der Daten.');
             }
             if (!isAuthenticated) {
@@ -198,12 +198,8 @@ export const AppProvider = ({children}) => {
             setLastSaved(new Date());
         } catch (err) {
             console.error('Failed to update profile:', err);
-            if (!apiService.demoMode) {
-                setProfile(oldProfile);
-                setError('Fehler beim Speichern des Profils');
-            } else {
-                setLastSaved(new Date());
-            }
+            setProfile(oldProfile);
+            setError('Fehler beim Speichern des Profils');
         } finally {
             setSaving(false);
         }
@@ -222,17 +218,7 @@ export const AppProvider = ({children}) => {
             return newWorkItem;
         } catch (err) {
             console.error('Failed to add work history:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Hinzufügen der Berufserfahrung');
-            } else {
-                const newWorkItem = {...workItem, id: Date.now()};
-                setProfile(prev => ({
-                    ...prev,
-                    workHistory: [...(prev.workHistory || []), newWorkItem]
-                }));
-                setLastSaved(new Date());
-                return newWorkItem;
-            }
+            setError('Fehler beim Hinzufügen der Berufserfahrung');
         } finally {
             setSaving(false);
         }
@@ -251,12 +237,8 @@ export const AppProvider = ({children}) => {
             setLastSaved(new Date());
         } catch (err) {
             console.error('Failed to update work history:', err);
-            if (!apiService.demoMode) {
-                setProfile(oldProfile);
-                setError('Fehler beim Aktualisieren der Berufserfahrung');
-            } else {
-                setLastSaved(new Date());
-            }
+            setProfile(oldProfile);
+            setError('Fehler beim Aktualisieren der Berufserfahrung');
         } finally {
             setSaving(false);
         }
@@ -275,12 +257,8 @@ export const AppProvider = ({children}) => {
             setLastSaved(new Date());
         } catch (err) {
             console.error('Failed to delete work history:', err);
-            if (!apiService.demoMode) {
-                setProfile(oldProfile);
-                setError('Fehler beim Löschen der Berufserfahrung');
-            } else {
-                setLastSaved(new Date());
-            }
+            setProfile(oldProfile);
+            setError('Fehler beim Löschen der Berufserfahrung');
         } finally {
             setSaving(false);
         }
@@ -299,17 +277,7 @@ export const AppProvider = ({children}) => {
             return newEducationItem;
         } catch (err) {
             console.error('Failed to add education:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Hinzufügen der Ausbildung');
-            } else {
-                const newEducationItem = {...educationItem, id: Date.now()};
-                setProfile(prev => ({
-                    ...prev,
-                    education: [...(prev.education || []), newEducationItem]
-                }));
-                setLastSaved(new Date());
-                return newEducationItem;
-            }
+            setError('Fehler beim Hinzufügen der Ausbildung');
         } finally {
             setSaving(false);
         }
@@ -328,12 +296,8 @@ export const AppProvider = ({children}) => {
             setLastSaved(new Date());
         } catch (err) {
             console.error('Failed to update education:', err);
-            if (!apiService.demoMode) {
-                setProfile(oldProfile);
-                setError('Fehler beim Aktualisieren der Ausbildung');
-            } else {
-                setLastSaved(new Date());
-            }
+            setProfile(oldProfile);
+            setError('Fehler beim Aktualisieren der Ausbildung');
         } finally {
             setSaving(false);
         }
@@ -352,12 +316,8 @@ export const AppProvider = ({children}) => {
             setLastSaved(new Date());
         } catch (err) {
             console.error('Failed to delete education:', err);
-            if (!apiService.demoMode) {
-                setProfile(oldProfile);
-                setError('Fehler beim Löschen der Ausbildung');
-            } else {
-                setLastSaved(new Date());
-            }
+            setProfile(oldProfile);
+            setError('Fehler beim Löschen der Ausbildung');
         } finally {
             setSaving(false);
         }
@@ -373,9 +333,8 @@ export const AppProvider = ({children}) => {
             return result;
         } catch (err) {
             console.error('Failed to upload profile photo:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Hochladen des Profilbildes');
-            }
+            setError('Fehler beim Hochladen des Profilbildes');
+
             throw err;
         } finally {
             setUploading(false);
@@ -400,9 +359,8 @@ export const AppProvider = ({children}) => {
             return result;
         } catch (err) {
             console.error('Failed to upload setcard photo:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Hochladen des Setcard-Bildes');
-            }
+            setError('Fehler beim Hochladen des Setcard-Bildes');
+
             throw err;
         } finally {
             setUploading(false);
@@ -426,9 +384,8 @@ export const AppProvider = ({children}) => {
             setLastSaved(new Date());
         } catch (err) {
             console.error('Failed to delete setcard photo:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Löschen des Setcard-Bildes');
-            }
+            setError('Fehler beim Löschen des Setcard-Bildes');
+
             throw err;
         } finally {
             setUploading(false);
@@ -445,14 +402,7 @@ export const AppProvider = ({children}) => {
             return newBooking;
         } catch (err) {
             console.error('Failed to add booking:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Hinzufügen der Buchung');
-            } else {
-                const newBooking = {...bookingData, id: Date.now()};
-                setBookings(prev => [...prev, newBooking]);
-                setLastSaved(new Date());
-                return newBooking;
-            }
+            setError('Fehler beim Hinzufügen der Buchung');
         } finally {
             setSaving(false);
         }
@@ -469,12 +419,8 @@ export const AppProvider = ({children}) => {
             setLastSaved(new Date());
         } catch (err) {
             console.error('Failed to update booking:', err);
-            if (!apiService.demoMode) {
-                setBookings(oldBookings);
-                setError('Fehler beim Aktualisieren der Buchung');
-            } else {
-                setLastSaved(new Date());
-            }
+            setBookings(oldBookings);
+            setError('Fehler beim Aktualisieren der Buchung');
         } finally {
             setSaving(false);
         }
@@ -490,12 +436,8 @@ export const AppProvider = ({children}) => {
             setLastSaved(new Date());
         } catch (err) {
             console.error('Failed to delete booking:', err);
-            if (!apiService.demoMode) {
-                setBookings(oldBookings);
-                setError('Fehler beim Löschen der Buchung');
-            } else {
-                setLastSaved(new Date());
-            }
+            setBookings(oldBookings);
+            setError('Fehler beim Löschen der Buchung');
         } finally {
             setSaving(false);
         }
@@ -511,14 +453,7 @@ export const AppProvider = ({children}) => {
             return newOption;
         } catch (err) {
             console.error('Failed to add option:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Hinzufügen der Option');
-            } else {
-                const newOption = {...optionData, id: Date.now()};
-                setOptions(prev => [...prev, newOption]);
-                setLastSaved(new Date());
-                return newOption;
-            }
+            setError('Fehler beim Hinzufügen der Option');
         } finally {
             setSaving(false);
         }
@@ -535,12 +470,8 @@ export const AppProvider = ({children}) => {
             setLastSaved(new Date());
         } catch (err) {
             console.error('Failed to update option:', err);
-            if (!apiService.demoMode) {
-                setOptions(oldOptions);
-                setError('Fehler beim Aktualisieren der Option');
-            } else {
-                setLastSaved(new Date());
-            }
+            setOptions(oldOptions);
+            setError('Fehler beim Aktualisieren der Option');
         } finally {
             setSaving(false);
         }
@@ -556,12 +487,8 @@ export const AppProvider = ({children}) => {
             setLastSaved(new Date());
         } catch (err) {
             console.error('Failed to delete option:', err);
-            if (!apiService.demoMode) {
-                setOptions(oldOptions);
-                setError('Fehler beim Löschen der Option');
-            } else {
-                setLastSaved(new Date());
-            }
+            setOptions(oldOptions);
+            setError('Fehler beim Löschen der Option');
         } finally {
             setSaving(false);
         }
@@ -577,14 +504,7 @@ export const AppProvider = ({children}) => {
             return newAvailability;
         } catch (err) {
             console.error('Failed to add availability:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Hinzufügen der Verfügbarkeit');
-            } else {
-                const newAvailability = {...availabilityData, id: Date.now()};
-                setAvailability(prev => [...prev, newAvailability]);
-                setLastSaved(new Date());
-                return newAvailability;
-            }
+            setError('Fehler beim Hinzufügen der Verfügbarkeit');
         } finally {
             setSaving(false);
         }
@@ -601,12 +521,8 @@ export const AppProvider = ({children}) => {
             setLastSaved(new Date());
         } catch (err) {
             console.error('Failed to update availability:', err);
-            if (!apiService.demoMode) {
-                setAvailability(oldAvailability);
-                setError('Fehler beim Aktualisieren der Verfügbarkeit');
-            } else {
-                setLastSaved(new Date());
-            }
+            setAvailability(oldAvailability);
+            setError('Fehler beim Aktualisieren der Verfügbarkeit');
         } finally {
             setSaving(false);
         }
@@ -622,12 +538,8 @@ export const AppProvider = ({children}) => {
             setLastSaved(new Date());
         } catch (err) {
             console.error('Failed to delete availability:', err);
-            if (!apiService.demoMode) {
-                setAvailability(oldAvailability);
-                setError('Fehler beim Löschen der Verfügbarkeit');
-            } else {
-                setLastSaved(new Date());
-            }
+            setAvailability(oldAvailability);
+            setError('Fehler beim Löschen der Verfügbarkeit');
         } finally {
             setSaving(false);
         }
@@ -645,19 +557,8 @@ export const AppProvider = ({children}) => {
             return result.synced;
         } catch (err) {
             console.error('Failed to sync profile:', err);
-            if (!apiService.demoMode) {
-                setSyncStatus({syncing: false});
-                setError('Fehler bei der Profil-Synchronisation');
-            } else {
-                const updatedPlatforms = platforms.map(p => ({
-                    ...p,
-                    lastSync: p.connected ? new Date().toISOString() : p.lastSync
-                }));
-                setPlatforms(updatedPlatforms);
-                setSyncStatus({syncing: false, lastSync: new Date().toISOString()});
-                setLastSaved(new Date());
-                return updatedPlatforms.filter(p => p.connected).length;
-            }
+            setSyncStatus({syncing: false});
+            setError('Fehler bei der Profil-Synchronisation');
         }
     };
 
@@ -678,9 +579,8 @@ export const AppProvider = ({children}) => {
             return result.syncedCount;
         } catch (err) {
             console.error('Failed to sync availability:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler bei der Verfügbarkeits-Synchronisation');
-            }
+            setError('Fehler bei der Verfügbarkeits-Synchronisation');
+
             throw err;
         } finally {
             setSyncing(false);
@@ -718,7 +618,7 @@ export const AppProvider = ({children}) => {
 
             if (result.success) {
                 setLastSaved(new Date());
-            } else if (!apiService.demoMode) {
+            } else {
                 setError(result.message || 'Die Zugangsdaten wurden nicht akzeptiert.');
             }
 
@@ -726,9 +626,8 @@ export const AppProvider = ({children}) => {
         } catch (err) {
             console.error('Failed to connect platform:', err);
             setPlatforms(oldPlatforms);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Verbinden der Plattform');
-            }
+            setError('Fehler beim Verbinden der Plattform');
+
             throw err;
         } finally {
             setSaving(false);
@@ -748,9 +647,7 @@ export const AppProvider = ({children}) => {
         } catch (err) {
             console.error('Failed to update platform settings:', err);
             setPlatforms(oldPlatforms);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Aktualisieren der Plattform-Einstellungen');
-            }
+            setError('Fehler beim Aktualisieren der Plattform-Einstellungen');
         } finally {
             setSaving(false);
         }
@@ -769,9 +666,8 @@ export const AppProvider = ({children}) => {
         } catch (err) {
             console.error('Failed to disconnect platform:', err);
             setPlatforms(oldPlatforms);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Trennen der Plattform');
-            }
+            setError('Fehler beim Trennen der Plattform');
+
             throw err;
         } finally {
             setSaving(false);
@@ -797,9 +693,8 @@ export const AppProvider = ({children}) => {
             return result;
         } catch (err) {
             console.error('Failed to test platform connection:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler beim Testen der Plattform-Verbindung');
-            }
+            setError('Fehler beim Testen der Plattform-Verbindung');
+
             throw err;
         } finally {
             setSyncing(false);
@@ -816,9 +711,8 @@ export const AppProvider = ({children}) => {
             return result;
         } catch (err) {
             console.error('Failed to sync to platform:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler bei der Plattform-Synchronisation');
-            }
+            setError('Fehler bei der Plattform-Synchronisation');
+
             throw err;
         } finally {
             setSyncing(false);
@@ -836,9 +730,8 @@ export const AppProvider = ({children}) => {
             return result;
         } catch (err) {
             console.error('Failed to bulk sync platforms:', err);
-            if (!apiService.demoMode) {
-                setError('Fehler bei der Massen-Synchronisation');
-            }
+            setError('Fehler bei der Massen-Synchronisation');
+
             throw err;
         } finally {
             setSyncing(false);

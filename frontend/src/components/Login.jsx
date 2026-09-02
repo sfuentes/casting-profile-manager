@@ -44,7 +44,7 @@ const Login = ({ onSwitchToRegister }) => {
         >
             <Card sx={{ maxWidth: 440, width: '100%', p: 4 }}>
                 <Stack gap={3}>
-                    <Box textAlign="center">
+                    <Box sx={{textAlign: 'center'}}>
                         <Typography variant="h4" component="h2" fontWeight={800}>
                             Anmelden
                         </Typography>

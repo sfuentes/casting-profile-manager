@@ -76,7 +76,7 @@ const Register = ({ onSwitchToLogin }) => {
     return (
         <Frame>
             <Stack gap={3}>
-                <Box textAlign="center">
+                <Box sx={{textAlign: 'center'}}>
                     <Typography variant="h4" component="h2" fontWeight={800}>
                         Konto erstellen
                     </Typography>

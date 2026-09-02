@@ -4,7 +4,6 @@ import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
 import {CheckCircle, XCircle} from 'lucide-react';
 import {useAppContext} from '../context/AppContext';
-import {apiService} from '../services/apiService';
 
 /** One line of status, in the colour that matches it. */
 const Line = ({color, icon, children}) => (
@@ -18,7 +17,7 @@ const SyncIndicator = () => {
     const {saving, lastSaved, error} = useAppContext();
 
     // In demo mode, don't show errors
-    if (error && !apiService.demoMode) {
+    if (error) {
         return <Line color="error.main" icon={<XCircle size={16}/>}>{error}</Line>;
     }
 

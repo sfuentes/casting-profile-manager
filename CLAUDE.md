@@ -552,19 +552,28 @@ Things worth keeping in mind:
   forwards `type`. MUI defaults a button to `type="button"` while a bare
   `<button>` in a form defaults to submit, so the first pass silently stopped
   `Login` and `Register` submitting at all.
-- **MUI 9's `Stack` does not take `alignItems`, `justifyContent`, `flexWrap` or
-  `textAlign` as props.** They are forwarded to the DOM node, where React warns
-  and - the part that matters - the rule never applies. 55 tags across nine
-  files were passing them, so those layouts were quietly not aligning. They
-  belong in `sx`. This is invisible in a build and in a screenshot you have not
-  compared; it was found by asking the live DOM which elements carried an
-  `alignitems` attribute.
+- **MUI 9 dropped the system-props API from `Stack` and `Box`.** `alignItems`,
+  `justifyContent`, `flexWrap` and `textAlign` are forwarded to the DOM node,
+  where React warns and - the part that matters - the rule never applies. 57
+  tags across nine files were passing them, so those layouts were quietly not
+  aligning: the login heading sat left instead of centred, and rows of icons
+  crowded their text instead of reaching the right edge. They belong in `sx`.
+  This is invisible in a build and in a screenshot you have not compared; both
+  rounds were found by asking the live DOM which elements carried an
+  `alignitems` or `textalign` attribute. `Typography` still takes them.
 - `Badge` honours `icon` and `variant`, `Input` honours `placeholder` and takes
   a `hint` line, and `Input` shrinks the label for date and time types so MUI's
   floating label does not sit on the native control's own text.
 
 `theme.js` holds the palette the Tailwind classes used, so what changed is which
 library draws a control, not what the app looks like.
+
+**There is no demo mode.** `apiService.demoMode` was read 29 times and defined
+nowhere, so every `if (!apiService.demoMode)` was always true and every `else`
+behind one was unreachable. Those branches simulated success locally - one of
+them, in the `catch` of a failed profile sync, set `lastSync` on every connected
+platform and returned a count, which is this project's oldest forbidden pattern
+wearing a disguise. All of it is gone.
 
 **How the screens were checked.** They live behind a login, so "it builds" is
 all a build proves. A throwaway page rendered each view against a stubbed
