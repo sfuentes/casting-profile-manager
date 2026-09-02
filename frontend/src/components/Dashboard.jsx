@@ -1,16 +1,35 @@
 import React from 'react';
-import {Calendar, Check, Clock, Cloud, Loader} from 'lucide-react';
+import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
+import {Calendar, Check, Clock, Cloud} from 'lucide-react';
 import {useAppContext} from '../context/AppContext';
 import {Card, Badge} from './ui';
+
+/**
+ * Responsive columns without pulling in Grid.
+ *
+ * `display: grid` with a breakpoint object does what the Tailwind
+ * `grid-cols-1 md:grid-cols-2 lg:grid-cols-4` did, and it is one prop rather
+ * than a Grid container plus an item wrapper per child.
+ */
+const columns = (breakpoints) => ({
+    display: 'grid',
+    gap: 3,
+    gridTemplateColumns: Object.fromEntries(
+        Object.entries(breakpoints).map(([at, count]) => [at, `repeat(${count}, minmax(0, 1fr))`])
+    )
+});
 
 const Dashboard = () => {
     const {bookings, options, platforms, loading} = useAppContext();
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <Loader size={48} className="animate-spin text-blue-600"/>
-            </div>
+            <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: 256}}>
+                <CircularProgress size={48}/>
+            </Box>
         );
     }
 
@@ -19,80 +38,96 @@ const Dashboard = () => {
     const activeOptions = options.filter(o => o.status === 'pending').length;
 
     const stats = [
-        {title: 'Anstehende Buchungen', value: upcomingBookings, icon: Calendar, color: 'text-blue-600'},
-        {title: 'Offene Optionen', value: activeOptions, icon: Clock, color: 'text-yellow-600'},
+        {title: 'Anstehende Buchungen', value: upcomingBookings, icon: Calendar, color: 'primary.main'},
+        {title: 'Offene Optionen', value: activeOptions, icon: Clock, color: 'warning.main'},
         {
             title: 'Verbundene Plattformen',
             value: `${connectedPlatforms}/${platforms.length}`,
             icon: Cloud,
-            color: 'text-green-600'
+            color: 'success.main'
         },
-        {title: 'Profil-Status', value: 'Aktuell', icon: Check, color: 'text-green-600'}
+        {title: 'Profil-Status', value: 'Aktuell', icon: Check, color: 'success.main'}
     ];
 
     return (
-        <div className="space-y-6">
-            <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+        <Stack gap={3}>
+            <Typography variant="h4" component="h1" fontWeight={700}>Dashboard</Typography>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <Box sx={columns({xs: 1, md: 2, lg: 4})}>
                 {stats.map((stat, index) => (
                     <Card key={index}>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-gray-600 mb-1">{stat.title}</p>
-                                <p className="text-2xl font-bold">{stat.value}</p>
-                            </div>
-                            <stat.icon className={`w-8 h-8 ${stat.color}`}/>
-                        </div>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between">
+                            <Box>
+                                <Typography variant="body2" color="text.secondary" mb={0.5}>
+                                    {stat.title}
+                                </Typography>
+                                <Typography variant="h5" fontWeight={700}>{stat.value}</Typography>
+                            </Box>
+                            <Box sx={{color: stat.color, display: 'flex'}}>
+                                <stat.icon size={32}/>
+                            </Box>
+                        </Stack>
                     </Card>
                 ))}
-            </div>
+            </Box>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
+            <Box sx={columns({xs: 1, lg: 3})}>
+                <Box sx={{gridColumn: {lg: 'span 2'}}}>
                     <Card>
-                        <h2 className="text-lg font-semibold mb-4">Nächste Termine</h2>
-                        <div className="space-y-3">
+                        <Typography variant="h6" mb={2}>Nächste Termine</Typography>
+                        <Stack gap={1.5}>
                             {bookings.slice(0, 3).map((booking) => (
-                                <div key={booking.id}
-                                     className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                    <div>
-                                        <p className="font-medium">{booking.title}</p>
-                                        <p className="text-sm text-gray-600">
+                                <Stack
+                                    key={booking.id}
+                                    direction="row"
+                                    alignItems="center"
+                                    justifyContent="space-between"
+                                    sx={{p: 1.5, bgcolor: 'grey.50', borderRadius: 2}}
+                                >
+                                    <Box>
+                                        <Typography fontWeight={500}>{booking.title}</Typography>
+                                        <Typography variant="body2" color="text.secondary">
                                             {new Date(booking.startDate).toLocaleDateString('de-DE')} - {booking.type}
-                                        </p>
-                                    </div>
+                                        </Typography>
+                                    </Box>
                                     <Badge color={booking.status === 'confirmed' ? 'green' : 'yellow'}>
                                         {booking.status === 'confirmed' ? 'Bestätigt' : 'Offen'}
                                     </Badge>
-                                </div>
+                                </Stack>
                             ))}
-                        </div>
+                        </Stack>
                     </Card>
-                </div>
+                </Box>
 
-                <div>
+                <Box>
                     <Card>
-                        <h2 className="text-lg font-semibold mb-4">Plattform-Status</h2>
-                        <div className="space-y-3">
+                        <Typography variant="h6" mb={2}>Plattform-Status</Typography>
+                        <Stack gap={1.5}>
                             {platforms.map((platform) => (
-                                <div key={platform.id} className="flex items-center justify-between">
-                                    <div>
-                                        <p className="font-medium text-sm">{platform.name}</p>
-                                        <p className="text-xs text-gray-600">
-                                            {platform.connected ? `Sync: ${new Date(platform.lastSync).toLocaleDateString('de-DE')}` : 'Nicht verbunden'}
-                                        </p>
-                                    </div>
+                                <Stack
+                                    key={platform.id}
+                                    direction="row"
+                                    alignItems="center"
+                                    justifyContent="space-between"
+                                >
+                                    <Box>
+                                        <Typography variant="body2" fontWeight={500}>{platform.name}</Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                            {platform.connected
+                                                ? `Sync: ${new Date(platform.lastSync).toLocaleDateString('de-DE')}`
+                                                : 'Nicht verbunden'}
+                                        </Typography>
+                                    </Box>
                                     <Badge color={platform.connected ? 'green' : 'gray'}>
                                         {platform.connected ? 'Aktiv' : 'Inaktiv'}
                                     </Badge>
-                                </div>
+                                </Stack>
                             ))}
-                        </div>
+                        </Stack>
                     </Card>
-                </div>
-            </div>
-        </div>
+                </Box>
+            </Box>
+        </Stack>
     );
 };
 

@@ -1,14 +1,48 @@
 import React, { useState, useEffect } from 'react';
+import Paper from '@mui/material/Paper';
+import Stack from '@mui/material/Stack';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Typography from '@mui/material/Typography';
+import Table from '@mui/material/Table';
+import TableHead from '@mui/material/TableHead';
+import TableBody from '@mui/material/TableBody';
+import TableRow from '@mui/material/TableRow';
+import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
 import { API_BASE_URL } from '../services/apiService';
+import { useAppContext } from '../context/AppContext';
 
 /**
  * SyncHistory Component
  * Displays recent sync history across all platforms
  */
+const COLUMNS = ['Status', 'Plattform', 'Operation', 'Verarbeitet', 'Dauer', 'Zeitpunkt'];
+
+const STATUS = {
+  success: { color: 'success.main', icon: '✓' },
+  failed: { color: 'error.main', icon: '✗' },
+  pending: { color: 'warning.main', icon: '⏳' },
+  partial: { color: 'warning.dark', icon: '⚠' }
+};
+
+const OPERATIONS = {
+  push_availability: 'Verfügbarkeit gesendet',
+  push_media: 'Medien hochgeladen',
+  push_profile: 'Profil aktualisiert',
+  pull_availability: 'Verfügbarkeit abgerufen',
+  pull_profile: 'Profil abgerufen'
+};
+
 const SyncHistory = () => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [limit, setLimit] = useState(20);
+  // The platform names come from the list the app already loaded, which is fed
+  // by the connector registry. This file used to carry its own copy of them,
+  // and it had gone stale at nine platforms while the registry grew to
+  // fourteen - so filmpool, UFA Base and the rest showed as "Platform 10".
+  const { platforms } = useAppContext();
 
   useEffect(() => {
     loadHistory();
@@ -45,155 +79,93 @@ const SyncHistory = () => {
     });
   };
 
-  const getStatusColor = (status) => {
-    const colors = {
-      success: 'text-green-600',
-      failed: 'text-red-600',
-      pending: 'text-yellow-600',
-      partial: 'text-orange-600'
-    };
-    return colors[status] || 'text-gray-600';
-  };
-
-  const getStatusIcon = (status) => {
-    const icons = {
-      success: '✓',
-      failed: '✗',
-      pending: '⏳',
-      partial: '⚠'
-    };
-    return icons[status] || '•';
-  };
-
-  const getPlatformName = (platformId) => {
-    const platforms = {
-      1: 'Filmmakers',
-      2: 'Casting Network',
-      3: 'Schauspielervideos',
-      4: 'e-TALENTA',
-      5: 'JobWork',
-      6: 'Agentur Iris Müller',
-      7: 'Agentur Connection',
-      8: 'Agentur Sarah Weiss',
-      9: 'Wanted'
-    };
-    return platforms[platformId] || `Platform ${platformId}`;
-  };
-
-  const getOperationLabel = (operation) => {
-    const labels = {
-      'push_availability': 'Verfügbarkeit gesendet',
-      'push_media': 'Medien hochgeladen',
-      'push_profile': 'Profil aktualisiert',
-      'pull_availability': 'Verfügbarkeit abgerufen',
-      'pull_profile': 'Profil abgerufen'
-    };
-    return labels[operation] || operation;
-  };
+  const getPlatformName = (platformId) => platforms
+    .find((p) => (p.platformId ?? p.id) === platformId)?.name || `Platform ${platformId}`;
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center p-8">
-        <div className="text-gray-500">Lade Synchronisationsverlauf...</div>
-      </div>
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Typography color="text.secondary">Lade Synchronisationsverlauf...</Typography>
+      </Box>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow">
-      <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-        <h2 className="text-xl font-semibold">Synchronisationsverlauf</h2>
-        <button
-          onClick={loadHistory}
-          className="text-sm text-blue-600 hover:text-blue-800"
-        >
-          Aktualisieren
-        </button>
-      </div>
+    <Paper elevation={1} sx={{ borderRadius: 2 }}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="space-between"
+        sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Typography variant="h6">Synchronisationsverlauf</Typography>
+        <Button size="small" onClick={loadHistory}>Aktualisieren</Button>
+      </Stack>
 
       {history.length === 0 ? (
-        <div className="p-8 text-center text-gray-500">
-          <p>Noch keine Synchronisationen durchgeführt.</p>
-          <p className="text-sm mt-2">
+        <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
+          <Typography>Noch keine Synchronisationen durchgeführt.</Typography>
+          <Typography variant="body2" sx={{ mt: 1 }}>
             Verbinden Sie Plattformen und starten Sie eine Synchronisation, um hier Einträge zu sehen.
-          </p>
-        </div>
+          </Typography>
+        </Box>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Plattform
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Operation
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Verarbeitet
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Dauer
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Zeitpunkt
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {history.map((item) => (
-                <tr key={item._id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span className={`text-lg ${getStatusColor(item.status)}`}>
-                      {getStatusIcon(item.status)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
+        <TableContainer>
+          <Table size="small">
+            <TableHead sx={{ bgcolor: 'grey.50' }}>
+              <TableRow>
+                {COLUMNS.map((column) => (
+                  <TableCell
+                    key={column}
+                    sx={{
+                      fontSize: 12, fontWeight: 500, color: 'text.secondary',
+                      textTransform: 'uppercase', letterSpacing: '0.05em'
+                    }}
+                  >
+                    {column}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {history.map((item) => {
+                const status = STATUS[item.status] || { color: 'text.secondary', icon: '•' };
+                return (
+                  <TableRow key={item._id} hover>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Box component="span" sx={{ fontSize: '1.125rem', color: status.color }}>
+                        {status.icon}
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap', fontWeight: 500 }}>
                       {getPlatformName(item.platform)}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {getOperationLabel(item.operation)}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      {OPERATIONS[item.operation] || item.operation}
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       {item.itemsProcessed || 0} / {item.itemsTotal || 0}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       {item.duration ? `${(item.duration / 1000).toFixed(1)}s` : '-'}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       {formatDate(item.createdAt)}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
 
       {history.length > 0 && history.length >= limit && (
-        <div className="p-4 border-t border-gray-200 text-center">
-          <button
-            onClick={() => setLimit(limit + 20)}
-            className="text-sm text-blue-600 hover:text-blue-800"
-          >
-            Mehr laden
-          </button>
-        </div>
+        <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider', textAlign: 'center' }}>
+          <Button size="small" onClick={() => setLimit(limit + 20)}>Mehr laden</Button>
+        </Box>
       )}
-    </div>
+    </Paper>
   );
 };
 
