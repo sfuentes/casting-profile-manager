@@ -56,7 +56,7 @@ const Dashboard = () => {
             <Box sx={columns({xs: 1, md: 2, lg: 4})}>
                 {stats.map((stat, index) => (
                     <Card key={index}>
-                        <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Stack direction="row" sx={{alignItems: 'center', justifyContent: 'space-between'}}>
                             <Box>
                                 <Typography variant="body2" color="text.secondary" mb={0.5}>
                                     {stat.title}
@@ -80,9 +80,7 @@ const Dashboard = () => {
                                 <Stack
                                     key={booking.id}
                                     direction="row"
-                                    alignItems="center"
-                                    justifyContent="space-between"
-                                    sx={{p: 1.5, bgcolor: 'grey.50', borderRadius: 2}}
+                                    sx={{alignItems: 'center', justifyContent: 'space-between', p: 1.5, bgcolor: 'grey.50', borderRadius: 2}}
                                 >
                                     <Box>
                                         <Typography fontWeight={500}>{booking.title}</Typography>
@@ -106,10 +104,7 @@ const Dashboard = () => {
                             {platforms.map((platform) => (
                                 <Stack
                                     key={platform.id}
-                                    direction="row"
-                                    alignItems="center"
-                                    justifyContent="space-between"
-                                >
+                                    direction="row" sx={{alignItems: 'center', justifyContent: 'space-between'}}>
                                     <Box>
                                         <Typography variant="body2" fontWeight={500}>{platform.name}</Typography>
                                         <Typography variant="caption" color="text.secondary">

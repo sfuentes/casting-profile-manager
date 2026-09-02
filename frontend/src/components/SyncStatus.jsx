@@ -122,7 +122,7 @@ const SyncStatus = ({ platformId, platformName }) => {
 
         {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
 
-        <Stack direction="row" gap={1} flexWrap="wrap">
+        <Stack direction="row" gap={1} sx={{flexWrap: 'wrap'}}>
           <Button variant="contained" onClick={handleSyncAvailability} disabled={syncing}>
             {syncing ? 'Synchronisiere...' : 'Verfügbarkeit synchronisieren'}
           </Button>

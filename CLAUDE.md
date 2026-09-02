@@ -532,51 +532,46 @@ stored password then decrypts to something else and is genuinely rejected -
 without revealing the key), a consent banner that differs by IP or region, or
 the platform treating a datacenter address differently from a home one.
 
-### The UI: MUI, migrated from the primitives up
+### The UI: MUI
 
-The frontend is being moved to Material UI. The move is deliberately staged,
-and the seam is `components/ui/`: every view already draws its buttons, cards,
-inputs, badges and dialogs through those seven primitives, so reimplementing
-them on MUI put the whole app onto MUI controls without touching 3,900 lines of
-view markup.
+The frontend is Material UI. Tailwind is gone - no classes in `src`, no plugin
+in `vite.config.js`, no config file, nothing in `package.json`. The CSS bundle
+went from 27.5 kB to zero, and `dependencies` is MUI, emotion, lucide and React.
 
-**The prop contracts did not change.** `variant="outline"`, `color="green"`,
-`size="sm"`, `icon={Download}` are the app's own words and are mapped inside the
-primitives - `green` to MUI's `success`, `outline` to `outlined`, and so on. A
-migration that also renamed props at four hundred call sites would be two
-changes tangled together, and only one of them reviewable.
+The migration went from the primitives up. `components/ui/` holds seven
+components every view already drew through, so reimplementing those on MUI put
+the whole app onto MUI controls before a single view was touched. **Their prop
+contracts did not change**: `variant="outline"`, `color="green"`, `size="sm"`,
+`icon={Download}` are the app's own words and are mapped inside the primitives.
+Renaming props at four hundred call sites as well would have tangled two changes
+into one.
 
-Three details worth keeping:
+Things worth keeping in mind:
 
-- A `Button` with an icon and **no** children becomes an `IconButton`. The
-  settings, expand and disconnect controls pass only an icon, and a Button with
-  a `startIcon` and no label keeps the label's spacing and renders lopsided.
-- `Badge` now honours `icon` and `variant`, which several views were passing and
-  the old component silently dropped - the same family as the `title` that never
-  reached a failed connection test, and the `placeholder` ProfileView asked for.
-- `Input` shrinks the label for date and time types. MUI floats a label over an
-  empty field, and a native date control always shows its own placeholder, so
-  the two would sit on top of each other.
+- A `Button` with an icon and no children becomes an `IconButton`, and it
+  forwards `type`. MUI defaults a button to `type="button"` while a bare
+  `<button>` in a form defaults to submit, so the first pass silently stopped
+  `Login` and `Register` submitting at all.
+- **MUI 9's `Stack` does not take `alignItems`, `justifyContent`, `flexWrap` or
+  `textAlign` as props.** They are forwarded to the DOM node, where React warns
+  and - the part that matters - the rule never applies. 55 tags across nine
+  files were passing them, so those layouts were quietly not aligning. They
+  belong in `sx`. This is invisible in a build and in a screenshot you have not
+  compared; it was found by asking the live DOM which elements carried an
+  `alignitems` attribute.
+- `Badge` honours `icon` and `variant`, `Input` honours `placeholder` and takes
+  a `hint` line, and `Input` shrinks the label for date and time types so MUI's
+  floating label does not sit on the native control's own text.
 
-`theme.js` holds the palette the Tailwind classes used (blue-600 primary,
-red-600 danger, the green/amber/red of the sync badges) so the change is which
+`theme.js` holds the palette the Tailwind classes used, so what changed is which
 library draws a control, not what the app looks like.
 
-`Button` forwards `type`. MUI defaults a button to `type="button"` while a bare
-`<button>` inside a form defaults to submit, so the first migration silently
-stopped `Login` and `Register` from submitting at all - both put a `Button` in a
-`<form onSubmit>` and rely on it. Checked by clicking the empty form and
-watching the validation message appear.
-
-`Login` and `Register` built their own inputs out of Tailwind and absolute-
-positioned icons while already importing `Input` from the primitives. They use
-it now, which is where 146 of the 208 lines went.
-
-**Tailwind is still in the build and still lays the views out, and that is where
-it stays.** Rewriting `className="flex items-center gap-2"` into `<Stack>` across
-PlatformsView (1,305 lines), ProfileView (906) and CalendarView (681) changes
-nothing anyone can see and is a large diff over code that works. Layout in
-Tailwind and controls in MUI is the arrangement, not a half-finished migration.
+**How the screens were checked.** They live behind a login, so "it builds" is
+all a build proves. A throwaway page rendered each view against a stubbed
+context with fixture data - five platforms in different states, a profile with
+provenance, bookings and availability - and every screen and dialog was looked
+at in the browser. That is how the `Stack` prop bug surfaced. The page is not in
+the repository: fixture data rots, and a harness that lies is worse than none.
 
 ### Sync and import logic is not in the views
 

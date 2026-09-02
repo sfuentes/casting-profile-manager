@@ -60,11 +60,19 @@ import {
     syncIntervalText,
     sourceLabel,
     previewImported,
-    IMPORT_FIELD_LABELS
+    importFieldLabel
 } from '../domain/platforms';
 import {useAgentHealth} from '../hooks/useAgentHealth';
 import {usePlatformImport} from '../hooks/usePlatformImport';
 import {usePlatformCredits} from '../hooks/usePlatformCredits';
+
+/** A "label: value" row in the expanded platform panel. */
+const DetailRow = (props) => (
+    <Stack direction="row" gap={1} sx={{alignItems: 'center', justifyContent: 'space-between'}}>
+        <Box component="span" sx={{color: 'text.secondary'}}>{props.label}</Box>
+        <Box component="span">{props.children}</Box>
+    </Stack>
+);
 
 /** Responsive columns, as one prop on the container. */
 const columns = (breakpoints) => ({
@@ -363,8 +371,8 @@ const PlatformsView = () => {
     return (
         <Stack gap={3}>
             {/* Header */}
-            <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-                <Stack direction="row" alignItems="center" gap={2} flexWrap="wrap">
+            <Stack direction="row" gap={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap'}}>
+                <Stack direction="row" gap={2} sx={{alignItems: 'center', flexWrap: 'wrap'}}>
                     <Typography variant="h4" component="h1" fontWeight={700}>Plattformen</Typography>
                     <Badge color="blue">
                         {connectedPlatforms.length} von {platforms.length} verbunden
@@ -392,20 +400,16 @@ const PlatformsView = () => {
 
             {/* Agent status */}
             {agentStatus && (
-                <Card className={agentStatus.success ? undefined : undefined}>
+                <Card>
                     <Stack
                         direction="row"
-                        alignItems="center"
-                        justifyContent="space-between"
-                        sx={{
-                            borderLeft: 4,
+                        sx={{alignItems: 'center', justifyContent: 'space-between', borderLeft: 4,
                             borderColor: agentStatus.success ? 'success.main' : 'error.main',
                             bgcolor: agentStatus.success ? 'success.50' : 'error.50',
                             borderRadius: 1,
-                            p: 2
-                        }}
+                            p: 2}}
                     >
-                        <Stack direction="row" alignItems="center" gap={2}>
+                        <Stack direction="row" gap={2} sx={{alignItems: 'center'}}>
                             <Box sx={{color: agentStatus.success ? 'success.main' : 'error.main', display: 'flex'}}>
                                 <Bot size={32}/>
                             </Box>
@@ -413,8 +417,8 @@ const PlatformsView = () => {
                                 <Typography fontWeight={600}>Platform Agent Status</Typography>
                                 <Typography variant="body2" color="text.secondary">{agentStatus.message}</Typography>
                                 <Stack
-                                    direction="row" gap={2} mt={0.5} flexWrap="wrap"
-                                    sx={{fontSize: 12, color: 'text.secondary'}}
+                                    direction="row" gap={2} mt={0.5}
+                                    sx={{flexWrap: 'wrap', fontSize: 12, color: 'text.secondary'}}
                                 >
                                     <span>Agent-fähige Plattformen: {agentStatus.data?.automatedPlatforms ?? agentPlatforms.length}</span>
                                     <span>API-Plattformen: {apiPlatforms.length}</span>
@@ -452,7 +456,7 @@ const PlatformsView = () => {
                     }
                 ].map((tile) => (
                     <Card key={tile.label}>
-                        <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Stack direction="row" sx={{alignItems: 'center', justifyContent: 'space-between'}}>
                             <Box>
                                 <Typography variant="h5" fontWeight={700} sx={{color: tile.color}}>
                                     {tile.value}
@@ -467,11 +471,11 @@ const PlatformsView = () => {
                 ))}
             </Box>
 
-            {/* Connected Platforms */}
+            {/* Connected platforms */}
             {connectedPlatforms.length > 0 && (
-                <div className="space-y-4">
-                    <h2 className="text-xl font-semibold text-gray-900">Verbundene Plattformen</h2>
-                    <div className="space-y-3">
+                <Stack gap={2}>
+                    <Typography variant="h6" fontWeight={600}>Verbundene Plattformen</Typography>
+                    <Stack gap={1.5}>
                         {connectedPlatforms.map(platform => {
                             const ConnectionTypeIcon = getConnectionTypeIcon(platform);
                             const statusColor = platformStatusColor(platform);
@@ -481,11 +485,13 @@ const PlatformsView = () => {
                             const capabilities = getPlatformCapabilities(platform);
 
                             return (
-                                <Card key={platform.id} className="overflow-hidden">
-                                    <div className="flex items-center justify-between p-6">
-                                        <div className="flex items-center space-x-4">
-                                            <input
-                                                type="checkbox"
+                                <Card key={platform.id}>
+                                    <Stack
+                                        direction="row"
+                                        gap={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', p: 2}}
+                                    >
+                                        <Stack direction="row" gap={2} sx={{alignItems: 'center'}}>
+                                            <Checkbox
                                                 checked={bulkSyncSelected.includes(platform.id)}
                                                 onChange={(e) => {
                                                     if (e.target.checked) {
@@ -494,40 +500,42 @@ const PlatformsView = () => {
                                                         setBulkSyncSelected(bulkSyncSelected.filter(id => id !== platform.id));
                                                     }
                                                 }}
-                                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                             />
-                                            <div className="flex items-center space-x-3">
-                                                <ConnectionTypeIcon className="w-8 h-8 text-gray-600"/>
-                                                <div>
-                                                    <div className="flex items-center space-x-2">
-                                                        <h3 className="font-semibold text-gray-900">{platform.name}</h3>
+                                            <Stack direction="row" gap={1.5} sx={{alignItems: 'center'}}>
+                                                <Box sx={{color: 'text.secondary', display: 'flex'}}>
+                                                    <ConnectionTypeIcon size={32}/>
+                                                </Box>
+                                                <Box>
+                                                    <Stack direction="row" gap={1} sx={{alignItems: 'center'}}>
+                                                        <Typography fontWeight={600}>{platform.name}</Typography>
                                                         <Badge color="blue" size="sm">
                                                             {connectionTypeText(platform)}
                                                         </Badge>
-                                                    </div>
-                                                    <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                                    </Stack>
+                                                    <Stack
+                                                        direction="row" gap={1}
+                                                        sx={{alignItems: 'center', flexWrap: 'wrap', fontSize: 14, color: 'text.secondary'}}
+                                                    >
                                                         <Badge color={statusColor}>
                                                             {platform.connected ? 'Verbunden' : 'Getrennt'}
                                                         </Badge>
                                                         {platform.lastSync && (
-                                                            <span className="flex items-center space-x-1">
+                                                            <Stack direction="row" gap={0.5} sx={{alignItems: 'center'}}>
                                                                 <Clock size={12}/>
-                                                                <span>
-                                                                    Sync: {new Date(platform.lastSync).toLocaleString('de-DE')}
-                                                                </span>
-                                                            </span>
+                                                                <span>Sync: {new Date(platform.lastSync).toLocaleString('de-DE')}</span>
+                                                            </Stack>
                                                         )}
-                                                        <div className="flex space-x-1">
+                                                        <Stack direction="row" gap={0.5} sx={{color: 'text.disabled'}}>
                                                             {capabilities.slice(0, 3).map((cap, idx) => (
-                                                                <cap.icon key={idx} size={12} className="text-gray-400" title={cap.description}/>
+                                                                <cap.icon key={idx} size={12} title={cap.description}/>
                                                             ))}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
+                                                        </Stack>
+                                                    </Stack>
+                                                </Box>
+                                            </Stack>
+                                        </Stack>
 
-                                        <div className="flex items-center space-x-2">
+                                        <Stack direction="row" gap={1} sx={{alignItems: 'center', flexWrap: 'wrap'}}>
                                             {testResult && (
                                                 /* Three outcomes, not two. A platform the app does not
                                                    log into - the agencies, and Backstage with its Google
@@ -548,9 +556,7 @@ const PlatformsView = () => {
                                                 </Badge>
                                             )}
                                             {importResult && (
-                                                <Badge color="green" size="sm" icon={Download}>
-                                                    Importiert
-                                                </Badge>
+                                                <Badge color="green" size="sm" icon={Download}>Importiert</Badge>
                                             )}
                                             {canImportProfile(platform) && (
                                                 <Button
@@ -577,8 +583,7 @@ const PlatformsView = () => {
                                                 </Button>
                                             )}
                                             <Button
-                                                size="sm"
-                                                variant="outline"
+                                                size="sm" variant="outline"
                                                 onClick={() => handleTestConnection(platform)}
                                                 disabled={syncing}
                                                 icon={syncing ? Loader : Activity}
@@ -586,8 +591,7 @@ const PlatformsView = () => {
                                                 Test
                                             </Button>
                                             <Button
-                                                size="sm"
-                                                variant="outline"
+                                                size="sm" variant="outline"
                                                 onClick={() => handleSyncToPlatform(platform)}
                                                 disabled={syncing}
                                                 icon={syncing ? Loader : Upload}
@@ -595,189 +599,191 @@ const PlatformsView = () => {
                                                 Sync
                                             </Button>
                                             <Button
-                                                size="sm"
-                                                variant="outline"
+                                                size="sm" variant="outline"
                                                 onClick={() => openModal('settings', platform)}
                                                 icon={Settings}
+                                                title="Einstellungen"
                                             />
                                             <Button
-                                                size="sm"
-                                                variant="outline"
+                                                size="sm" variant="outline"
                                                 onClick={() => setExpandedPlatform(isExpanded ? null : platform.id)}
                                                 icon={isExpanded ? ChevronDown : ChevronRight}
+                                                title={isExpanded ? 'Zuklappen' : 'Aufklappen'}
                                             />
                                             <Button
-                                                size="sm"
-                                                variant="danger"
+                                                size="sm" variant="danger"
                                                 onClick={() => handleDisconnect(platform)}
                                                 icon={X}
+                                                title="Verbindung trennen"
                                             />
-                                        </div>
-                                    </div>
+                                        </Stack>
+                                    </Stack>
 
                                     {isExpanded && (
-                                        <div className="border-t bg-gray-50 p-6 space-y-4">
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                                <div>
-                                                    <h4 className="font-medium text-gray-900 mb-3 flex items-center space-x-2">
+                                        <Stack gap={2} sx={{borderTop: 1, borderColor: 'divider', bgcolor: 'grey.50', p: 3}}>
+                                            <Box sx={columns({xs: 1, md: 3})}>
+                                                <Box>
+                                                    <Stack direction="row" gap={1} mb={1.5} sx={{alignItems: 'center'}}>
                                                         <Settings size={16}/>
-                                                        <span>Konfiguration</span>
-                                                    </h4>
-                                                    <div className="space-y-2 text-sm">
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Verbindungstyp:</span>
-                                                            <Badge color="blue" size="sm">
-                                                                {connectionTypeText(platform)}
-                                                            </Badge>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Auto-Sync:</span>
-                                                            <span className={platform.syncSettings?.autoSync ? 'text-green-600' : 'text-red-600'}>
+                                                        <Typography fontWeight={500}>Konfiguration</Typography>
+                                                    </Stack>
+                                                    <Stack gap={1} sx={{fontSize: 14}}>
+                                                        <DetailRow label="Verbindungstyp:">
+                                                            <Badge color="blue" size="sm">{connectionTypeText(platform)}</Badge>
+                                                        </DetailRow>
+                                                        <DetailRow label="Auto-Sync:">
+                                                            <Box
+                                                                component="span"
+                                                                sx={{color: platform.syncSettings?.autoSync ? 'success.main' : 'error.main'}}
+                                                            >
                                                                 {platform.syncSettings?.autoSync ? 'An' : 'Aus'}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Intervall:</span>
-                                                            <span>{syncIntervalText(platform.syncSettings?.syncInterval)}</span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Regionen:</span>
-                                                            <span>{platform.regions?.join(', ') || 'Global'}</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
+                                                            </Box>
+                                                        </DetailRow>
+                                                        <DetailRow label="Intervall:">
+                                                            {syncIntervalText(platform.syncSettings?.syncInterval)}
+                                                        </DetailRow>
+                                                        <DetailRow label="Regionen:">
+                                                            {platform.regions?.join(', ') || 'Global'}
+                                                        </DetailRow>
+                                                    </Stack>
+                                                </Box>
 
-                                                <div>
-                                                    <h4 className="font-medium text-gray-900 mb-3 flex items-center space-x-2">
+                                                <Box>
+                                                    <Stack direction="row" gap={1} mb={1.5} sx={{alignItems: 'center'}}>
                                                         <Zap size={16}/>
-                                                        <span>Fähigkeiten</span>
-                                                    </h4>
-                                                    <div className="space-y-2">
+                                                        <Typography fontWeight={500}>Fähigkeiten</Typography>
+                                                    </Stack>
+                                                    <Stack gap={1}>
                                                         {capabilities.length > 0 ? capabilities.map((cap, idx) => (
-                                                            <div key={idx} className="flex items-center space-x-2 text-sm">
-                                                                <cap.icon size={14} className="text-blue-600"/>
-                                                                <span className="font-medium">{cap.label}</span>
-                                                            </div>
+                                                            <Stack key={idx} direction="row" gap={1} sx={{alignItems: 'center', fontSize: 14}}>
+                                                                <Box sx={{color: 'primary.main', display: 'flex'}}>
+                                                                    <cap.icon size={14}/>
+                                                                </Box>
+                                                                <Box component="span" sx={{fontWeight: 500}}>{cap.label}</Box>
+                                                            </Stack>
                                                         )) : (
-                                                            <span className="text-sm text-gray-500">Standard-Features</span>
+                                                            <Typography variant="body2" color="text.secondary">
+                                                                Standard-Features
+                                                            </Typography>
                                                         )}
-                                                    </div>
-                                                </div>
+                                                    </Stack>
+                                                </Box>
 
-                                                <div>
-                                                    <h4 className="font-medium text-gray-900 mb-3 flex items-center space-x-2">
+                                                <Box>
+                                                    <Stack direction="row" gap={1} mb={1.5} sx={{alignItems: 'center'}}>
                                                         <Activity size={16}/>
-                                                        <span>Status</span>
-                                                    </h4>
-                                                    <div className="space-y-2 text-sm">
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Verbunden seit:</span>
-                                                            <span>{platform.lastSync ?
-                                                                new Date(platform.lastSync).toLocaleDateString('de-DE') : 'Unbekannt'}</span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Letzte Sync:</span>
-                                                            <span>{platform.lastSync ?
-                                                                new Date(platform.lastSync).toLocaleString('de-DE') : 'Nie'}</span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Letzter Test:</span>
-                                                            <span>{(testResult?.lastTested || platform.lastTested) ?
-                                                                new Date(testResult?.lastTested || platform.lastTested).toLocaleString('de-DE') : 'Nie'}</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                                        <Typography fontWeight={500}>Status</Typography>
+                                                    </Stack>
+                                                    <Stack gap={1} sx={{fontSize: 14}}>
+                                                        <DetailRow label="Verbunden seit:">
+                                                            {platform.lastSync
+                                                                ? new Date(platform.lastSync).toLocaleDateString('de-DE') : 'Unbekannt'}
+                                                        </DetailRow>
+                                                        <DetailRow label="Letzte Sync:">
+                                                            {platform.lastSync
+                                                                ? new Date(platform.lastSync).toLocaleString('de-DE') : 'Nie'}
+                                                        </DetailRow>
+                                                        <DetailRow label="Letzter Test:">
+                                                            {(testResult?.lastTested || platform.lastTested)
+                                                                ? new Date(testResult?.lastTested || platform.lastTested).toLocaleString('de-DE')
+                                                                : 'Nie'}
+                                                        </DetailRow>
+                                                    </Stack>
+                                                </Box>
+                                            </Box>
 
                                             {platform.description && (
-                                                <div className="pt-4 border-t">
-                                                    <p className="text-sm text-gray-600 italic">
+                                                <Box sx={{pt: 2, borderTop: 1, borderColor: 'divider'}}>
+                                                    <Typography variant="body2" color="text.secondary" fontStyle="italic">
                                                         {platform.description}
-                                                    </p>
-                                                </div>
+                                                    </Typography>
+                                                </Box>
                                             )}
-                                        </div>
+                                        </Stack>
                                     )}
                                 </Card>
                             );
                         })}
-                    </div>
-                </div>
+                    </Stack>
+                </Stack>
             )}
 
-            {/* Available Platforms */}
+            {/* Available platforms */}
             {disconnectedPlatforms.length > 0 && (
-                <div className="space-y-4">
-                    <h2 className="text-xl font-semibold text-gray-900">Verfügbare Plattformen</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Stack gap={2}>
+                    <Typography variant="h6" fontWeight={600}>Verfügbare Plattformen</Typography>
+                    <Box sx={columns({xs: 1, md: 2, lg: 3})}>
                         {disconnectedPlatforms.map(platform => {
                             const ConnectionTypeIcon = getConnectionTypeIcon(platform);
                             const capabilities = getPlatformCapabilities(platform);
+                            // A platform whose credentials were rejected still has those
+                            // credentials stored. Showing why it failed, and letting it be
+                            // retried without retyping the password, is the whole point of a
+                            // test - the connected list is the one place it is not needed.
+                            const failed = testResults[platform.id] || (platform.testResult?.success === false
+                                ? {
+                                    success: false,
+                                    message: platform.testResult.message,
+                                    finalUrl: platform.testResult.url,
+                                    errorType: platform.testResult.errorType
+                                }
+                                : null);
 
                             return (
-                                <Card key={platform.id} className="hover:shadow-lg transition-shadow">
-                                    <div className="p-6">
-                                        <div className="flex items-center space-x-3 mb-4">
-                                            <ConnectionTypeIcon className="w-10 h-10 text-gray-600"/>
-                                            <div>
-                                                <h3 className="font-semibold text-gray-900">{platform.name}</h3>
-                                                <div className="flex items-center space-x-2">
+                                <Card key={platform.id} sx={{transition: "box-shadow 200ms", "&:hover": {boxShadow: 6}}}>
+                                    <Box sx={{p: 2}}>
+                                        <Stack direction="row" gap={1.5} mb={2} sx={{alignItems: 'center'}}>
+                                            <Box sx={{color: 'text.secondary', display: 'flex'}}>
+                                                <ConnectionTypeIcon size={40}/>
+                                            </Box>
+                                            <Box>
+                                                <Typography fontWeight={600}>{platform.name}</Typography>
+                                                <Stack direction="row" gap={1} sx={{alignItems: 'center', flexWrap: 'wrap'}}>
                                                     <Badge variant="outline" color="gray">Nicht verbunden</Badge>
                                                     <Badge color={isApiBased(platform) ? 'purple' : 'blue'} size="sm">
                                                         {connectionTypeText(platform)}
                                                     </Badge>
-                                                </div>
-                                            </div>
-                                        </div>
+                                                </Stack>
+                                            </Box>
+                                        </Stack>
 
-                                        <div className="mb-4">
-                                            <div className="flex flex-wrap gap-1 mb-2">
+                                        <Box mb={2}>
+                                            <Stack direction="row" gap={0.5} mb={1} sx={{flexWrap: 'wrap'}}>
                                                 {capabilities.slice(0, 4).map((cap, idx) => (
                                                     <Badge key={idx} size="sm" variant="outline" icon={cap.icon}>
                                                         {cap.label}
                                                     </Badge>
                                                 ))}
-                                            </div>
-                                            <p className="text-xs text-gray-500">
-                                                {platform.regions?.length ? `Regionen: ${platform.regions.join(', ')}` : 'Global verfügbar'}
-                                            </p>
-                                        </div>
+                                            </Stack>
+                                            <Typography variant="caption" color="text.secondary">
+                                                {platform.regions?.length
+                                                    ? `Regionen: ${platform.regions.join(', ')}`
+                                                    : 'Global verfügbar'}
+                                            </Typography>
+                                        </Box>
 
-                                        <p className="text-sm text-gray-600 mb-4">
+                                        <Typography variant="body2" color="text.secondary" mb={2}>
                                             {platform.description || 'Professionelle Casting-Plattform'}
-                                        </p>
+                                        </Typography>
 
-                                        {/* A platform whose credentials were rejected still has
-                                            those credentials stored. Showing why it failed, and
-                                            letting it be retried without retyping the password, is
-                                            the whole point of a test - the connected list is the
-                                            one place it is not needed. */}
-                                        {(() => {
-                                            const failed = testResults[platform.id] || (platform.testResult?.success === false
-                                                ? {
-                                                    success: false,
-                                                    message: platform.testResult.message,
-                                                    finalUrl: platform.testResult.url,
-                                                    errorType: platform.testResult.errorType
-                                                }
-                                                : null);
-                                            if (!failed || failed.success) return null;
-                                            return (
-                                                <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded">
-                                                    <p className="text-xs text-red-900 break-words">
-                                                        <AlertTriangle size={12} className="inline mr-1"/>
-                                                        {failed.message}
-                                                    </p>
-                                                    {failed.finalUrl && (
-                                                        <p className="text-[10px] text-red-700 mt-1 break-all">
-                                                            Endete auf: {failed.finalUrl}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            );
-                                        })()}
+                                        {failed && !failed.success && (
+                                            <Alert severity="error" sx={{mb: 1.5, py: 0.5}}>
+                                                <Typography variant="caption" sx={{wordBreak: 'break-word'}}>
+                                                    {failed.message}
+                                                </Typography>
+                                                {failed.finalUrl && (
+                                                    <Typography
+                                                        variant="caption"
+                                                        display="block"
+                                                        sx={{mt: 0.5, wordBreak: 'break-all', opacity: 0.8}}
+                                                    >
+                                                        Endete auf: {failed.finalUrl}
+                                                    </Typography>
+                                                )}
+                                            </Alert>
+                                        )}
 
-                                        <div className="flex space-x-2">
+                                        <Stack direction="row" gap={1}>
                                             <Button
                                                 size="sm"
                                                 onClick={() => openModal('connect', platform)}
@@ -798,179 +804,165 @@ const PlatformsView = () => {
                                                     Test
                                                 </Button>
                                             )}
-                                        </div>
-                                    </div>
+                                        </Stack>
+                                    </Box>
                                 </Card>
                             );
                         })}
-                    </div>
-                </div>
+                    </Box>
+                </Stack>
             )}
 
-            {/* Connection Modal */}
+            {/* Connection dialog */}
             <Modal
                 isOpen={showModal && modalType === 'connect'}
                 onClose={() => setShowModal(false)}
                 title={`Verbindung zu ${selectedPlatform?.name}`}
             >
-                <div className="space-y-4">
+                <Stack gap={2}>
                     {/* The reason the platform refused, kept on the dialog. The
                         credentials are stored either way, so this is a retry, not
                         a fresh start - and a rejected password usually just needs
                         correcting in the field below. */}
                     {connectError && (
-                        <div className="p-3 bg-red-50 border border-red-200 rounded">
-                            <p className="text-sm text-red-900 whitespace-pre-line break-words">
-                                <AlertTriangle size={14} className="inline mr-1"/>
-                                {connectError}
-                            </p>
-                        </div>
+                        <Alert severity="error" sx={{whiteSpace: 'pre-line', wordBreak: 'break-word'}}>
+                            {connectError}
+                        </Alert>
                     )}
+
                     {isAutomated(selectedPlatform) && (
-                        <div className="p-4 bg-blue-50 rounded-lg flex items-start space-x-3">
-                            <Bot className="w-6 h-6 text-blue-600 mt-1"/>
-                            <div>
-                                <h3 className="font-semibold text-blue-900 mb-1">Agent-basierte Verbindung</h3>
-                                <p className="text-sm text-blue-700">
-                                    Diese Plattform verwendet einen automatisierten Agent für die Synchronisation.
-                                    Ihre Anmeldedaten werden sicher verschlüsselt gespeichert und nur für die
-                                    Synchronisation verwendet.
-                                </p>
-                            </div>
-                        </div>
+                        <Alert severity="info" icon={<Bot size={20}/>}>
+                            <AlertTitle>Agent-basierte Verbindung</AlertTitle>
+                            Diese Plattform verwendet einen automatisierten Agent für die Synchronisation.
+                            Ihre Anmeldedaten werden sicher verschlüsselt gespeichert und nur für die
+                            Synchronisation verwendet.
+                        </Alert>
                     )}
 
                     {selectedPlatform?.authType === 'manual' ? (
-                        <div className="text-center space-y-4">
-                            <div className="p-4 bg-gray-50 rounded-lg">
-                                <Shield className="w-12 h-12 text-gray-500 mx-auto mb-2"/>
-                                <h3 className="font-semibold text-gray-900 mb-1">Manuelle Verwaltung</h3>
-                                <p className="text-sm text-gray-600">
-                                    Für {selectedPlatform.name} gibt es keine automatische Anbindung.
-                                    Die Pflege erfolgt direkt bei der Agentur.
-                                </p>
-                            </div>
-                        </div>
+                        <Box sx={{textAlign: 'center', bgcolor: 'grey.50', borderRadius: 2, p: 2}}>
+                            <Box sx={{color: 'text.secondary', display: 'flex', justifyContent: 'center', mb: 1}}>
+                                <Shield size={48}/>
+                            </Box>
+                            <Typography fontWeight={600} mb={0.5}>Manuelle Verwaltung</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                                Für {selectedPlatform.name} gibt es keine automatische Anbindung.
+                                Die Pflege erfolgt direkt bei der Agentur.
+                            </Typography>
+                        </Box>
                     ) : (
                         <>
                             {/* Rendered from the connector manifest, so the form always
                                 matches what the platform actually asks for. */}
                             {(selectedPlatform?.credentialFields || []).map((field) => (
-                                <div className="relative" key={field.name}>
+                                <Box sx={{position: 'relative'}} key={field.name}>
                                     <Input
                                         label={field.label || field.name}
-                                        type={field.type === 'password' && !showPassword[field.name] ? 'password' : (field.type === 'email' ? 'email' : 'text')}
+                                        type={field.type === 'password' && !showPassword[field.name]
+                                            ? 'password'
+                                            : (field.type === 'email' ? 'email' : 'text')}
                                         value={formData[field.name] || ''}
                                         onChange={(e) => handleInputChange(field.name, e.target.value)}
-                                        placeholder={field.label || field.name}
                                     />
                                     {field.type === 'password' && (
-                                        <button
+                                        <IconButton
                                             type="button"
                                             onClick={() => togglePasswordVisibility(field.name)}
-                                            className="absolute right-3 top-8 text-gray-400 hover:text-gray-600"
+                                            size="small"
+                                            aria-label="Passwort anzeigen"
+                                            sx={{position: 'absolute', right: 4, top: 4, color: 'text.disabled'}}
                                         >
                                             {showPassword[field.name] ? <EyeOff size={16}/> : <Eye size={16}/>}
-                                        </button>
+                                        </IconButton>
                                     )}
-                                </div>
+                                </Box>
                             ))}
-                            <div className="p-3 bg-gray-50 rounded text-xs text-gray-600">
-                                <Shield size={14} className="inline mr-1"/>
-                                Ihre Anmeldedaten werden verschlüsselt gespeichert und nur für die Synchronisation verwendet.
-                            </div>
+                            <Alert severity="info" icon={<Shield size={16}/>} sx={{py: 0.5}}>
+                                <Typography variant="caption">
+                                    Ihre Anmeldedaten werden verschlüsselt gespeichert und nur für die
+                                    Synchronisation verwendet.
+                                </Typography>
+                            </Alert>
                         </>
                     )}
 
-                    <div className="flex gap-3 pt-4">
-                        <Button
-                            onClick={handleConnect}
-                            disabled={saving}
-                            icon={saving ? Loader : Check}
-                        >
+                    <Stack direction="row" gap={1.5} pt={2}>
+                        <Button onClick={handleConnect} disabled={saving} icon={saving ? Loader : Check}>
                             {saving ? 'Verbinde...' : 'Verbinden'}
                         </Button>
-                        <Button
-                            variant="secondary"
-                            onClick={() => setShowModal(false)}
-                            icon={X}
-                        >
+                        <Button variant="secondary" onClick={() => setShowModal(false)} icon={X}>
                             Abbrechen
                         </Button>
-                    </div>
-                </div>
+                    </Stack>
+                </Stack>
             </Modal>
 
-            {/* Settings Modal */}
+            {/* Settings dialog */}
             <Modal
                 isOpen={showModal && modalType === 'settings'}
                 onClose={() => setShowModal(false)}
                 title={`Einstellungen für ${selectedPlatform?.name}`}
             >
-                <div className="space-y-4">
+                <Stack gap={2}>
                     {isAutomated(selectedPlatform) && (
-                        <div className="p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
-                            <Bot size={16} className="inline mr-2"/>
-                            Agent-basierte Plattform mit erweiterten Synchronisationsoptionen
-                        </div>
+                        <Alert severity="info" icon={<Bot size={16}/>} sx={{py: 0.5}}>
+                            <Typography variant="body2">
+                                Agent-basierte Plattform mit erweiterten Synchronisationsoptionen
+                            </Typography>
+                        </Alert>
                     )}
 
-                    <div>
-                        <label className="flex items-center space-x-2">
-                            <input
-                                type="checkbox"
+                    <FormControlLabel
+                        control={
+                            <Switch
                                 checked={formData.autoSync || false}
                                 onChange={(e) => handleInputChange('autoSync', e.target.checked)}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
-                            <span className="text-sm font-medium text-gray-700">Automatische Synchronisation</span>
-                        </label>
-                    </div>
+                        }
+                        label={<Typography variant="body2" fontWeight={500}>Automatische Synchronisation</Typography>}
+                    />
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Sync-Intervall</label>
-                        <select
-                            value={formData.syncInterval || 'daily'}
-                            onChange={(e) => handleInputChange('syncInterval', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            {isAutomated(selectedPlatform) && <option value="realtime">Echtzeit (Agent)</option>}
-                            <option value="hourly">Stündlich</option>
-                            <option value="daily">Täglich</option>
-                            <option value="weekly">Wöchentlich</option>
-                            <option value="manual">Manuell</option>
-                        </select>
-                    </div>
+                    <TextField
+                        select
+                        fullWidth
+                        size="small"
+                        label="Sync-Intervall"
+                        value={formData.syncInterval || 'daily'}
+                        onChange={(e) => handleInputChange('syncInterval', e.target.value)}
+                    >
+                        {isAutomated(selectedPlatform) && <MenuItem value="realtime">Echtzeit (Agent)</MenuItem>}
+                        <MenuItem value="hourly">Stündlich</MenuItem>
+                        <MenuItem value="daily">Täglich</MenuItem>
+                        <MenuItem value="weekly">Wöchentlich</MenuItem>
+                        <MenuItem value="manual">Manuell</MenuItem>
+                    </TextField>
 
-                    <div>
-                        <label className="flex items-center space-x-2">
-                            <input
-                                type="checkbox"
+                    <FormControlLabel
+                        control={
+                            <Switch
                                 checked={formData.syncAvailability !== false}
                                 onChange={(e) => handleInputChange('syncAvailability', e.target.checked)}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
-                            <span className="text-sm font-medium text-gray-700">Verfügbarkeit synchronisieren</span>
-                        </label>
-                    </div>
+                        }
+                        label={
+                            <Box>
+                                <Typography variant="body2" fontWeight={500}>Verfügbarkeit synchronisieren</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                    Überträgt nur, welche Zeiträume blockiert sind - keine Gründe, keine Notizen.
+                                </Typography>
+                            </Box>
+                        }
+                    />
 
-                    <div className="flex gap-3 pt-4">
-                        <Button
-                            onClick={handleUpdateSettings}
-                            disabled={saving}
-                            icon={saving ? Loader : Check}
-                        >
+                    <Stack direction="row" gap={1.5} pt={2}>
+                        <Button onClick={handleUpdateSettings} disabled={saving} icon={saving ? Loader : Check}>
                             {saving ? 'Speichere...' : 'Speichern'}
                         </Button>
-                        <Button
-                            variant="secondary"
-                            onClick={() => setShowModal(false)}
-                            icon={X}
-                        >
+                        <Button variant="secondary" onClick={() => setShowModal(false)} icon={X}>
                             Abbrechen
                         </Button>
-                    </div>
-                </div>
+                    </Stack>
+                </Stack>
             </Modal>
 
             {/* Credits the platform could not be told apart from its own. */}
@@ -979,51 +971,50 @@ const PlatformsView = () => {
                 onClose={() => setShowModal(false)}
                 title={`Vita-Abgleich mit ${selectedPlatform?.name}`}
             >
-                <div className="space-y-4">
-                    {creditSummary && (
-                        <div className="p-3 bg-blue-50 rounded text-xs text-blue-900">
-                            <AlertCircle size={14} className="inline mr-1"/>
-                            {creditSummary}
-                        </div>
-                    )}
+                <Stack gap={2}>
+                    {creditSummary && <Alert severity="info">{creditSummary}</Alert>}
 
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded space-y-3">
-                        <p className="text-xs text-amber-900">
-                            <AlertTriangle size={14} className="inline mr-1"/>
-                            Diese Einträge ähneln Credits, die {selectedPlatform?.name} bereits
-                            hat. Ob es derselbe Job ist, kann nur entschieden werden - eine
-                            Folgennummer kann der Unterschied zwischen zwei Engagements sein.
-                            Ohne Auswahl wird nichts übertragen und nichts gelöscht.
-                        </p>
+                    <Alert severity="warning">
+                        <AlertTitle>Gleicher Job oder zwei?</AlertTitle>
+                        <Typography variant="body2">
+                            Diese Einträge ähneln Credits, die {selectedPlatform?.name} bereits hat.
+                            Ob es derselbe Job ist, kann nur entschieden werden - eine Folgennummer
+                            kann der Unterschied zwischen zwei Engagements sein. Ohne Auswahl wird
+                            nichts übertragen und nichts gelöscht.
+                        </Typography>
 
-                        {creditQuestions.map((question) => (
-                            <div key={question.path} className="space-y-1 border-t border-amber-200 pt-2">
-                                <p className="text-xs text-gray-900">
-                                    <strong>
-                                        {question.from ? `Aus ${question.from}:` : 'Ihr Eintrag:'}
-                                    </strong> {question.credit}
-                                </p>
-                                <select
-                                    className="w-full text-xs border border-gray-300 rounded px-2 py-1"
-                                    value={creditAnswers[question.path] || ''}
-                                    onChange={(e) => setCreditAnswers(prev => ({
-                                        ...prev, [question.path]: e.target.value
-                                    }))}
-                                >
-                                    <option value="">nichts tun</option>
-                                    {question.options.map((option) => (
-                                        <option key={option.value} value={option.value}>
-                                            {option.value === '__add__'
-                                                ? option.label
-                                                : `Derselbe Credit wie${option.onPlatform ? ` auf ${option.onPlatform}` : ''}: ${option.label}`}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        ))}
-                    </div>
+                        <Stack gap={2} mt={2}>
+                            {creditQuestions.map((question) => (
+                                <Box key={question.path} sx={{borderTop: 1, borderColor: 'warning.light', pt: 1.5}}>
+                                    <Typography variant="body2" mb={1}>
+                                        <strong>
+                                            {question.from ? `Aus ${question.from}:` : 'Ihr Eintrag:'}
+                                        </strong> {question.credit}
+                                    </Typography>
+                                    <TextField
+                                        select
+                                        fullWidth
+                                        size="small"
+                                        value={creditAnswers[question.path] || ''}
+                                        onChange={(e) => setCreditAnswers(prev => ({
+                                            ...prev, [question.path]: e.target.value
+                                        }))}
+                                    >
+                                        <MenuItem value="">nichts tun</MenuItem>
+                                        {question.options.map((option) => (
+                                            <MenuItem key={option.value} value={option.value}>
+                                                {option.value === '__add__'
+                                                    ? option.label
+                                                    : `Derselbe Credit wie${option.onPlatform ? ` auf ${option.onPlatform}` : ''}: ${option.label}`}
+                                            </MenuItem>
+                                        ))}
+                                    </TextField>
+                                </Box>
+                            ))}
+                        </Stack>
+                    </Alert>
 
-                    <div className="flex justify-end gap-2">
+                    <Stack direction="row" gap={1} sx={{justifyContent: 'flex-end'}}>
                         <Button variant="outline" onClick={() => setShowModal(false)}>
                             Abbrechen
                         </Button>
@@ -1034,11 +1025,11 @@ const PlatformsView = () => {
                         >
                             {creditBusy ? 'Überträgt...' : 'Auswahl übertragen'}
                         </Button>
-                    </div>
-                </div>
+                    </Stack>
+                </Stack>
             </Modal>
 
-            {/* Import Modal: what the platform returned, and what to keep. */}
+            {/* Import dialog: what the platform returned, and what to keep. */}
             <Modal
                 isOpen={showModal && modalType === 'import'}
                 onClose={() => setShowModal(false)}
@@ -1051,90 +1042,104 @@ const PlatformsView = () => {
 
                     if (keys.length === 0) {
                         return (
-                            <p className="text-sm text-gray-600">
+                            <Typography variant="body2" color="text.secondary">
                                 Es konnten keine Felder gelesen werden.
-                            </p>
+                            </Typography>
                         );
                     }
 
                     return (
-                        <div className="space-y-4">
-                            <div className="p-3 bg-blue-50 rounded text-xs text-blue-900">
-                                <AlertCircle size={14} className="inline mr-1"/>
+                        <Stack gap={2}>
+                            <Alert severity="info">
                                 Ausgewählte Felder überschreiben die entsprechenden Werte in Ihrem
                                 Profil. Nicht ausgewählte Felder bleiben unverändert.
-                            </div>
+                            </Alert>
 
                             {result.unmapped?.length > 0 && (
-                                <div className="p-3 bg-amber-50 border border-amber-200 rounded space-y-3">
-                                    <p className="text-xs text-amber-900">
-                                        <AlertTriangle size={14} className="inline mr-1"/>
-                                        Diese Werte von {selectedPlatform?.name} lassen sich keinem
-                                        Wert dieser App zuordnen. Bitte auswählen - ohne Auswahl
-                                        werden sie nicht übernommen.
-                                    </p>
-                                    {result.unmapped.map((question) => (
-                                        <div key={question.path} className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-xs text-gray-700 min-w-0">
-                                                <strong>{IMPORT_FIELD_LABELS[question.field] || question.field}</strong>
-                                                {question.context ? ` (${question.context})` : ''}: „{String(question.value)}"
-                                            </span>
-                                            <select
-                                                className="text-xs border border-gray-300 rounded px-2 py-1"
-                                                value={importResolutions[question.path] || ''}
-                                                onChange={(e) => setImportResolutions(prev => ({
-                                                    ...prev, [question.path]: e.target.value
-                                                }))}
-                                            >
-                                                <option value="">nicht übernehmen</option>
-                                                {question.options.map((option) => (
-                                                    <option key={option} value={option}>{option}</option>
-                                                ))}
-                                                <option value="__keep__">Original übernehmen</option>
-                                            </select>
-                                        </div>
-                                    ))}
-                                </div>
+                                <Alert severity="warning">
+                                    <AlertTitle>Nicht zuzuordnen</AlertTitle>
+                                    <Typography variant="body2" mb={1.5}>
+                                        Diese Werte von {selectedPlatform?.name} lassen sich keinem Wert
+                                        dieser App zuordnen. Bitte auswählen - ohne Auswahl werden sie
+                                        nicht übernommen.
+                                    </Typography>
+                                    <Stack gap={1.5}>
+                                        {result.unmapped.map((question) => (
+                                            <Box key={question.path}>
+                                                <Typography variant="caption" display="block" mb={0.5}>
+                                                    <strong>{importFieldLabel(question.field)}</strong>
+                                                    {question.context ? ` (${question.context})` : ''}
+                                                    : „{String(question.value)}"
+                                                </Typography>
+                                                <TextField
+                                                    select
+                                                    fullWidth
+                                                    size="small"
+                                                    value={importResolutions[question.path] || ''}
+                                                    onChange={(e) => setImportResolutions(prev => ({
+                                                        ...prev, [question.path]: e.target.value
+                                                    }))}
+                                                >
+                                                    <MenuItem value="">nicht übernehmen</MenuItem>
+                                                    {question.options.map((option) => (
+                                                        <MenuItem key={option} value={option}>{option}</MenuItem>
+                                                    ))}
+                                                    <MenuItem value="__keep__">Original übernehmen</MenuItem>
+                                                </TextField>
+                                            </Box>
+                                        ))}
+                                    </Stack>
+                                </Alert>
                             )}
 
-                            <div className="divide-y divide-gray-100">
+                            <Box sx={{'& > *': {borderTop: 1, borderColor: 'divider'}, '& > *:first-of-type': {borderTop: 0}}}>
                                 {keys.map((key) => (
-                                    <label key={key} className="flex items-start gap-3 py-2 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            className="mt-1"
-                                            checked={importSelection.includes(key)}
-                                            onChange={() => toggleImportField(key)}
-                                        />
-                                        <span className="min-w-0">
-                                            <span className="block text-sm font-medium text-gray-900">
-                                                {IMPORT_FIELD_LABELS[key] || key}
-                                            </span>
-                                            <span className="block text-xs text-gray-600 break-words">
-                                                {previewImported(fields[key])}
-                                            </span>
-                                            {result.sources?.[key] && (
-                                                <span className="block text-[10px] text-gray-400">
-                                                    {/* The connector reports where on its own site a
-                                                        value sat; the platform name is stamped on by
-                                                        the server, because a locator like
-                                                        "graphql:profileExperienceRepeater" does not
-                                                        say which site it belongs to. */}
-                                                    Quelle: {sourceLabel(result.sources[key])}
-                                                </span>
-                                            )}
-                                        </span>
-                                    </label>
+                                    <FormControlLabel
+                                        key={key}
+                                        sx={{display: 'flex', alignItems: 'flex-start', m: 0, py: 1}}
+                                        control={
+                                            <Checkbox
+                                                checked={importSelection.includes(key)}
+                                                onChange={() => toggleImportField(key)}
+                                                sx={{pt: 0.5}}
+                                            />
+                                        }
+                                        label={
+                                            <Box sx={{minWidth: 0}}>
+                                                <Typography variant="body2" fontWeight={500}>
+                                                    {importFieldLabel(key)}
+                                                </Typography>
+                                                <Typography
+                                                    variant="caption"
+                                                    color="text.secondary"
+                                                    display="block"
+                                                    sx={{wordBreak: 'break-word'}}
+                                                >
+                                                    {previewImported(fields[key])}
+                                                </Typography>
+                                                {result.sources?.[key] && (
+                                                    <Typography variant="caption" color="text.disabled" display="block">
+                                                        {/* The connector reports where on its own site a
+                                                            value sat; the platform name is stamped on by
+                                                            the server, because a locator like
+                                                            "graphql:profileExperienceRepeater" does not
+                                                            say which site it belongs to. */}
+                                                        Quelle: {sourceLabel(result.sources[key])}
+                                                    </Typography>
+                                                )}
+                                            </Box>
+                                        }
+                                    />
                                 ))}
-                            </div>
+                            </Box>
 
                             {result.missing?.length > 0 && (
-                                <p className="text-xs text-gray-500">
+                                <Typography variant="caption" color="text.secondary">
                                     Auf der Plattform leer oder nicht gefunden: {result.missing.join(', ')}
-                                </p>
+                                </Typography>
                             )}
 
-                            <div className="flex space-x-3 pt-2">
+                            <Stack direction="row" gap={1.5} pt={1}>
                                 <Button
                                     onClick={handleApplyImport}
                                     disabled={importing || importSelection.length === 0}
@@ -1145,8 +1150,8 @@ const PlatformsView = () => {
                                 <Button variant="secondary" onClick={() => setShowModal(false)} icon={X}>
                                     Abbrechen
                                 </Button>
-                            </div>
-                        </div>
+                            </Stack>
+                        </Stack>
                     );
                 })()}
             </Modal>

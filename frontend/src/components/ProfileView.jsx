@@ -90,7 +90,7 @@ const Pair = ({children}) => (
  * `{icon: Icon}` is reported as unused even though the JSX below renders it.
  */
 const Detail = (props) => (
-    <Stack direction="row" alignItems="center" gap={0.5}>
+    <Stack direction="row" gap={0.5} sx={{alignItems: 'center'}}>
         <props.icon size={12}/>
         <span>{props.children}</span>
     </Stack>
@@ -160,7 +160,7 @@ const ProfileView = () => {
         try {
             await uploadProfilePhoto(file);
         } catch (err) {
-            alert('Fehler beim Hochladen des Bildes');
+            alert(`Fehler beim Hochladen des Bildes: ${err.message}`);
         }
     };
 
@@ -175,7 +175,7 @@ const ProfileView = () => {
         try {
             await uploadSetcardPhoto(photoId, file);
         } catch (err) {
-            alert('Fehler beim Hochladen des Setcard-Bildes');
+            alert(`Fehler beim Hochladen des Setcard-Bildes: ${err.message}`);
         }
     };
 
@@ -185,7 +185,7 @@ const ProfileView = () => {
         try {
             await deleteSetcardPhoto(photoId);
         } catch (err) {
-            alert('Fehler beim Löschen des Bildes');
+            alert(`Fehler beim Löschen des Bildes: ${err.message}`);
         }
     };
 
@@ -275,8 +275,8 @@ const ProfileView = () => {
     return (
         <Stack gap={3}>
             {/* Header */}
-            <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-                <Stack direction="row" alignItems="center" gap={2}>
+            <Stack direction="row" gap={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap'}}>
+                <Stack direction="row" gap={2} sx={{alignItems: 'center'}}>
                     <Typography variant="h4" component="h1" fontWeight={700}>Profil</Typography>
                     <Badge color={complete ? 'green' : 'yellow'}>
                         {complete ? 'Vollständig' : 'Unvollständig'}
@@ -294,7 +294,7 @@ const ProfileView = () => {
 
             {/* Profile header card */}
             <Card>
-                <Stack direction="row" alignItems="flex-start" gap={3} flexWrap="wrap">
+                <Stack direction="row" gap={3} sx={{alignItems: 'flex-start', flexWrap: 'wrap'}}>
                     <Box sx={{position: 'relative'}}>
                         <Avatar src={profile.avatar || undefined} sx={{width: 128, height: 128}}>
                             <User size={48}/>
@@ -487,7 +487,7 @@ const ProfileView = () => {
                 {/* Photos & setcard */}
                 {activeTab === 'photos' && (
                     <Card>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                        <Stack direction="row" mb={2} sx={{alignItems: 'center', justifyContent: 'space-between'}}>
                             <Typography variant="h6">Setcard</Typography>
                             <Typography variant="body2" color="text.secondary">
                                 {profile.setcard.lastUpdated
@@ -513,7 +513,7 @@ const ProfileView = () => {
                                                     sx={{width: '100%', height: '100%', objectFit: 'cover'}}
                                                 />
                                             ) : (
-                                                <Stack alignItems="center" sx={{color: 'text.disabled'}}>
+                                                <Stack sx={{alignItems: 'center', color: 'text.disabled'}}>
                                                     <ImageIcon size={32}/>
                                                     <Typography variant="caption" sx={{mt: 1, px: 1, textAlign: 'center'}}>
                                                         {photo.description}
@@ -525,13 +525,9 @@ const ProfileView = () => {
                                             className="photo-actions"
                                             direction="row"
                                             gap={1}
-                                            alignItems="center"
-                                            justifyContent="center"
-                                            sx={{
-                                                position: 'absolute', inset: 0, borderRadius: 2,
+                                            sx={{alignItems: 'center', justifyContent: 'center', position: 'absolute', inset: 0, borderRadius: 2,
                                                 bgcolor: 'rgba(0,0,0,0.5)', opacity: 0,
-                                                transition: 'opacity 200ms'
-                                            }}
+                                                transition: 'opacity 200ms'}}
                                         >
                                             <IconButton
                                                 onClick={() => {
@@ -572,7 +568,7 @@ const ProfileView = () => {
                 {/* Work history */}
                 {activeTab === 'work' && (
                     <Stack gap={2}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Stack direction="row" sx={{alignItems: 'center', justifyContent: 'space-between'}}>
                             <Typography variant="h6">Berufserfahrung</Typography>
                             <Button onClick={() => openModal('work')} icon={Plus}>
                                 Projekt hinzufügen
@@ -580,12 +576,12 @@ const ProfileView = () => {
                         </Stack>
                         {profile.workHistory?.map(work => (
                             <Card key={work.id}>
-                                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={2}>
+                                <Stack direction="row" gap={2} sx={{alignItems: 'flex-start', justifyContent: 'space-between'}}>
                                     <Box sx={{flex: 1}}>
                                         <Typography variant="h6">{work.title}</Typography>
                                         <Stack
-                                            direction="row" gap={1} mt={0.5} flexWrap="wrap" alignItems="center"
-                                            sx={{color: 'text.secondary', fontSize: 14}}
+                                            direction="row" gap={1} mt={0.5}
+                                            sx={{alignItems: 'center', flexWrap: 'wrap', color: 'text.secondary', fontSize: 14}}
                                         >
                                             <span>{work.production}</span>
                                             <span>•</span>
@@ -632,7 +628,7 @@ const ProfileView = () => {
                 {/* Education */}
                 {activeTab === 'education' && (
                     <Stack gap={2}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Stack direction="row" sx={{alignItems: 'center', justifyContent: 'space-between'}}>
                             <Typography variant="h6">Ausbildung</Typography>
                             <Button onClick={() => openModal('education')} icon={Plus}>
                                 Ausbildung hinzufügen
@@ -640,12 +636,12 @@ const ProfileView = () => {
                         </Stack>
                         {profile.education?.map(edu => (
                             <Card key={edu.id}>
-                                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={2}>
+                                <Stack direction="row" gap={2} sx={{alignItems: 'flex-start', justifyContent: 'space-between'}}>
                                     <Box sx={{flex: 1}}>
                                         <Typography variant="h6">{edu.degree}</Typography>
                                         <Stack
-                                            direction="row" gap={1} mt={0.5} flexWrap="wrap"
-                                            sx={{color: 'text.secondary', fontSize: 14}}
+                                            direction="row" gap={1} mt={0.5}
+                                            sx={{flexWrap: 'wrap', color: 'text.secondary', fontSize: 14}}
                                         >
                                             <span>{edu.institution}</span>
                                             <span>•</span>
@@ -705,7 +701,7 @@ const ProfileView = () => {
 
                         <Card>
                             <Typography variant="h6" mb={2}>Besondere Fähigkeiten</Typography>
-                            <Stack direction="row" gap={1} flexWrap="wrap">
+                            <Stack direction="row" gap={1} sx={{flexWrap: 'wrap'}}>
                                 {profile.specialSkills?.map((skill, index) => (
                                     <Badge key={index} variant="outline">{skill}</Badge>
                                 ))}
@@ -715,7 +711,7 @@ const ProfileView = () => {
                         <Box sx={{gridColumn: {lg: 'span 2'}}}>
                             <Card>
                                 <Typography variant="h6" mb={2}>Sprachen</Typography>
-                                <Stack direction="row" gap={1} flexWrap="wrap">
+                                <Stack direction="row" gap={1} sx={{flexWrap: 'wrap'}}>
                                     {/* {language, level} objects. Rendering the object itself
                                         threw "Objects are not valid as a React child" and took
                                         the whole tab down with it. */}
@@ -902,10 +898,7 @@ const ProfileView = () => {
                                 {connectedPlatforms.map(platform => (
                                     <Stack
                                         key={platform.id}
-                                        direction="row"
-                                        alignItems="center"
-                                        justifyContent="space-between"
-                                    >
+                                        direction="row" sx={{alignItems: 'center', justifyContent: 'space-between'}}>
                                         <Typography variant="body2" fontWeight={500}>{platform.name}</Typography>
                                         <Badge color="green">Verbunden</Badge>
                                     </Stack>

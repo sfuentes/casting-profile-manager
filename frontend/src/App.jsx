@@ -1,35 +1,30 @@
 import React, {useState} from 'react';
+import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
+import AppBar from '@mui/material/AppBar';
+import Toolbar from '@mui/material/Toolbar';
+import Divider from '@mui/material/Divider';
+import IconButton from '@mui/material/IconButton';
+import List from '@mui/material/List';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemIcon from '@mui/material/ListItemIcon';
+import ListItemText from '@mui/material/ListItemText';
+import CircularProgress from '@mui/material/CircularProgress';
 import {
     Calendar,
     User,
     Cloud,
     Settings,
     Bell,
-    Plus,
-    Edit2,
-    Trash2,
-    Check,
-    X,
-    Clock,
-    Users,
     ChevronRight,
-    RefreshCw,
     Activity,
-    Key,
-    Link,
-    Shield,
-    AlertCircle,
-    Camera,
-    Image,
-    Grid,
-    Save,
-    Loader,
     LogOut
 } from 'lucide-react';
 
 // Import refactored components
 import {AppProvider, useAppContext} from './context/AppContext';
-import {Dashboard, CalendarView, ProfileView, PlatformsView, SyncIndicator, Button, Card, Badge, Modal, Input, Login, Register} from './components';
+import {Dashboard, CalendarView, ProfileView, PlatformsView, SyncIndicator, Card, Login, Register} from './components';
 
 // Main App Component
 const App = () => {
@@ -40,6 +35,15 @@ const App = () => {
     );
 };
 
+/** The five destinations, in the order the sidebar lists them. */
+const VIEWS = [
+    {id: 'dashboard', label: 'Dashboard', icon: Activity},
+    {id: 'calendar', label: 'Kalender', icon: Calendar},
+    {id: 'profile', label: 'Profil', icon: User},
+    {id: 'platforms', label: 'Plattformen', icon: Cloud},
+    {id: 'settings', label: 'Einstellungen', icon: Settings}
+];
+
 const AppContent = () => {
     const { user, isAuthenticated, loading, logout } = useAppContext();
     const [currentView, setCurrentView] = useState('dashboard');
@@ -47,9 +51,14 @@ const AppContent = () => {
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                <Loader className="w-12 h-12 text-blue-600 animate-spin" />
-            </div>
+            <Box
+                sx={{
+                    minHeight: '100vh', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', bgcolor: 'grey.50'
+                }}
+            >
+                <CircularProgress size={48}/>
+            </Box>
         );
     }
 
@@ -79,107 +88,106 @@ const AppContent = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            {/* Header */}
-            <header className="bg-white shadow-sm border-b">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between items-center h-16">
-                        <div className="flex items-center">
-                            <h1 className="text-xl font-semibold text-gray-900">
-                                Darsteller Manager
-                            </h1>
-                        </div>
-                        <div className="flex items-center space-x-4">
+        <Box sx={{minHeight: '100vh', bgcolor: 'grey.50'}}>
+            <AppBar position="static" color="inherit" elevation={1}>
+                <Box sx={{maxWidth: 1280, width: '100%', mx: 'auto', px: {xs: 2, sm: 3, lg: 4}}}>
+                    <Toolbar disableGutters sx={{justifyContent: 'space-between'}}>
+                        <Typography variant="h6" fontWeight={600}>Darsteller Manager</Typography>
+
+                        <Stack direction="row" gap={2} sx={{alignItems: 'center'}}>
                             <SyncIndicator/>
-                            <Bell className="w-6 h-6 text-gray-400 hover:text-gray-600 cursor-pointer"/>
-                            <div className="flex items-center space-x-2 border-l pl-4 ml-4">
-                                <User className="w-6 h-6 text-gray-400"/>
-                                <span className="text-sm font-medium text-gray-700">{user?.name}</span>
-                                <button 
+                            <Box sx={{color: 'text.disabled', display: 'flex'}}>
+                                <Bell size={24}/>
+                            </Box>
+                            <Divider orientation="vertical" flexItem/>
+                            <Stack direction="row" gap={1} sx={{alignItems: 'center'}}>
+                                <Box sx={{color: 'text.disabled', display: 'flex'}}>
+                                    <User size={24}/>
+                                </Box>
+                                <Typography variant="body2" fontWeight={500}>{user?.name}</Typography>
+                                <IconButton
                                     onClick={logout}
-                                    className="p-1 text-gray-400 hover:text-red-600 transition-colors"
                                     title="Abmelden"
+                                    size="small"
+                                    sx={{color: 'text.disabled', '&:hover': {color: 'error.main'}}}
                                 >
-                                    <LogOut className="w-5 h-5"/>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </header>
+                                    <LogOut size={20}/>
+                                </IconButton>
+                            </Stack>
+                        </Stack>
+                    </Toolbar>
+                </Box>
+            </AppBar>
 
-                <div className="flex">
-                    {/* Sidebar */}
-                    <nav className="w-64 bg-white shadow-sm h-screen sticky top-0">
-                        <div className="p-4">
-                            <div className="space-y-1">
-                                <SidebarItem
-                                    icon={Activity}
-                                    label="Dashboard"
-                                    active={currentView === 'dashboard'}
-                                    onClick={() => setCurrentView('dashboard')}
-                                />
-                                <SidebarItem
-                                    icon={Calendar}
-                                    label="Kalender"
-                                    active={currentView === 'calendar'}
-                                    onClick={() => setCurrentView('calendar')}
-                                />
-                                <SidebarItem
-                                    icon={User}
-                                    label="Profil"
-                                    active={currentView === 'profile'}
-                                    onClick={() => setCurrentView('profile')}
-                                />
-                                <SidebarItem
-                                    icon={Cloud}
-                                    label="Plattformen"
-                                    active={currentView === 'platforms'}
-                                    onClick={() => setCurrentView('platforms')}
-                                />
-                                <SidebarItem
-                                    icon={Settings}
-                                    label="Einstellungen"
-                                    active={currentView === 'settings'}
-                                    onClick={() => setCurrentView('settings')}
-                                />
-                            </div>
-                        </div>
-                    </nav>
+            <Box sx={{display: 'flex'}}>
+                <Box
+                    component="nav"
+                    sx={{
+                        width: 256, flexShrink: 0, bgcolor: 'background.paper',
+                        minHeight: '100vh', position: 'sticky', top: 0, boxShadow: 1
+                    }}
+                >
+                    <List sx={{p: 1}}>
+                        {VIEWS.map((view) => (
+                            <SidebarItem
+                                key={view.id}
+                                icon={view.icon}
+                                label={view.label}
+                                active={currentView === view.id}
+                                onClick={() => setCurrentView(view.id)}
+                            />
+                        ))}
+                    </List>
+                </Box>
 
-                    {/* Main Content */}
-                    <main className="flex-1 p-8">
-                        {renderContent()}
-                    </main>
-                </div>
-            </div>
+                <Box component="main" sx={{flex: 1, p: 4, minWidth: 0}}>
+                    {renderContent()}
+                </Box>
+            </Box>
+        </Box>
     );
 };
 
-// Sidebar Item Component
-const SidebarItem = ({icon: Icon, label, active, onClick}) => (
-    <button
-        onClick={onClick}
-        className={`w-full flex items-center px-3 py-2 rounded-lg text-left transition-colors ${
-            active
-                ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
-                : 'text-gray-700 hover:bg-gray-100'
-        }`}
+/**
+ * One sidebar entry.
+ *
+ * Takes `props` whole rather than destructuring the icon: eslint here runs
+ * without eslint-plugin-react, so it does not count a JSX tag as a use, and its
+ * uppercase exemption covers variables but not parameters.
+ */
+const SidebarItem = (props) => (
+    <ListItemButton
+        onClick={props.onClick}
+        selected={props.active}
+        sx={{
+            borderRadius: 2,
+            mb: 0.5,
+            ...(props.active && {
+                borderRight: 2,
+                borderColor: 'primary.dark',
+                color: 'primary.dark'
+            })
+        }}
     >
-        <Icon className="w-5 h-5 mr-3"/>
-        <span className="font-medium">{label}</span>
-        {active && <ChevronRight className="w-4 h-4 ml-auto"/>}
-    </button>
+        <ListItemIcon sx={{minWidth: 36, color: 'inherit'}}>
+            <props.icon size={20}/>
+        </ListItemIcon>
+        <ListItemText
+            primary={props.label}
+            slotProps={{primary: {fontWeight: 500}}}
+        />
+        {props.active && <ChevronRight size={16}/>}
+    </ListItemButton>
 );
 
 // Settings View Component (placeholder)
 const SettingsView = () => (
-    <div className="space-y-6">
-        <h1 className="text-3xl font-bold text-gray-900">Einstellungen</h1>
+    <Stack gap={3}>
+        <Typography variant="h4" component="h1" fontWeight={700}>Einstellungen</Typography>
         <Card>
-            <p className="text-gray-600">Settings view implementation goes here...</p>
+            <Typography color="text.secondary">Settings view implementation goes here...</Typography>
         </Card>
-    </div>
+    </Stack>
 );
 
 export default App;

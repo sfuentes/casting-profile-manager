@@ -94,9 +94,7 @@ const SyncHistory = () => {
     <Paper elevation={1} sx={{ borderRadius: 2 }}>
       <Stack
         direction="row"
-        alignItems="center"
-        justifyContent="space-between"
-        sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}
+        sx={{alignItems: 'center', justifyContent: 'space-between', p: 2, borderBottom: 1, borderColor: 'divider'}}
       >
         <Typography variant="h6">Synchronisationsverlauf</Typography>
         <Button size="small" onClick={loadHistory}>Aktualisieren</Button>

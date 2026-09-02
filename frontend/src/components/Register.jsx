@@ -1,7 +1,29 @@
 import React, { useState } from 'react';
+import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
+import Alert from '@mui/material/Alert';
+import Link from '@mui/material/Link';
 import { useAppContext } from '../context/AppContext';
 import { Card, Input, Button } from './ui';
-import { User, AlertCircle, Loader, CheckCircle } from 'lucide-react';
+import { User, Loader, CheckCircle } from 'lucide-react';
+
+/** The centred panel both states of this screen sit in. */
+const Frame = ({ children }) => (
+    <Box
+        sx={{
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: 'grey.50',
+            px: 2,
+            py: 6
+        }}
+    >
+        <Card sx={{ maxWidth: 440, width: '100%', p: 4 }}>{children}</Card>
+    </Box>
+);
 
 const Register = ({ onSwitchToLogin }) => {
     const { register, loading, error } = useAppContext();
@@ -31,61 +53,47 @@ const Register = ({ onSwitchToLogin }) => {
 
     if (registered) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-                <Card className="max-w-md w-full space-y-8 p-8 text-center">
-                    <div className="flex justify-center">
-                        <CheckCircle className="h-16 w-16 text-green-500" />
-                    </div>
-                    <h2 className="text-3xl font-extrabold text-gray-900">Registrierung erfolgreich!</h2>
-                    <p className="text-gray-600">
-                        Ihr Konto wurde erstellt. Bitte überprüfen Sie Ihre E-Mails, um Ihr Konto zu verifizieren (in dieser Demo können Sie sich direkt anmelden).
-                    </p>
-                    <Button
-                        onClick={onSwitchToLogin}
-                        className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-                    >
+            <Frame>
+                <Stack gap={3} sx={{textAlign: 'center'}}>
+                    <Box sx={{ color: 'success.main', display: 'flex', justifyContent: 'center' }}>
+                        <CheckCircle size={64} />
+                    </Box>
+                    <Typography variant="h4" component="h2" fontWeight={800}>
+                        Registrierung erfolgreich!
+                    </Typography>
+                    <Typography color="text.secondary">
+                        Ihr Konto wurde erstellt. Bitte überprüfen Sie Ihre E-Mails, um Ihr Konto zu
+                        verifizieren (in dieser Demo können Sie sich direkt anmelden).
+                    </Typography>
+                    <Button onClick={onSwitchToLogin} fullWidth>
                         Zum Login
                     </Button>
-                </Card>
-            </div>
+                </Stack>
+            </Frame>
         );
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-            <Card className="max-w-md w-full space-y-8 p-8">
-                <div>
-                    <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+        <Frame>
+            <Stack gap={3}>
+                <Box textAlign="center">
+                    <Typography variant="h4" component="h2" fontWeight={800}>
                         Konto erstellen
-                    </h2>
-                    <p className="mt-2 text-center text-sm text-gray-600">
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" mt={1}>
                         Oder{' '}
-                        <button
-                            onClick={onSwitchToLogin}
-                            className="font-medium text-blue-600 hover:text-blue-500"
-                        >
+                        <Link component="button" type="button" onClick={onSwitchToLogin} fontWeight={500}>
                             melden Sie sich mit Ihrem bestehenden Konto an
-                        </button>
-                    </p>
-                </div>
+                        </Link>
+                    </Typography>
+                </Box>
 
                 {(error || localError) && (
-                    <div className="bg-red-50 border-l-4 border-red-400 p-4">
-                        <div className="flex">
-                            <div className="flex-shrink-0">
-                                <AlertCircle className="h-5 w-5 text-red-400" />
-                            </div>
-                            <div className="ml-3">
-                                <p className="text-sm text-red-700">
-                                    {localError || error}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
+                    <Alert severity="error">{localError || error}</Alert>
                 )}
 
-                <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-                    <div className="space-y-4">
+                <Box component="form" onSubmit={handleSubmit}>
+                    <Stack gap={2}>
                         <Input
                             label="Vollständiger Name"
                             value={name}
@@ -110,19 +118,18 @@ const Register = ({ onSwitchToLogin }) => {
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                         />
-                    </div>
-
-                    <Button
-                        type="submit"
-                        className="w-full"
-                        disabled={loading}
-                        icon={loading ? Loader : User}
-                    >
-                        Registrieren
-                    </Button>
-                </form>
-            </Card>
-        </div>
+                        <Button
+                            type="submit"
+                            fullWidth
+                            disabled={loading}
+                            icon={loading ? Loader : User}
+                        >
+                            Registrieren
+                        </Button>
+                    </Stack>
+                </Box>
+            </Stack>
+        </Frame>
     );
 };
 

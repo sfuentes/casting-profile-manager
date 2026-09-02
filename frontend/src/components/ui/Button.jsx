@@ -34,6 +34,7 @@ const Button = ({
   // form defaults to submit - Login and Register put a Button inside a <form
   // onSubmit> and stopped submitting without this.
   type = 'button',
+  fullWidth = false,
   icon: Icon
 }) => {
   const look = VARIANTS[variant] || VARIANTS.primary;
@@ -68,6 +69,7 @@ const Button = ({
       color={look.color}
       size={muiSize}
       startIcon={glyph}
+      fullWidth={fullWidth}
       className={className}
       title={title}
     >

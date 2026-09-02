@@ -251,10 +251,10 @@ const CalendarView = () => {
     return (
         <Stack gap={3}>
             {/* Header */}
-            <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-                <Stack direction="row" alignItems="center" gap={2}>
+            <Stack direction="row" gap={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap'}}>
+                <Stack direction="row" gap={2} sx={{alignItems: 'center'}}>
                     <Typography variant="h4" component="h1" fontWeight={700}>Kalender</Typography>
-                    <Stack direction="row" alignItems="center" gap={1}>
+                    <Stack direction="row" gap={1} sx={{alignItems: 'center'}}>
                         <Button variant="outline" onClick={() => navigateMonth(-1)} icon={ChevronLeft} size="sm"/>
                         <Typography sx={{minWidth: 180, textAlign: 'center', fontWeight: 500}}>
                             {currentDate.toLocaleDateString('de-DE', {month: 'long', year: 'numeric'})}
@@ -262,7 +262,7 @@ const CalendarView = () => {
                         <Button variant="outline" onClick={() => navigateMonth(1)} icon={ChevronRight} size="sm"/>
                     </Stack>
                 </Stack>
-                <Stack direction="row" gap={1.5} flexWrap="wrap">
+                <Stack direction="row" gap={1.5} sx={{flexWrap: 'wrap'}}>
                     <Button onClick={() => setShowAvailabilitySettings(true)} variant="outline" icon={Settings} size="sm"/>
                     <Button
                         onClick={() => setShowSyncModal(true)}
@@ -286,9 +286,9 @@ const CalendarView = () => {
 
             {/* Legend */}
             <Card>
-                <Stack direction="row" alignItems="center" gap={3} flexWrap="wrap">
+                <Stack direction="row" gap={3} sx={{alignItems: 'center', flexWrap: 'wrap'}}>
                     {LEGEND.map(({color, label}) => (
-                        <Stack key={label} direction="row" alignItems="center" gap={1}>
+                        <Stack key={label} direction="row" gap={1} sx={{alignItems: 'center'}}>
                             <Box sx={{width: 16, height: 16, bgcolor: color, borderRadius: 0.5}}/>
                             <Typography variant="body2">{label}</Typography>
                         </Stack>
@@ -522,7 +522,7 @@ const CalendarView = () => {
                                 ausschließlich, welche Zeiträume blockiert sind.
                             </Typography>
                             <Pair>
-                                <Stack direction="row" gap={1} alignItems="center">
+                                <Stack direction="row" gap={1} sx={{alignItems: 'center'}}>
                                     <TimeInput
                                         label="Anruf ab"
                                         value={formData.preferredCallStart || '09:00'}
@@ -610,10 +610,7 @@ const CalendarView = () => {
                                 {syncEnabledPlatforms.map(platform => (
                                     <Stack
                                         key={platform.id}
-                                        direction="row"
-                                        alignItems="center"
-                                        justifyContent="space-between"
-                                    >
+                                        direction="row" sx={{alignItems: 'center', justifyContent: 'space-between'}}>
                                         <Typography variant="body2" fontWeight={500}>{platform.name}</Typography>
                                         <Badge color="green">Blockzeiten-Sync aktiv</Badge>
                                     </Stack>

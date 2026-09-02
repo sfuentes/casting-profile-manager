@@ -8,7 +8,7 @@ import {apiService} from '../services/apiService';
 
 /** One line of status, in the colour that matches it. */
 const Line = ({color, icon, children}) => (
-    <Stack direction="row" alignItems="center" gap={1} sx={{color}}>
+    <Stack direction="row" gap={1} sx={{alignItems: 'center', color}}>
         {icon}
         <Typography variant="body2">{children}</Typography>
     </Stack>
