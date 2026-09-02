@@ -253,12 +253,19 @@ const PlatformsView = () => {
         }
     };
 
+    // Both go through the context, which owns `syncing` - the flag these very
+    // buttons read for their spinner and disabled state - and reports the error.
+    // Calling apiService straight from here meant a sync ran with no sign that
+    // anything was happening, exactly as the connection test did.
+    //
+    // The credentials they used to pass along went nowhere: toJSON never gives
+    // the browser a password, so `platform.authData` holds presence flags only,
+    // and the server uses the credentials it has stored regardless.
     const handleSyncToPlatform = async (platform) => {
         try {
-            const result = await apiService.syncToPlatform(platform.id, ['profile', 'availability'], platform.authData);
+            await syncToPlatform(platform.id);
             alert(`Synchronisation zu ${platform.name} erfolgreich!`);
         } catch (err) {
-            console.error('Sync failed:', err);
             alert(`Synchronisation fehlgeschlagen: ${err.message}`);
         }
     };
@@ -270,19 +277,10 @@ const PlatformsView = () => {
         }
 
         try {
-            const credentialsMap = {};
-            bulkSyncSelected.forEach(platformId => {
-                const platform = platforms.find(p => p.id === platformId);
-                if (platform && platform.authData) {
-                    credentialsMap[platformId] = platform.authData;
-                }
-            });
-
-            const result = await apiService.bulkSyncToPlatforms(bulkSyncSelected, ['profile', 'availability'], credentialsMap);
+            const result = await bulkSyncToPlatforms(bulkSyncSelected);
             alert(`${result.synced} Plattformen erfolgreich synchronisiert!`);
             setBulkSyncSelected([]);
         } catch (err) {
-            console.error('Bulk sync failed:', err);
             alert(`Massen-Synchronisation fehlgeschlagen: ${err.message}`);
         }
     };
