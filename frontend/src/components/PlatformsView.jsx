@@ -1,5 +1,17 @@
 
 import React, {useState, useEffect} from 'react';
+import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
+import TextField from '@mui/material/TextField';
+import MenuItem from '@mui/material/MenuItem';
+import Alert from '@mui/material/Alert';
+import AlertTitle from '@mui/material/AlertTitle';
+import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Switch from '@mui/material/Switch';
+import IconButton from '@mui/material/IconButton';
+import CircularProgress from '@mui/material/CircularProgress';
 import {
     Cloud,
     Plus,
@@ -110,6 +122,15 @@ const IMPORT_FIELD_LABELS = {
     education: 'Ausbildung',
     languageLevel: 'Sprachniveau'
 };
+
+/** Responsive columns, as one prop on the container. */
+const columns = (breakpoints) => ({
+    display: 'grid',
+    gap: 2,
+    gridTemplateColumns: Object.fromEntries(
+        Object.entries(breakpoints).map(([at, count]) => [at, `repeat(${count}, minmax(0, 1fr))`])
+    )
+});
 
 const PlatformsView = () => {
     const {
@@ -479,9 +500,9 @@ const PlatformsView = () => {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <Loader size={48} className="animate-spin text-blue-600"/>
-            </div>
+            <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: 256}}>
+                <CircularProgress size={48}/>
+            </Box>
         );
     }
 
@@ -491,25 +512,20 @@ const PlatformsView = () => {
     const apiPlatforms = platforms.filter(isApiBased);
 
     return (
-        <div className="space-y-6">
+        <Stack gap={3}>
             {/* Header */}
-            <div className="flex justify-between items-center">
-                <div className="flex items-center space-x-4">
-                    <h1 className="text-3xl font-bold text-gray-900">Plattformen</h1>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+                <Stack direction="row" alignItems="center" gap={2} flexWrap="wrap">
+                    <Typography variant="h4" component="h1" fontWeight={700}>Plattformen</Typography>
                     <Badge color="blue">
                         {connectedPlatforms.length} von {platforms.length} verbunden
                     </Badge>
                     <Badge color={agentStatus?.success ? 'green' : 'red'} icon={Bot}>
                         Agent: {agentStatus?.status || 'Unbekannt'}
                     </Badge>
-                </div>
-                <div className="flex gap-3">
-                    <Button
-                        onClick={checkAgentHealth}
-                        variant="outline"
-                        icon={Activity}
-                        size="sm"
-                    >
+                </Stack>
+                <Stack direction="row" gap={1.5}>
+                    <Button onClick={checkAgentHealth} variant="outline" icon={Activity} size="sm">
                         Agent prüfen
                     </Button>
                     {bulkSyncSelected.length > 0 && (
@@ -522,21 +538,35 @@ const PlatformsView = () => {
                             {syncing ? 'Synchronisiere...' : `${bulkSyncSelected.length} Plattformen sync`}
                         </Button>
                     )}
-                </div>
-            </div>
+                </Stack>
+            </Stack>
 
-            {/* Agent Status Card */}
+            {/* Agent status */}
             {agentStatus && (
-                <Card className={`border-l-4 ${
-                    agentStatus.success ? 'border-l-green-500 bg-green-50' : 'border-l-red-500 bg-red-50'
-                }`}>
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                            <Bot className={`w-8 h-8 ${agentStatus.success ? 'text-green-600' : 'text-red-600'}`}/>
-                            <div>
-                                <h3 className="font-semibold text-gray-900">Platform Agent Status</h3>
-                                <p className="text-sm text-gray-600">{agentStatus.message}</p>
-                                <div className="flex items-center space-x-4 mt-1 text-xs text-gray-500">
+                <Card className={agentStatus.success ? undefined : undefined}>
+                    <Stack
+                        direction="row"
+                        alignItems="center"
+                        justifyContent="space-between"
+                        sx={{
+                            borderLeft: 4,
+                            borderColor: agentStatus.success ? 'success.main' : 'error.main',
+                            bgcolor: agentStatus.success ? 'success.50' : 'error.50',
+                            borderRadius: 1,
+                            p: 2
+                        }}
+                    >
+                        <Stack direction="row" alignItems="center" gap={2}>
+                            <Box sx={{color: agentStatus.success ? 'success.main' : 'error.main', display: 'flex'}}>
+                                <Bot size={32}/>
+                            </Box>
+                            <Box>
+                                <Typography fontWeight={600}>Platform Agent Status</Typography>
+                                <Typography variant="body2" color="text.secondary">{agentStatus.message}</Typography>
+                                <Stack
+                                    direction="row" gap={2} mt={0.5} flexWrap="wrap"
+                                    sx={{fontSize: 12, color: 'text.secondary'}}
+                                >
                                     <span>Agent-fähige Plattformen: {agentStatus.data?.automatedPlatforms ?? agentPlatforms.length}</span>
                                     <span>API-Plattformen: {apiPlatforms.length}</span>
                                     {/* The one thing this endpoint can actually
@@ -546,73 +576,47 @@ const PlatformsView = () => {
                                     <span>Letzte Prüfung: {agentStatus.timestamp
                                         ? new Date(agentStatus.timestamp).toLocaleString('de-DE')
                                         : 'unbekannt'}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                            {agentStatus.success ? (
-                                <CheckCircle className="w-6 h-6 text-green-600"/>
-                            ) : (
-                                <XCircle className="w-6 h-6 text-red-600"/>
-                            )}
-                        </div>
-                    </div>
+                                </Stack>
+                            </Box>
+                        </Stack>
+                        <Box sx={{color: agentStatus.success ? 'success.main' : 'error.main', display: 'flex'}}>
+                            {agentStatus.success ? <CheckCircle size={24}/> : <XCircle size={24}/>}
+                        </Box>
+                    </Stack>
                 </Card>
             )}
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <Card>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-2xl font-bold text-green-600">{connectedPlatforms.length}</p>
-                            <p className="text-sm text-gray-600">Verbunden</p>
-                        </div>
-                        <Wifi className="w-8 h-8 text-green-600"/>
-                    </div>
-                </Card>
-                <Card>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-2xl font-bold text-blue-600">{agentPlatforms.length}</p>
-                            <p className="text-sm text-gray-600">Agent-fähig</p>
-                        </div>
-                        <Bot className="w-8 h-8 text-blue-600"/>
-                    </div>
-                </Card>
-                <Card>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-2xl font-bold text-purple-600">{apiPlatforms.length}</p>
-                            <p className="text-sm text-gray-600">API verfügbar</p>
-                        </div>
-                        <Cpu className="w-8 h-8 text-purple-600"/>
-                    </div>
-                </Card>
-                <Card>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-2xl font-bold text-orange-600">
-                                {connectedPlatforms.filter(p => p.syncSettings?.autoSync).length}
-                            </p>
-                            <p className="text-sm text-gray-600">Auto-Sync</p>
-                        </div>
-                        <Zap className="w-8 h-8 text-orange-600"/>
-                    </div>
-                </Card>
-                <Card>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-2xl font-bold text-indigo-600">
-                                {connectedPlatforms.filter(p => p.lastSync &&
-                                    new Date() - new Date(p.lastSync) < 24 * 60 * 60 * 1000).length}
-                            </p>
-                            <p className="text-sm text-gray-600">Heute sync</p>
-                        </div>
-                        <Activity className="w-8 h-8 text-indigo-600"/>
-                    </div>
-                </Card>
-            </div>
+            {/* Summary tiles */}
+            <Box sx={columns({xs: 1, md: 5})}>
+                {[
+                    {value: connectedPlatforms.length, label: 'Verbunden', icon: Wifi, color: 'success.main'},
+                    {value: agentPlatforms.length, label: 'Agent-fähig', icon: Bot, color: 'primary.main'},
+                    {value: apiPlatforms.length, label: 'API verfügbar', icon: Cpu, color: 'secondary.main'},
+                    {
+                        value: connectedPlatforms.filter(p => p.syncSettings?.autoSync).length,
+                        label: 'Auto-Sync', icon: Zap, color: 'warning.main'
+                    },
+                    {
+                        value: connectedPlatforms.filter(p => p.lastSync
+                            && new Date() - new Date(p.lastSync) < 24 * 60 * 60 * 1000).length,
+                        label: 'Heute sync', icon: Activity, color: 'info.main'
+                    }
+                ].map((tile) => (
+                    <Card key={tile.label}>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between">
+                            <Box>
+                                <Typography variant="h5" fontWeight={700} sx={{color: tile.color}}>
+                                    {tile.value}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">{tile.label}</Typography>
+                            </Box>
+                            <Box sx={{color: tile.color, display: 'flex'}}>
+                                <tile.icon size={32}/>
+                            </Box>
+                        </Stack>
+                    </Card>
+                ))}
+            </Box>
 
             {/* Connected Platforms */}
             {connectedPlatforms.length > 0 && (
@@ -1297,7 +1301,7 @@ const PlatformsView = () => {
                     );
                 })()}
             </Modal>
-        </div>
+        </Stack>
     );
 };
 
