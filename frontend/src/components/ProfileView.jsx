@@ -1,10 +1,21 @@
 import React, {useState, useRef} from 'react';
+import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
+import TextField from '@mui/material/TextField';
+import MenuItem from '@mui/material/MenuItem';
+import Tabs from '@mui/material/Tabs';
+import Tab from '@mui/material/Tab';
+import Alert from '@mui/material/Alert';
+import AlertTitle from '@mui/material/AlertTitle';
+import Avatar from '@mui/material/Avatar';
+import IconButton from '@mui/material/IconButton';
+import CircularProgress from '@mui/material/CircularProgress';
 import {
     User,
     Camera,
     Upload,
     Edit2,
-    Save,
     X,
     Plus,
     Trash2,
@@ -13,15 +24,13 @@ import {
     MapPin,
     Phone,
     Mail,
-    Globe,
     Award,
     Briefcase,
     GraduationCap,
     Star,
     Image as ImageIcon,
     Loader,
-    Check,
-    AlertCircle
+    Check
 } from 'lucide-react';
 import {useAppContext} from '../context/AppContext';
 import {Button, Modal, Input, Card, Badge} from './ui';
@@ -44,7 +53,6 @@ const importedFrom = (profile, field) => {
     return `Übernommen von ${name}${date}`;
 };
 
-
 /**
  * A date for <input type="date">, which needs exactly YYYY-MM-DD and renders
  * nothing at all for the full ISO timestamp Mongo returns.
@@ -54,6 +62,54 @@ const toDateInputValue = (value) => {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
 };
+
+const WORK_TYPES = ['Film', 'TV-Serie', 'TV-Film', 'Theater', 'Werbung', 'Kurzfilm', 'Synchronisation'];
+
+/** Responsive columns, as a container prop rather than a wrapper per child. */
+const columns = (breakpoints) => ({
+    display: 'grid',
+    gap: 3,
+    gridTemplateColumns: Object.fromEntries(
+        Object.entries(breakpoints).map(([at, count]) => [at, `repeat(${count}, minmax(0, 1fr))`])
+    )
+});
+
+/** Two fields side by side. */
+const Pair = ({children}) => (
+    <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 2}}>
+        {children}
+    </Box>
+);
+
+/**
+ * A small icon + text detail under a list entry.
+ *
+ * Takes `props` whole rather than destructuring the icon: eslint here runs
+ * without eslint-plugin-react, so it does not count a JSX tag as a use, and its
+ * uppercase exemption covers variables but not parameters - a destructured
+ * `{icon: Icon}` is reported as unused even though the JSX below renders it.
+ */
+const Detail = (props) => (
+    <Stack direction="row" alignItems="center" gap={0.5}>
+        <props.icon size={12}/>
+        <span>{props.children}</span>
+    </Stack>
+);
+
+/** The empty state each list tab shows before anything has been added. */
+const Empty = (props) => (
+    <Card>
+        <Box sx={{textAlign: 'center', py: 4, color: 'text.secondary'}}>
+            <Box sx={{color: 'grey.300', display: 'flex', justifyContent: 'center', mb: 2}}>
+                <props.icon size={48}/>
+            </Box>
+            <Typography>{props.text}</Typography>
+            <Box sx={{mt: 2}}>
+                <Button onClick={props.onAdd} icon={Plus}>{props.action}</Button>
+            </Box>
+        </Box>
+    </Card>
+);
 
 const ProfileView = () => {
     const {
@@ -83,13 +139,12 @@ const ProfileView = () => {
     const [showSyncModal, setShowSyncModal] = useState(false);
 
     const profilePhotoRef = useRef();
-    const setcardPhotoRefs = useRef({});
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <Loader size={48} className="animate-spin text-blue-600"/>
-            </div>
+            <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: 256}}>
+                <CircularProgress size={48}/>
+            </Box>
         );
     }
 
@@ -207,6 +262,7 @@ const ProfileView = () => {
     };
 
     const connectedPlatforms = platforms.filter(p => p.connected);
+    const complete = profile.avatar && profile.setcard.photos.some(p => p.url);
 
     const tabs = [
         {id: 'personal', label: 'Persönliche Daten', icon: User},
@@ -217,107 +273,98 @@ const ProfileView = () => {
     ];
 
     return (
-        <div className="space-y-6">
+        <Stack gap={3}>
             {/* Header */}
-            <div className="flex justify-between items-center">
-                <div className="flex items-center space-x-4">
-                    <h1 className="text-3xl font-bold text-gray-900">Profil</h1>
-                    <Badge color={profile.avatar && profile.setcard.photos.some(p => p.url) ? 'green' : 'yellow'}>
-                        {profile.avatar && profile.setcard.photos.some(p => p.url) ? 'Vollständig' : 'Unvollständig'}
+            <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+                <Stack direction="row" alignItems="center" gap={2}>
+                    <Typography variant="h4" component="h1" fontWeight={700}>Profil</Typography>
+                    <Badge color={complete ? 'green' : 'yellow'}>
+                        {complete ? 'Vollständig' : 'Unvollständig'}
                     </Badge>
-                </div>
-                <div className="flex gap-3">
-                    <Button
-                        onClick={() => setShowSyncModal(true)}
-                        variant="outline"
-                        icon={RefreshCw}
-                        disabled={connectedPlatforms.length === 0}
-                    >
-                        Profil sync ({connectedPlatforms.length})
-                    </Button>
-                </div>
-            </div>
+                </Stack>
+                <Button
+                    onClick={() => setShowSyncModal(true)}
+                    variant="outline"
+                    icon={RefreshCw}
+                    disabled={connectedPlatforms.length === 0}
+                >
+                    Profil sync ({connectedPlatforms.length})
+                </Button>
+            </Stack>
 
-            {/* Profile Header Card */}
+            {/* Profile header card */}
             <Card>
-                <div className="flex items-start space-x-6">
-                    <div className="relative">
-                        <div className="w-32 h-32 rounded-full bg-gray-200 overflow-hidden">
-                            {profile.avatar ? (
-                                <img
-                                    src={profile.avatar}
-                                    alt="Profilbild"
-                                    className="w-full h-full object-cover"
-                                />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                    <User size={48} className="text-gray-400"/>
-                                </div>
-                            )}
-                        </div>
-                        <button
+                <Stack direction="row" alignItems="flex-start" gap={3} flexWrap="wrap">
+                    <Box sx={{position: 'relative'}}>
+                        <Avatar src={profile.avatar || undefined} sx={{width: 128, height: 128}}>
+                            <User size={48}/>
+                        </Avatar>
+                        <IconButton
                             onClick={() => profilePhotoRef.current?.click()}
                             disabled={uploading}
-                            className="absolute bottom-0 right-0 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-2 shadow-lg"
+                            sx={{
+                                position: 'absolute', bottom: 0, right: 0,
+                                bgcolor: 'primary.main', color: 'common.white', boxShadow: 3,
+                                '&:hover': {bgcolor: 'primary.dark'}
+                            }}
+                            size="small"
                         >
-                            {uploading ? <Loader size={16} className="animate-spin"/> : <Camera size={16}/>}
-                        </button>
-                        <input
+                            {uploading ? <CircularProgress size={16} color="inherit"/> : <Camera size={16}/>}
+                        </IconButton>
+                        <Box
+                            component="input"
                             ref={profilePhotoRef}
                             type="file"
                             accept="image/*"
                             onChange={handleProfilePhotoUpload}
-                            className="hidden"
+                            sx={{display: 'none'}}
                         />
-                    </div>
-                    <div className="flex-1">
-                        <h2 className="text-2xl font-bold text-gray-900">{profile.name}</h2>
-                        <p className="text-gray-600 mt-1">{profile.actingAge} • {profile.location}</p>
-                        <div className="flex items-center space-x-4 mt-3 text-sm text-gray-500">
-                            <div className="flex items-center space-x-1">
-                                <Mail size={16}/>
-                                <span>{profile.contact?.email}</span>
-                            </div>
-                            <div className="flex items-center space-x-1">
-                                <Phone size={16}/>
-                                <span>{profile.contact?.phone}</span>
-                            </div>
-                        </div>
+                    </Box>
+                    <Box sx={{flex: 1, minWidth: 240}}>
+                        <Typography variant="h5" fontWeight={700}>{profile.name}</Typography>
+                        <Typography color="text.secondary" mt={0.5}>
+                            {profile.actingAge} • {profile.location}
+                        </Typography>
+                        <Stack direction="row" gap={2} mt={1.5} sx={{color: 'text.secondary', fontSize: 14}}>
+                            <Detail icon={Mail}>{profile.contact?.email}</Detail>
+                            <Detail icon={Phone}>{profile.contact?.phone}</Detail>
+                        </Stack>
                         {profile.biography && (
-                            <p className="mt-3 text-gray-700">{profile.biography}</p>
+                            <Typography mt={1.5}>{profile.biography}</Typography>
                         )}
-                    </div>
-                </div>
+                    </Box>
+                </Stack>
             </Card>
 
             {/* Tabs */}
-            <div className="border-b border-gray-200">
-                <nav className="-mb-px flex space-x-8">
+            <Box sx={{borderBottom: 1, borderColor: 'divider'}}>
+                <Tabs
+                    value={activeTab}
+                    onChange={(_event, value) => setActiveTab(value)}
+                    variant="scrollable"
+                    scrollButtons="auto"
+                >
                     {tabs.map(tab => (
-                        <button
+                        <Tab
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
-                                activeTab === tab.id
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            }`}
-                        >
-                            <tab.icon size={16}/>
-                            <span>{tab.label}</span>
-                        </button>
+                            value={tab.id}
+                            label={tab.label}
+                            icon={<tab.icon size={16}/>}
+                            iconPosition="start"
+                            sx={{minHeight: 48, textTransform: 'none'}}
+                        />
                     ))}
-                </nav>
-            </div>
+                </Tabs>
+            </Box>
 
-            {/* Tab Content */}
-            <div className="mt-6">
-                {/* Personal Information Tab */}
+            {/* Tab content */}
+            <Box>
+                {/* Personal information */}
                 {activeTab === 'personal' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <Box sx={columns({xs: 1, lg: 2})}>
                         <Card>
-                            <h3 className="text-lg font-semibold mb-4">Grunddaten</h3>
-                            <div className="space-y-4">
+                            <Typography variant="h6" mb={2}>Grunddaten</Typography>
+                            <Stack gap={2}>
                                 <Input
                                     label="Name"
                                     hint={importedFrom(profile, 'name')}
@@ -353,12 +400,12 @@ const ProfileView = () => {
                                     value={toDateInputValue(profile.dateOfBirth)}
                                     onChange={(e) => handleProfileUpdate('dateOfBirth', e.target.value)}
                                 />
-                            </div>
+                            </Stack>
                         </Card>
 
                         <Card>
-                            <h3 className="text-lg font-semibold mb-4">Erscheinung</h3>
-                            <div className="space-y-4">
+                            <Typography variant="h6" mb={2}>Erscheinung</Typography>
+                            <Stack gap={2}>
                                 <Input
                                     label="Körpergröße"
                                     hint={importedFrom(profile, 'height')}
@@ -392,12 +439,12 @@ const ProfileView = () => {
                                     onChange={(e) => handleProfileUpdate('actingAge', e.target.value)}
                                     placeholder="z.B. 25-35"
                                 />
-                            </div>
+                            </Stack>
                         </Card>
 
                         <Card>
-                            <h3 className="text-lg font-semibold mb-4">Kontakt & Vertretung</h3>
-                            <div className="space-y-4">
+                            <Typography variant="h6" mb={2}>Kontakt & Vertretung</Typography>
+                            <Stack gap={2}>
                                 <Input
                                     label="Agentur Name"
                                     value={profile.agent?.name || ''}
@@ -419,55 +466,74 @@ const ProfileView = () => {
                                     value={profile.socialMedia?.website || ''}
                                     onChange={(e) => handleProfileUpdate('socialMedia.website', e.target.value)}
                                 />
-                            </div>
+                            </Stack>
                         </Card>
 
                         <Card>
-                            <h3 className="text-lg font-semibold mb-4">Biografie</h3>
-                            <textarea
+                            <Typography variant="h6" mb={2}>Biografie</Typography>
+                            <TextField
                                 value={profile.biography || ''}
                                 onChange={(e) => handleProfileUpdate('biography', e.target.value)}
+                                multiline
                                 rows={6}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                fullWidth
+                                size="small"
                                 placeholder="Beschreiben Sie Ihre Erfahrungen, Ihren Stil und Ihre Leidenschaft für die Schauspielerei..."
                             />
                         </Card>
-                    </div>
+                    </Box>
                 )}
 
-                {/* Photos & Setcard Tab */}
+                {/* Photos & setcard */}
                 {activeTab === 'photos' && (
-                    <div className="space-y-6">
-                        <Card>
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-lg font-semibold">Setcard</h3>
-                                <span className="text-sm text-gray-500">
-                                    {profile.setcard.lastUpdated &&
-                                        `Zuletzt aktualisiert: ${new Date(profile.setcard.lastUpdated).toLocaleDateString('de-DE')}`
-                                    }
-                                </span>
-                            </div>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                {profile.setcard.photos.map(photo => (
-                                    <div key={photo.id} className="relative group">
-                                        <div className="aspect-square bg-gray-200 rounded-lg overflow-hidden">
+                    <Card>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                            <Typography variant="h6">Setcard</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                                {profile.setcard.lastUpdated
+                                    && `Zuletzt aktualisiert: ${new Date(profile.setcard.lastUpdated).toLocaleDateString('de-DE')}`}
+                            </Typography>
+                        </Stack>
+                        <Box sx={columns({xs: 2, md: 3})}>
+                            {profile.setcard.photos.map(photo => (
+                                <Box key={photo.id} sx={{'&:hover .photo-actions': {opacity: 1}}}>
+                                    <Box sx={{position: 'relative'}}>
+                                        <Box
+                                            sx={{
+                                                aspectRatio: '1 / 1', bgcolor: 'grey.200',
+                                                borderRadius: 2, overflow: 'hidden',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                            }}
+                                        >
                                             {photo.url ? (
-                                                <img
+                                                <Box
+                                                    component="img"
                                                     src={photo.url}
                                                     alt={photo.description}
-                                                    className="w-full h-full object-cover"
+                                                    sx={{width: '100%', height: '100%', objectFit: 'cover'}}
                                                 />
                                             ) : (
-                                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
+                                                <Stack alignItems="center" sx={{color: 'text.disabled'}}>
                                                     <ImageIcon size={32}/>
-                                                    <span className="text-xs mt-2 text-center px-2">
+                                                    <Typography variant="caption" sx={{mt: 1, px: 1, textAlign: 'center'}}>
                                                         {photo.description}
-                                                    </span>
-                                                </div>
+                                                    </Typography>
+                                                </Stack>
                                             )}
-                                        </div>
-                                        <div className="absolute inset-0 bg-black bg-opacity-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-2">
-                                            <button
+                                        </Box>
+                                        <Stack
+                                            className="photo-actions"
+                                            direction="row"
+                                            gap={1}
+                                            alignItems="center"
+                                            justifyContent="center"
+                                            sx={{
+                                                position: 'absolute', inset: 0, borderRadius: 2,
+                                                bgcolor: 'rgba(0,0,0,0.5)', opacity: 0,
+                                                transition: 'opacity 200ms'
+                                            }}
+                                        >
+                                            <IconButton
                                                 onClick={() => {
                                                     const input = document.createElement('input');
                                                     input.type = 'file';
@@ -476,238 +542,200 @@ const ProfileView = () => {
                                                     input.click();
                                                 }}
                                                 disabled={uploading}
-                                                className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-2"
+                                                sx={{bgcolor: 'primary.main', color: 'common.white', '&:hover': {bgcolor: 'primary.dark'}}}
+                                                size="small"
                                             >
-                                                {uploading ? <Loader size={16} className="animate-spin"/> : <Upload size={16}/>}
-                                            </button>
+                                                {uploading ? <CircularProgress size={16} color="inherit"/> : <Upload size={16}/>}
+                                            </IconButton>
                                             {photo.url && (
-                                                <button
+                                                <IconButton
                                                     onClick={() => handleSetcardPhotoDelete(photo.id)}
                                                     disabled={uploading}
-                                                    className="bg-red-600 hover:bg-red-700 text-white rounded-full p-2"
+                                                    sx={{bgcolor: 'error.main', color: 'common.white', '&:hover': {bgcolor: 'error.dark'}}}
+                                                    size="small"
                                                 >
                                                     <Trash2 size={16}/>
-                                                </button>
+                                                </IconButton>
                                             )}
-                                        </div>
-                                        <div className="mt-2">
-                                            <p className="text-sm font-medium text-gray-900">{photo.type}</p>
-                                            <p className="text-xs text-gray-500">{photo.description}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </Card>
-                    </div>
+                                        </Stack>
+                                    </Box>
+                                    <Box sx={{mt: 1}}>
+                                        <Typography variant="body2" fontWeight={500}>{photo.type}</Typography>
+                                        <Typography variant="caption" color="text.secondary">{photo.description}</Typography>
+                                    </Box>
+                                </Box>
+                            ))}
+                        </Box>
+                    </Card>
                 )}
 
-                {/* Work History Tab */}
+                {/* Work history */}
                 {activeTab === 'work' && (
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                            <h3 className="text-lg font-semibold">Berufserfahrung</h3>
+                    <Stack gap={2}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Typography variant="h6">Berufserfahrung</Typography>
                             <Button onClick={() => openModal('work')} icon={Plus}>
                                 Projekt hinzufügen
                             </Button>
-                        </div>
-                        <div className="space-y-4">
-                            {profile.workHistory?.map(work => (
-                                <Card key={work.id}>
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex-1">
-                                            <h4 className="text-lg font-semibold text-gray-900">{work.title}</h4>
-                                            <div className="flex items-center space-x-4 text-sm text-gray-600 mt-1">
-                                                <span>{work.production}</span>
-                                                <span>•</span>
-                                                <span>{work.role}</span>
-                                                <span>•</span>
-                                                <Badge>{work.type}</Badge>
-                                                <span>•</span>
-                                                <span>{work.year}</span>
-                                            </div>
-                                            {work.director && (
-                                                <p className="text-sm text-gray-600 mt-1">
-                                                    Regie: {work.director}
-                                                </p>
-                                            )}
-                                            {work.description && (
-                                                <p className="text-sm text-gray-700 mt-2">{work.description}</p>
-                                            )}
-                                            <div className="flex items-center space-x-4 text-xs text-gray-500 mt-2">
-                                                {work.location && (
-                                                    <div className="flex items-center space-x-1">
-                                                        <MapPin size={12}/>
-                                                        <span>{work.location}</span>
-                                                    </div>
-                                                )}
-                                                {work.duration && (
-                                                    <div className="flex items-center space-x-1">
-                                                        <Calendar size={12}/>
-                                                        <span>{work.duration}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="flex space-x-2 ml-4">
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => openModal('work', work)}
-                                                icon={Edit2}
-                                            />
-                                            <Button
-                                                size="sm"
-                                                variant="danger"
-                                                onClick={() => handleDelete('work', work.id)}
-                                                icon={Trash2}
-                                            />
-                                        </div>
-                                    </div>
-                                </Card>
-                            ))}
-                            {!profile.workHistory?.length && (
-                                <Card>
-                                    <div className="text-center py-8 text-gray-500">
-                                        <Briefcase size={48} className="mx-auto mb-4 text-gray-300"/>
-                                        <p>Noch keine Berufserfahrung hinzugefügt.</p>
-                                        <Button
-                                            onClick={() => openModal('work')}
-                                            className="mt-4"
-                                            icon={Plus}
+                        </Stack>
+                        {profile.workHistory?.map(work => (
+                            <Card key={work.id}>
+                                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={2}>
+                                    <Box sx={{flex: 1}}>
+                                        <Typography variant="h6">{work.title}</Typography>
+                                        <Stack
+                                            direction="row" gap={1} mt={0.5} flexWrap="wrap" alignItems="center"
+                                            sx={{color: 'text.secondary', fontSize: 14}}
                                         >
-                                            Erstes Projekt hinzufügen
-                                        </Button>
-                                    </div>
-                                </Card>
-                            )}
-                        </div>
-                    </div>
+                                            <span>{work.production}</span>
+                                            <span>•</span>
+                                            <span>{work.role}</span>
+                                            <span>•</span>
+                                            <Badge>{work.type}</Badge>
+                                            <span>•</span>
+                                            <span>{work.year}</span>
+                                        </Stack>
+                                        {work.director && (
+                                            <Typography variant="body2" color="text.secondary" mt={0.5}>
+                                                Regie: {work.director}
+                                            </Typography>
+                                        )}
+                                        {work.description && (
+                                            <Typography variant="body2" mt={1}>{work.description}</Typography>
+                                        )}
+                                        <Stack
+                                            direction="row" gap={2} mt={1}
+                                            sx={{color: 'text.secondary', fontSize: 12}}
+                                        >
+                                            {work.location && <Detail icon={MapPin}>{work.location}</Detail>}
+                                            {work.duration && <Detail icon={Calendar}>{work.duration}</Detail>}
+                                        </Stack>
+                                    </Box>
+                                    <Stack direction="row" gap={1}>
+                                        <Button size="sm" variant="outline" onClick={() => openModal('work', work)} icon={Edit2}/>
+                                        <Button size="sm" variant="danger" onClick={() => handleDelete('work', work.id)} icon={Trash2}/>
+                                    </Stack>
+                                </Stack>
+                            </Card>
+                        ))}
+                        {!profile.workHistory?.length && (
+                            <Empty
+                                icon={Briefcase}
+                                text="Noch keine Berufserfahrung hinzugefügt."
+                                action="Erstes Projekt hinzufügen"
+                                onAdd={() => openModal('work')}
+                            />
+                        )}
+                    </Stack>
                 )}
 
-                {/* Education Tab */}
+                {/* Education */}
                 {activeTab === 'education' && (
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                            <h3 className="text-lg font-semibold">Ausbildung</h3>
+                    <Stack gap={2}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Typography variant="h6">Ausbildung</Typography>
                             <Button onClick={() => openModal('education')} icon={Plus}>
                                 Ausbildung hinzufügen
                             </Button>
-                        </div>
-                        <div className="space-y-4">
-                            {profile.education?.map(edu => (
-                                <Card key={edu.id}>
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex-1">
-                                            <h4 className="text-lg font-semibold text-gray-900">{edu.degree}</h4>
-                                            <div className="flex items-center space-x-4 text-sm text-gray-600 mt-1">
-                                                <span>{edu.institution}</span>
-                                                <span>•</span>
-                                                <span>{edu.field}</span>
-                                                <span>•</span>
-                                                <span>{edu.startYear} - {edu.endYear}</span>
-                                            </div>
-                                            {edu.description && (
-                                                <p className="text-sm text-gray-700 mt-2">{edu.description}</p>
-                                            )}
-                                            <div className="flex items-center space-x-4 text-xs text-gray-500 mt-2">
-                                                {edu.location && (
-                                                    <div className="flex items-center space-x-1">
-                                                        <MapPin size={12}/>
-                                                        <span>{edu.location}</span>
-                                                    </div>
-                                                )}
-                                                {edu.grade && (
-                                                    <div className="flex items-center space-x-1">
-                                                        <Award size={12}/>
-                                                        <span>{edu.grade}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="flex space-x-2 ml-4">
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => openModal('education', edu)}
-                                                icon={Edit2}
-                                            />
-                                            <Button
-                                                size="sm"
-                                                variant="danger"
-                                                onClick={() => handleDelete('education', edu.id)}
-                                                icon={Trash2}
-                                            />
-                                        </div>
-                                    </div>
-                                </Card>
-                            ))}
-                            {!profile.education?.length && (
-                                <Card>
-                                    <div className="text-center py-8 text-gray-500">
-                                        <GraduationCap size={48} className="mx-auto mb-4 text-gray-300"/>
-                                        <p>Noch keine Ausbildung hinzugefügt.</p>
-                                        <Button
-                                            onClick={() => openModal('education')}
-                                            className="mt-4"
-                                            icon={Plus}
+                        </Stack>
+                        {profile.education?.map(edu => (
+                            <Card key={edu.id}>
+                                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={2}>
+                                    <Box sx={{flex: 1}}>
+                                        <Typography variant="h6">{edu.degree}</Typography>
+                                        <Stack
+                                            direction="row" gap={1} mt={0.5} flexWrap="wrap"
+                                            sx={{color: 'text.secondary', fontSize: 14}}
                                         >
-                                            Erste Ausbildung hinzufügen
-                                        </Button>
-                                    </div>
-                                </Card>
-                            )}
-                        </div>
-                    </div>
+                                            <span>{edu.institution}</span>
+                                            <span>•</span>
+                                            <span>{edu.field}</span>
+                                            <span>•</span>
+                                            <span>{edu.startYear} - {edu.endYear}</span>
+                                        </Stack>
+                                        {edu.description && (
+                                            <Typography variant="body2" mt={1}>{edu.description}</Typography>
+                                        )}
+                                        <Stack
+                                            direction="row" gap={2} mt={1}
+                                            sx={{color: 'text.secondary', fontSize: 12}}
+                                        >
+                                            {edu.location && <Detail icon={MapPin}>{edu.location}</Detail>}
+                                            {edu.grade && <Detail icon={Award}>{edu.grade}</Detail>}
+                                        </Stack>
+                                    </Box>
+                                    <Stack direction="row" gap={1}>
+                                        <Button size="sm" variant="outline" onClick={() => openModal('education', edu)} icon={Edit2}/>
+                                        <Button size="sm" variant="danger" onClick={() => handleDelete('education', edu.id)} icon={Trash2}/>
+                                    </Stack>
+                                </Stack>
+                            </Card>
+                        ))}
+                        {!profile.education?.length && (
+                            <Empty
+                                icon={GraduationCap}
+                                text="Noch keine Ausbildung hinzugefügt."
+                                action="Erste Ausbildung hinzufügen"
+                                onAdd={() => openModal('education')}
+                            />
+                        )}
+                    </Stack>
                 )}
 
-                {/* Skills Tab */}
+                {/* Skills */}
                 {activeTab === 'skills' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <Box sx={columns({xs: 1, lg: 2})}>
                         <Card>
-                            <h3 className="text-lg font-semibold mb-4">Fähigkeiten</h3>
-                            <div className="space-y-3">
+                            <Typography variant="h6" mb={2}>Fähigkeiten</Typography>
+                            <Stack gap={1.5}>
                                 {/* Skills are plain strings in the profile schema. This block
                                     used to read skill.name / skill.years / skill.level off them,
                                     so every imported skill rendered as an empty row. */}
                                 {profile.skills?.length ? profile.skills.map((skill, index) => (
-                                    <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                                        <span className="font-medium text-gray-900">{skill}</span>
-                                    </div>
+                                    <Box key={index} sx={{p: 1.5, bgcolor: 'grey.50', borderRadius: 2}}>
+                                        <Typography fontWeight={500}>{skill}</Typography>
+                                    </Box>
                                 )) : (
-                                    <p className="text-sm text-gray-500">Noch keine Fähigkeiten hinterlegt.</p>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Noch keine Fähigkeiten hinterlegt.
+                                    </Typography>
                                 )}
-                            </div>
+                            </Stack>
                         </Card>
 
                         <Card>
-                            <h3 className="text-lg font-semibold mb-4">Besondere Fähigkeiten</h3>
-                            <div className="flex flex-wrap gap-2">
+                            <Typography variant="h6" mb={2}>Besondere Fähigkeiten</Typography>
+                            <Stack direction="row" gap={1} flexWrap="wrap">
                                 {profile.specialSkills?.map((skill, index) => (
                                     <Badge key={index} variant="outline">{skill}</Badge>
                                 ))}
-                            </div>
+                            </Stack>
                         </Card>
 
-                        <Card className="lg:col-span-2">
-                            <h3 className="text-lg font-semibold mb-4">Sprachen</h3>
-                            <div className="flex flex-wrap gap-2">
-                                {/* {language, level} objects. Rendering the object itself
-                                    threw "Objects are not valid as a React child" and took
-                                    the whole tab down with it. */}
-                                {profile.languages?.length ? profile.languages.map((entry, index) => (
-                                    <Badge key={index} color="blue">
-                                        {entry.level ? `${entry.language} (${entry.level})` : entry.language}
-                                    </Badge>
-                                )) : (
-                                    <p className="text-sm text-gray-500">Noch keine Sprachen hinterlegt.</p>
-                                )}
-                            </div>
-                        </Card>
-                    </div>
+                        <Box sx={{gridColumn: {lg: 'span 2'}}}>
+                            <Card>
+                                <Typography variant="h6" mb={2}>Sprachen</Typography>
+                                <Stack direction="row" gap={1} flexWrap="wrap">
+                                    {/* {language, level} objects. Rendering the object itself
+                                        threw "Objects are not valid as a React child" and took
+                                        the whole tab down with it. */}
+                                    {profile.languages?.length ? profile.languages.map((entry, index) => (
+                                        <Badge key={index} color="blue">
+                                            {entry.level ? `${entry.language} (${entry.level})` : entry.language}
+                                        </Badge>
+                                    )) : (
+                                        <Typography variant="body2" color="text.secondary">
+                                            Noch keine Sprachen hinterlegt.
+                                        </Typography>
+                                    )}
+                                </Stack>
+                            </Card>
+                        </Box>
+                    </Box>
                 )}
-            </div>
+            </Box>
 
-            {/* Work/Education Modal */}
+            {/* Work / education modal */}
             <Modal
                 isOpen={showModal}
                 onClose={() => setShowModal(false)}
@@ -717,7 +745,7 @@ const ProfileView = () => {
                         : `${modalType === 'work' ? 'Neues Projekt' : 'Neue Ausbildung'} hinzufügen`
                 }
             >
-                <div className="space-y-4">
+                <Stack gap={2}>
                     {modalType === 'work' ? (
                         <>
                             <Input
@@ -735,36 +763,32 @@ const ProfileView = () => {
                                 value={formData.role || ''}
                                 onChange={(e) => handleInputChange('role', e.target.value)}
                             />
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Typ</label>
-                                    <select
-                                        value={formData.type || ''}
-                                        onChange={(e) => handleInputChange('type', e.target.value)}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                        <option value="">Typ auswählen</option>
-                                        <option value="Film">Film</option>
-                                        <option value="TV-Serie">TV-Serie</option>
-                                        <option value="TV-Film">TV-Film</option>
-                                        <option value="Theater">Theater</option>
-                                        <option value="Werbung">Werbung</option>
-                                        <option value="Kurzfilm">Kurzfilm</option>
-                                        <option value="Synchronisation">Synchronisation</option>
-                                    </select>
-                                </div>
+                            <Pair>
+                                <TextField
+                                    select
+                                    fullWidth
+                                    size="small"
+                                    label="Typ"
+                                    value={formData.type || ''}
+                                    onChange={(e) => handleInputChange('type', e.target.value)}
+                                >
+                                    <MenuItem value="">Typ auswählen</MenuItem>
+                                    {WORK_TYPES.map((type) => (
+                                        <MenuItem key={type} value={type}>{type}</MenuItem>
+                                    ))}
+                                </TextField>
                                 <Input
                                     label="Jahr"
                                     value={formData.year || ''}
                                     onChange={(e) => handleInputChange('year', e.target.value)}
                                 />
-                            </div>
+                            </Pair>
                             <Input
                                 label="Regisseur"
                                 value={formData.director || ''}
                                 onChange={(e) => handleInputChange('director', e.target.value)}
                             />
-                            <div className="grid grid-cols-2 gap-4">
+                            <Pair>
                                 <Input
                                     label="Ort"
                                     value={formData.location || ''}
@@ -775,7 +799,7 @@ const ProfileView = () => {
                                     value={formData.duration || ''}
                                     onChange={(e) => handleInputChange('duration', e.target.value)}
                                 />
-                            </div>
+                            </Pair>
                         </>
                     ) : (
                         <>
@@ -794,7 +818,7 @@ const ProfileView = () => {
                                 value={formData.field || ''}
                                 onChange={(e) => handleInputChange('field', e.target.value)}
                             />
-                            <div className="grid grid-cols-2 gap-4">
+                            <Pair>
                                 <Input
                                     label="Von (Jahr)"
                                     value={formData.startYear || ''}
@@ -805,7 +829,7 @@ const ProfileView = () => {
                                     value={formData.endYear || ''}
                                     onChange={(e) => handleInputChange('endYear', e.target.value)}
                                 />
-                            </div>
+                            </Pair>
                             <Input
                                 label="Ort"
                                 value={formData.location || ''}
@@ -819,74 +843,78 @@ const ProfileView = () => {
                         </>
                     )}
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>
-                        <textarea
-                            value={formData.description || ''}
-                            onChange={(e) => handleInputChange('description', e.target.value)}
-                            rows={3}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Zusätzliche Details..."
-                        />
-                    </div>
+                    <TextField
+                        label="Beschreibung"
+                        value={formData.description || ''}
+                        onChange={(e) => handleInputChange('description', e.target.value)}
+                        multiline
+                        rows={3}
+                        fullWidth
+                        size="small"
+                        placeholder="Zusätzliche Details..."
+                    />
 
-                    <div className="flex gap-3 pt-4">
-                        <Button onClick={handleSave} disabled={saving}>
-                            {saving ? <Loader size={16} className="animate-spin"/> : <Check size={16}/>}
+                    <Stack direction="row" gap={1.5} pt={2}>
+                        <Button onClick={handleSave} disabled={saving} icon={saving ? Loader : Check}>
                             {editingItem ? 'Aktualisieren' : 'Hinzufügen'}
                         </Button>
                         <Button variant="secondary" onClick={() => setShowModal(false)} icon={X}>
                             Abbrechen
                         </Button>
-                    </div>
-                </div>
+                    </Stack>
+                </Stack>
             </Modal>
 
-            {/* Profile Sync Modal */}
+            {/* Profile sync modal */}
             <Modal
                 isOpen={showSyncModal}
                 onClose={() => setShowSyncModal(false)}
                 title="Profil synchronisieren"
             >
-                <div className="space-y-4">
-                    <div className="flex items-start space-x-3">
-                        <AlertCircle className="text-blue-500 mt-1" size={20}/>
-                        <div>
-                            <p className="text-sm text-gray-600 mb-2">
-                                Ihr vollständiges Profil wird mit folgenden Plattformen synchronisiert:
-                            </p>
-                            <div className="bg-blue-50 rounded p-3 text-xs text-blue-700">
-                                <strong>Übertragene Daten:</strong>
-                                <ul className="mt-1 space-y-1">
-                                    <li>• Persönliche Informationen & Kontaktdaten</li>
-                                    <li>• Profilbild und Setcard-Fotos</li>
-                                    <li>• Berufserfahrung & Filmografie</li>
-                                    <li>• Ausbildung & Qualifikationen</li>
-                                    <li>• Fähigkeiten & Sprachen</li>
-                                    <li>• Biografie & Beschreibung</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
+                <Stack gap={2}>
+                    {/*
+                      This list used to promise that the profile photo, the setcard, the
+                      filmography and the languages all go out. They do not. A profile
+                      push writes the fields the platform's own descriptor declares -
+                      for most platforms a handful - pictures are a separate step that
+                      only works where an upload control has actually been read, and
+                      credits go through the Vita comparison on the platforms page.
+                    */}
+                    <Alert severity="info">
+                        <AlertTitle>Übertragen werden die Profilfelder</AlertTitle>
+                        <Typography variant="body2" component="div">
+                            Jede Plattform nimmt nur die Felder, die für sie eingerichtet sind -
+                            meist Körpergröße, Augen- und Haarfarbe und Ähnliches.
+                            <Box component="ul" sx={{mt: 1, mb: 0, pl: 2.5}}>
+                                <li>Fotos laufen getrennt und nur dort, wo der Upload bekannt ist</li>
+                                <li>Credits laufen über den Vita-Abgleich auf der Plattform-Seite</li>
+                            </Box>
+                        </Typography>
+                    </Alert>
 
-                    <div className="bg-gray-50 rounded-lg p-4">
+                    <Box sx={{bgcolor: 'grey.50', borderRadius: 2, p: 2}}>
                         {connectedPlatforms.length === 0 ? (
-                            <p className="text-sm text-gray-500">
+                            <Typography variant="body2" color="text.secondary">
                                 Keine Plattformen verbunden.
-                            </p>
+                            </Typography>
                         ) : (
-                            <div className="space-y-2">
+                            <Stack gap={1}>
                                 {connectedPlatforms.map(platform => (
-                                    <div key={platform.id} className="flex items-center justify-between">
-                                        <span className="text-sm font-medium">{platform.name}</span>
+                                    <Stack
+                                        key={platform.id}
+                                        direction="row"
+                                        alignItems="center"
+                                        justifyContent="space-between"
+                                    >
+                                        <Typography variant="body2" fontWeight={500}>{platform.name}</Typography>
                                         <Badge color="green">Verbunden</Badge>
-                                    </div>
+                                    </Stack>
                                 ))}
-                            </div>
+                            </Stack>
                         )}
-                    </div>
+                    </Box>
 
-                    <div className="flex gap-3 pt-4">
+                    <Stack direction="row" gap={1.5} pt={2}>
                         <Button
                             onClick={handleSyncProfile}
                             disabled={connectedPlatforms.length === 0 || saving}
@@ -897,10 +925,10 @@ const ProfileView = () => {
                         <Button variant="secondary" onClick={() => setShowSyncModal(false)}>
                             Abbrechen
                         </Button>
-                    </div>
-                </div>
+                    </Stack>
+                </Stack>
             </Modal>
-        </div>
+        </Stack>
     );
 };
 
