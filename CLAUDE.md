@@ -578,6 +578,38 @@ PlatformsView (1,305 lines), ProfileView (906) and CalendarView (681) changes
 nothing anyone can see and is a large diff over code that works. Layout in
 Tailwind and controls in MUI is the arrangement, not a half-finished migration.
 
+### Sync and import logic is not in the views
+
+`PlatformsView` was a 1,300-line file that both drew the screen and did the
+work: it called `apiService` directly for the import, the credit reconciliation
+and the agent health check, held their state, and carried a dozen predicates
+about what a platform is. That is why converting it to MUI was the risky part
+of the migration - the markup could not be touched without touching the logic.
+
+Now:
+
+- `domain/platforms.js` - pure functions, no React. The predicates
+  (`isAutomated`, `canImportProfile`, `hasStoredCredentials`), the wording
+  (`connectionTypeText`, `syncIntervalText`, `importFieldLabel`) and the two
+  formatters (`sourceLabel`, `previewImported`). `npm run check:platform-rules`
+  exercises them without a browser: 30 cases, each one a shape that actually
+  turned up, including the `{language, level}` objects that threw "Objects are
+  not valid as a React child" and the bare locator string older imports stored.
+- `hooks/usePlatformImport.js` - read a profile, pick fields, apply. Reading
+  writes nothing; applying takes the values from the import's SyncLog on the
+  server, never from the client.
+- `hooks/usePlatformCredits.js` - the two-call credit push, questions and all.
+- `hooks/useAgentHealth.js` - the health check and its state.
+
+The view keeps what is genuinely its own: which dialog is open, what the alert
+says, which platform is selected. The hooks are destructured under the names the
+markup already used, so moving the logic out changed no JSX at all.
+
+**A view should not call `apiService` directly.** The only reference left in
+`components/` is `apiService.demoMode` in SyncIndicator, which is read in seven
+places across the app and defined nowhere - it is always `undefined`, so every
+`if (!apiService.demoMode)` is dead weight that reads like a feature.
+
 ### The API envelope, and the field that keeps getting lost
 
 `handleResponse` in `apiService.js` unwraps `{ success, data }` and returns

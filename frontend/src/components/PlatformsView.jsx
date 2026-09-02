@@ -1,5 +1,5 @@
 
-import React, {useState, useEffect} from 'react';
+import React, {useState} from 'react';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -49,79 +49,22 @@ import {
 } from 'lucide-react';
 import {useAppContext} from '../context/AppContext';
 import {Button, Modal, Input, Card, Badge} from './ui';
-import {apiService} from '../services/apiService';
-
-/**
- * Whether a platform has an automated integration, and whether that integration
- * talks to an API rather than driving a browser.
- *
- * Both were previously read as `platform.agentCapable` / `platform.hasAPI`,
- * which are not fields on what the API returns - the stored record carries them
- * under `meta`, and the connector manifests (the source of truth since the
- * catalogue endpoint landed) do not carry them at all. Every check was
- * therefore permanently false: the summary tiles reported 0 agent-capable
- * platforms while six connectors were registered and healthy.
- */
-const isAutomated = (platform) => Boolean(platform?.authType) && platform.authType !== 'manual';
-const isApiBased = (platform) => platform?.authType === 'apiKey';
-
-/**
- * Whether this platform's connector can read a profile back.
- *
- * Straight from the manifest: filling a form is a different job from parsing
- * one, and only Filmmakers has had its pages read for real. Offering "Import"
- * anywhere else would produce a button that can only fail.
- */
-const canImportProfile = (platform) => Boolean(platform?.capabilities?.includes('pullProfile'));
-const canSyncCredits = (platform) => Boolean(platform?.capabilities?.includes('pushWorkHistory'));
-
-/**
- * Whether the app already holds credentials for a platform.
- *
- * `toJSON` never sends the secrets themselves, only these flags - which is
- * exactly enough to know that a login can be retried without asking the user to
- * type their password again.
- */
-const hasStoredCredentials = (platform) => Boolean(
-    platform?.authData?.hasPassword || platform?.authData?.hasApiKey || platform?.authData?.hasToken
-);
-
-/**
- * Where an imported value came from, in one line.
- *
- * The server sends { platform, platformName, location }. Older imports stored a
- * bare locator string, so both shapes are read - a profile imported before this
- * existed should still say what it can rather than render "[object Object]".
- */
-const sourceLabel = (source) => {
-    if (!source) return '';
-    if (typeof source === 'string') return source;
-    const where = source.location ? ` · ${source.location}` : '';
-    return `${source.platformName || source.platform || 'Plattform'}${where}`;
-};
-
-/** German labels for the profile fields an import can return. */
-const IMPORT_FIELD_LABELS = {
-    name: 'Name',
-    firstName: 'Vorname',
-    lastName: 'Nachname',
-    gender: 'Geschlecht',
-    dateOfBirth: 'Geburtsdatum',
-    biography: 'Biografie',
-    height: 'Körpergröße (cm)',
-    weight: 'Gewicht',
-    eyeColor: 'Augenfarbe',
-    hairColor: 'Haarfarbe',
-    location: 'Wohnort',
-    citizenship: 'Staatsangehörigkeit',
-    languages: 'Sprachen',
-    skills: 'Fähigkeiten',
-    socialMedia: 'Social Media',
-    contact: 'Kontakt',
-    workHistory: 'Vita / Engagements',
-    education: 'Ausbildung',
-    languageLevel: 'Sprachniveau'
-};
+import {
+    isAutomated,
+    isApiBased,
+    canImportProfile,
+    canSyncCredits,
+    hasStoredCredentials,
+    platformStatusColor,
+    connectionTypeText,
+    syncIntervalText,
+    sourceLabel,
+    previewImported,
+    IMPORT_FIELD_LABELS
+} from '../domain/platforms';
+import {useAgentHealth} from '../hooks/useAgentHealth';
+import {usePlatformImport} from '../hooks/usePlatformImport';
+import {usePlatformCredits} from '../hooks/usePlatformCredits';
 
 /** Responsive columns, as one prop on the container. */
 const columns = (breakpoints) => ({
@@ -155,40 +98,34 @@ const PlatformsView = () => {
     const [expandedPlatform, setExpandedPlatform] = useState(null);
     const [bulkSyncSelected, setBulkSyncSelected] = useState([]);
     const [testResults, setTestResults] = useState({});
-    const [agentStatus, setAgentStatus] = useState(null);
-    const [importResults, setImportResults] = useState({});
-    // Credits the platform could not be told apart from ones it already has.
-    // They are questions, not failures: nothing is added or dropped until the
-    // user answers.
-    const [creditQuestions, setCreditQuestions] = useState([]);
-    const [creditAnswers, setCreditAnswers] = useState({});
-    const [creditBusy, setCreditBusy] = useState(false);
-    const [creditSummary, setCreditSummary] = useState('');
     // Why the last connect attempt was refused, shown on the dialog itself.
     const [connectError, setConnectError] = useState('');
-    const [importSelection, setImportSelection] = useState([]);
-    // The user's answers to values the normaliser could not map, keyed by the
-    // question's path (e.g. "eyeColor", "languages.0.level").
-    const [importResolutions, setImportResolutions] = useState({});
-    const [importing, setImporting] = useState(false);
 
-    // Check agent health on component mount
-    useEffect(() => {
-        checkAgentHealth();
-    }, []);
+    // Everything below this line is the platform work itself - reading a
+    // profile, reconciling credits, asking whether the agent is up. It lives in
+    // hooks so this file is the screen and not the machinery; the names are
+    // aliased to what the markup already calls them.
+    const {status: agentStatus, check: checkAgentHealth} = useAgentHealth();
 
-    const checkAgentHealth = async () => {
-        try {
-            const health = await apiService.checkAgentHealth();
-            setAgentStatus(health);
-        } catch (error) {
-            setAgentStatus({
-                success: false,
-                status: 'error',
-                message: error.message
-            });
-        }
-    };
+    const {
+        results: importResults,
+        selection: importSelection,
+        resolutions: importResolutions,
+        busy: importing,
+        read: readProfile,
+        apply: applyImport,
+        toggleField: toggleImportField,
+        setResolutions: setImportResolutions
+    } = usePlatformImport({onApplied: loadAllData});
+
+    const {
+        questions: creditQuestions,
+        answers: creditAnswers,
+        summary: creditSummary,
+        busy: creditBusy,
+        sync: syncCredits,
+        setAnswers: setCreditAnswers
+    } = usePlatformCredits();
 
     const openModal = (type, platform) => {
         setModalType(type);
@@ -307,33 +244,18 @@ const PlatformsView = () => {
     };
 
     /**
-     * Read the profile off the platform and show what came back.
+     * Push the credits this platform is missing, and ask about the rest.
      *
-     * Nothing is written to the local profile here. The previous version
-     * claimed "Die Daten wurden mit Ihrem lokalen Profil zusammengeführt"
-     * against an endpoint that did not exist - and merging scraped values into
-     * a profile without showing them first is how an import quietly destroys
-     * data the user typed by hand.
-     */
-    /**
-     * Push the credits this platform is missing.
-     *
-     * Runs twice by design. The first call adds everything that is certain and
-     * brings back the ones it could not tell apart from credits already on the
-     * platform; the second call carries the user's answers. A question left
-     * unanswered adds nothing - the credit stays as it is and is asked about
-     * again next time.
+     * The reconciliation lives in the hook; what stays here is what to do with
+     * the answer - open the dialog when there are questions, say so when there
+     * are none.
      */
     const handleSyncCredits = async (platform, answers = {}) => {
-        setCreditBusy(true);
         try {
-            const result = await apiService.syncWorkHistory(platform.id, answers);
-            setCreditSummary(result.message || '');
-            setCreditQuestions(result.questions);
+            const result = await syncCredits(platform, answers);
             setSelectedPlatform(platform);
 
             if (result.questions.length > 0) {
-                setCreditAnswers({});
                 setModalType('credits');
                 setShowModal(true);
             } else {
@@ -342,80 +264,35 @@ const PlatformsView = () => {
             }
         } catch (error) {
             alert(`Vita-Abgleich fehlgeschlagen: ${error.message}`);
-        } finally {
-            setCreditBusy(false);
         }
     };
 
+    /**
+     * Read the profile off the platform and show what came back.
+     *
+     * Nothing is written to the local profile here - `applyImport` does that,
+     * and only for the fields the user ticked.
+     */
     const handleImportProfile = async (platform) => {
-        if (!platform.connected) {
-            alert('Bitte stellen Sie zuerst eine Verbindung zur Plattform her.');
-            return;
-        }
-
-        setImporting(true);
         try {
-            const result = await apiService.readProfileFromPlatform(platform.id);
-            setImportResults(prev => ({...prev, [platform.id]: result}));
-            // Everything that was found is preselected; the user unticks what
-            // they would rather keep as it is.
-            setImportSelection(Object.keys(result.fields || {}));
-            setImportResolutions({});
+            await readProfile(platform);
             setSelectedPlatform(platform);
             setModalType('import');
             setShowModal(true);
         } catch (error) {
-            console.error('Import failed:', error);
-            alert(`Import fehlgeschlagen: ${error.message}`);
-        } finally {
-            setImporting(false);
+            alert(error.message);
         }
-    };
-
-    const toggleImportField = (key) => {
-        setImportSelection(prev => (
-            prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
-        ));
     };
 
     const handleApplyImport = async () => {
-        const result = importResults[selectedPlatform?.id];
-        if (!result || importSelection.length === 0) return;
-
-        setImporting(true);
         try {
-            const applied = await apiService.applyImportedProfile(
-                selectedPlatform.id,
-                result.syncLogId,
-                importSelection,
-                importResolutions
-            );
+            const applied = await applyImport(selectedPlatform);
+            if (!applied) return;
             setShowModal(false);
-            // The profile view reads from context, so reload it rather than
-            // leaving the user looking at pre-import values.
-            await loadAllData();
             alert(`${applied.applied.length} Feld(er) ins Profil übernommen.`);
         } catch (error) {
-            console.error('Apply failed:', error);
             alert(`Übernehmen fehlgeschlagen: ${error.message}`);
-        } finally {
-            setImporting(false);
         }
-    };
-
-    /** A short, readable preview of an imported value. */
-    const previewImported = (value) => {
-        if (Array.isArray(value)) {
-            if (value.length === 0) return '-';
-            if (typeof value[0] === 'string') return value.join(', ');
-            if (value[0].language) return value.map(l => `${l.language} (${l.level})`).join(', ');
-            if (value[0].institution) return value.map(e => e.institution).join(' · ');
-            return `${value.length} Einträge`;
-        }
-        if (value && typeof value === 'object') {
-            return Object.entries(value).map(([k, v]) => `${k}: ${v}`).join(', ');
-        }
-        return String(value);
     };
 
     const handleInputChange = (field, value) => {
@@ -430,34 +307,6 @@ const PlatformsView = () => {
         if (platform.authType === 'manual') return Link;
         if (platform.authType === 'apiKey') return Cpu;
         return Bot;
-    };
-
-    const getConnectionTypeText = (platform) => {
-        if (platform.authType === 'manual') return 'Manuell';
-        if (platform.authType === 'apiKey') return 'API-Integration';
-        if (platform.authType === 'credentials') return 'Agent-basiert';
-        return 'Unbekannt';
-    };
-
-    const getPlatformStatusColor = (platform) => {
-        if (!platform.connected) return 'gray';
-        if (platform.lastSync) {
-            const lastSync = new Date(platform.lastSync);
-            const daysSinceSync = (new Date() - lastSync) / (1000 * 60 * 60 * 24);
-            if (daysSinceSync > 7) return 'yellow';
-        }
-        return 'green';
-    };
-
-    const getSyncIntervalText = (interval) => {
-        const intervals = {
-            'realtime': 'Echtzeit',
-            'hourly': 'Stündlich',
-            'daily': 'Täglich',
-            'weekly': 'Wöchentlich',
-            'manual': 'Manuell'
-        };
-        return intervals[interval] || interval;
     };
 
     const getPlatformCapabilities = (platform) => {
@@ -625,7 +474,7 @@ const PlatformsView = () => {
                     <div className="space-y-3">
                         {connectedPlatforms.map(platform => {
                             const ConnectionTypeIcon = getConnectionTypeIcon(platform);
-                            const statusColor = getPlatformStatusColor(platform);
+                            const statusColor = platformStatusColor(platform);
                             const isExpanded = expandedPlatform === platform.id;
                             const testResult = testResults[platform.id];
                             const importResult = importResults[platform.id];
@@ -653,7 +502,7 @@ const PlatformsView = () => {
                                                     <div className="flex items-center space-x-2">
                                                         <h3 className="font-semibold text-gray-900">{platform.name}</h3>
                                                         <Badge color="blue" size="sm">
-                                                            {getConnectionTypeText(platform)}
+                                                            {connectionTypeText(platform)}
                                                         </Badge>
                                                     </div>
                                                     <div className="flex items-center space-x-2 text-sm text-gray-600">
@@ -778,7 +627,7 @@ const PlatformsView = () => {
                                                         <div className="flex justify-between">
                                                             <span className="text-gray-600">Verbindungstyp:</span>
                                                             <Badge color="blue" size="sm">
-                                                                {getConnectionTypeText(platform)}
+                                                                {connectionTypeText(platform)}
                                                             </Badge>
                                                         </div>
                                                         <div className="flex justify-between">
@@ -789,7 +638,7 @@ const PlatformsView = () => {
                                                         </div>
                                                         <div className="flex justify-between">
                                                             <span className="text-gray-600">Intervall:</span>
-                                                            <span>{getSyncIntervalText(platform.syncSettings?.syncInterval)}</span>
+                                                            <span>{syncIntervalText(platform.syncSettings?.syncInterval)}</span>
                                                         </div>
                                                         <div className="flex justify-between">
                                                             <span className="text-gray-600">Regionen:</span>
@@ -875,7 +724,7 @@ const PlatformsView = () => {
                                                 <div className="flex items-center space-x-2">
                                                     <Badge variant="outline" color="gray">Nicht verbunden</Badge>
                                                     <Badge color={isApiBased(platform) ? 'purple' : 'blue'} size="sm">
-                                                        {getConnectionTypeText(platform)}
+                                                        {connectionTypeText(platform)}
                                                     </Badge>
                                                 </div>
                                             </div>
