@@ -89,12 +89,15 @@ const Pair = ({children}) => (
  * uppercase exemption covers variables but not parameters - a destructured
  * `{icon: Icon}` is reported as unused even though the JSX below renders it.
  */
-const Detail = (props) => (
-    <Stack direction="row" gap={0.5} sx={{alignItems: 'center'}}>
+// Nothing to show means nothing is shown. Without this, a profile with no
+// contact details rendered an envelope and a telephone receiver on their own
+// under the name, labelling two blanks.
+const Detail = (props) => (props.children ? (
+    <Stack direction="row" spacing={0.5} sx={{alignItems: 'center'}}>
         <props.icon size={12}/>
         <span>{props.children}</span>
     </Stack>
-);
+) : null);
 
 /** The empty state each list tab shows before anything has been added. */
 const Empty = (props) => (
@@ -273,10 +276,10 @@ const ProfileView = () => {
     ];
 
     return (
-        <Stack gap={3}>
+        <Stack spacing={3}>
             {/* Header */}
-            <Stack direction="row" gap={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap'}}>
-                <Stack direction="row" gap={2} sx={{alignItems: 'center'}}>
+            <Stack direction="row" spacing={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap'}}>
+                <Stack direction="row" spacing={2} sx={{alignItems: 'center'}}>
                     <Typography variant="h4" component="h1" fontWeight={700}>Profil</Typography>
                     <Badge color={complete ? 'green' : 'yellow'}>
                         {complete ? 'Vollständig' : 'Unvollständig'}
@@ -294,7 +297,7 @@ const ProfileView = () => {
 
             {/* Profile header card */}
             <Card>
-                <Stack direction="row" gap={3} sx={{alignItems: 'flex-start', flexWrap: 'wrap'}}>
+                <Stack direction="row" spacing={3} sx={{alignItems: 'flex-start', flexWrap: 'wrap'}}>
                     <Box sx={{position: 'relative'}}>
                         <Avatar src={profile.avatar || undefined} sx={{width: 128, height: 128}}>
                             <User size={48}/>
@@ -322,15 +325,15 @@ const ProfileView = () => {
                     </Box>
                     <Box sx={{flex: 1, minWidth: 240}}>
                         <Typography variant="h5" fontWeight={700}>{profile.name}</Typography>
-                        <Typography color="text.secondary" mt={0.5}>
+                        <Typography color="text.secondary" sx={{mt: 0.5}}>
                             {profile.actingAge} • {profile.location}
                         </Typography>
-                        <Stack direction="row" gap={2} mt={1.5} sx={{color: 'text.secondary', fontSize: 14}}>
+                        <Stack direction="row" spacing={2} sx={{mt: 1.5, color: 'text.secondary', fontSize: 14}}>
                             <Detail icon={Mail}>{profile.contact?.email}</Detail>
                             <Detail icon={Phone}>{profile.contact?.phone}</Detail>
                         </Stack>
                         {profile.biography && (
-                            <Typography mt={1.5}>{profile.biography}</Typography>
+                            <Typography sx={{mt: 1.5}}>{profile.biography}</Typography>
                         )}
                     </Box>
                 </Stack>
@@ -363,8 +366,8 @@ const ProfileView = () => {
                 {activeTab === 'personal' && (
                     <Box sx={columns({xs: 1, lg: 2})}>
                         <Card>
-                            <Typography variant="h6" mb={2}>Grunddaten</Typography>
-                            <Stack gap={2}>
+                            <Typography variant="h6" sx={{mb: 2}}>Grunddaten</Typography>
+                            <Stack spacing={2}>
                                 <Input
                                     label="Name"
                                     hint={importedFrom(profile, 'name')}
@@ -404,8 +407,8 @@ const ProfileView = () => {
                         </Card>
 
                         <Card>
-                            <Typography variant="h6" mb={2}>Erscheinung</Typography>
-                            <Stack gap={2}>
+                            <Typography variant="h6" sx={{mb: 2}}>Erscheinung</Typography>
+                            <Stack spacing={2}>
                                 <Input
                                     label="Körpergröße"
                                     hint={importedFrom(profile, 'height')}
@@ -443,8 +446,8 @@ const ProfileView = () => {
                         </Card>
 
                         <Card>
-                            <Typography variant="h6" mb={2}>Kontakt & Vertretung</Typography>
-                            <Stack gap={2}>
+                            <Typography variant="h6" sx={{mb: 2}}>Kontakt & Vertretung</Typography>
+                            <Stack spacing={2}>
                                 <Input
                                     label="Agentur Name"
                                     value={profile.agent?.name || ''}
@@ -470,7 +473,7 @@ const ProfileView = () => {
                         </Card>
 
                         <Card>
-                            <Typography variant="h6" mb={2}>Biografie</Typography>
+                            <Typography variant="h6" sx={{mb: 2}}>Biografie</Typography>
                             <TextField
                                 value={profile.biography || ''}
                                 onChange={(e) => handleProfileUpdate('biography', e.target.value)}
@@ -487,7 +490,7 @@ const ProfileView = () => {
                 {/* Photos & setcard */}
                 {activeTab === 'photos' && (
                     <Card>
-                        <Stack direction="row" mb={2} sx={{alignItems: 'center', justifyContent: 'space-between'}}>
+                        <Stack direction="row" sx={{mb: 2, alignItems: 'center', justifyContent: 'space-between'}}>
                             <Typography variant="h6">Setcard</Typography>
                             <Typography variant="body2" color="text.secondary">
                                 {profile.setcard.lastUpdated
@@ -524,7 +527,7 @@ const ProfileView = () => {
                                         <Stack
                                             className="photo-actions"
                                             direction="row"
-                                            gap={1}
+                                            spacing={1}
                                             sx={{alignItems: 'center', justifyContent: 'center', position: 'absolute', inset: 0, borderRadius: 2,
                                                 bgcolor: 'rgba(0,0,0,0.5)', opacity: 0,
                                                 transition: 'opacity 200ms'}}
@@ -567,7 +570,7 @@ const ProfileView = () => {
 
                 {/* Work history */}
                 {activeTab === 'work' && (
-                    <Stack gap={2}>
+                    <Stack spacing={2}>
                         <Stack direction="row" sx={{alignItems: 'center', justifyContent: 'space-between'}}>
                             <Typography variant="h6">Berufserfahrung</Typography>
                             <Button onClick={() => openModal('work')} icon={Plus}>
@@ -576,12 +579,12 @@ const ProfileView = () => {
                         </Stack>
                         {profile.workHistory?.map(work => (
                             <Card key={work.id}>
-                                <Stack direction="row" gap={2} sx={{alignItems: 'flex-start', justifyContent: 'space-between'}}>
+                                <Stack direction="row" spacing={2} sx={{alignItems: 'flex-start', justifyContent: 'space-between'}}>
                                     <Box sx={{flex: 1}}>
                                         <Typography variant="h6">{work.title}</Typography>
                                         <Stack
-                                            direction="row" gap={1} mt={0.5}
-                                            sx={{alignItems: 'center', flexWrap: 'wrap', color: 'text.secondary', fontSize: 14}}
+                                            direction="row" spacing={1}
+                                            sx={{mt: 0.5, alignItems: 'center', flexWrap: 'wrap', color: 'text.secondary', fontSize: 14}}
                                         >
                                             <span>{work.production}</span>
                                             <span>•</span>
@@ -592,22 +595,22 @@ const ProfileView = () => {
                                             <span>{work.year}</span>
                                         </Stack>
                                         {work.director && (
-                                            <Typography variant="body2" color="text.secondary" mt={0.5}>
+                                            <Typography variant="body2" color="text.secondary" sx={{mt: 0.5}}>
                                                 Regie: {work.director}
                                             </Typography>
                                         )}
                                         {work.description && (
-                                            <Typography variant="body2" mt={1}>{work.description}</Typography>
+                                            <Typography variant="body2" sx={{mt: 1}}>{work.description}</Typography>
                                         )}
                                         <Stack
-                                            direction="row" gap={2} mt={1}
-                                            sx={{color: 'text.secondary', fontSize: 12}}
+                                            direction="row" spacing={2}
+                                            sx={{mt: 1, color: 'text.secondary', fontSize: 12}}
                                         >
                                             {work.location && <Detail icon={MapPin}>{work.location}</Detail>}
                                             {work.duration && <Detail icon={Calendar}>{work.duration}</Detail>}
                                         </Stack>
                                     </Box>
-                                    <Stack direction="row" gap={1}>
+                                    <Stack direction="row" spacing={1}>
                                         <Button size="sm" variant="outline" onClick={() => openModal('work', work)} icon={Edit2}/>
                                         <Button size="sm" variant="danger" onClick={() => handleDelete('work', work.id)} icon={Trash2}/>
                                     </Stack>
@@ -627,7 +630,7 @@ const ProfileView = () => {
 
                 {/* Education */}
                 {activeTab === 'education' && (
-                    <Stack gap={2}>
+                    <Stack spacing={2}>
                         <Stack direction="row" sx={{alignItems: 'center', justifyContent: 'space-between'}}>
                             <Typography variant="h6">Ausbildung</Typography>
                             <Button onClick={() => openModal('education')} icon={Plus}>
@@ -636,12 +639,12 @@ const ProfileView = () => {
                         </Stack>
                         {profile.education?.map(edu => (
                             <Card key={edu.id}>
-                                <Stack direction="row" gap={2} sx={{alignItems: 'flex-start', justifyContent: 'space-between'}}>
+                                <Stack direction="row" spacing={2} sx={{alignItems: 'flex-start', justifyContent: 'space-between'}}>
                                     <Box sx={{flex: 1}}>
                                         <Typography variant="h6">{edu.degree}</Typography>
                                         <Stack
-                                            direction="row" gap={1} mt={0.5}
-                                            sx={{flexWrap: 'wrap', color: 'text.secondary', fontSize: 14}}
+                                            direction="row" spacing={1}
+                                            sx={{mt: 0.5, flexWrap: 'wrap', color: 'text.secondary', fontSize: 14}}
                                         >
                                             <span>{edu.institution}</span>
                                             <span>•</span>
@@ -650,17 +653,17 @@ const ProfileView = () => {
                                             <span>{edu.startYear} - {edu.endYear}</span>
                                         </Stack>
                                         {edu.description && (
-                                            <Typography variant="body2" mt={1}>{edu.description}</Typography>
+                                            <Typography variant="body2" sx={{mt: 1}}>{edu.description}</Typography>
                                         )}
                                         <Stack
-                                            direction="row" gap={2} mt={1}
-                                            sx={{color: 'text.secondary', fontSize: 12}}
+                                            direction="row" spacing={2}
+                                            sx={{mt: 1, color: 'text.secondary', fontSize: 12}}
                                         >
                                             {edu.location && <Detail icon={MapPin}>{edu.location}</Detail>}
                                             {edu.grade && <Detail icon={Award}>{edu.grade}</Detail>}
                                         </Stack>
                                     </Box>
-                                    <Stack direction="row" gap={1}>
+                                    <Stack direction="row" spacing={1}>
                                         <Button size="sm" variant="outline" onClick={() => openModal('education', edu)} icon={Edit2}/>
                                         <Button size="sm" variant="danger" onClick={() => handleDelete('education', edu.id)} icon={Trash2}/>
                                     </Stack>
@@ -682,8 +685,8 @@ const ProfileView = () => {
                 {activeTab === 'skills' && (
                     <Box sx={columns({xs: 1, lg: 2})}>
                         <Card>
-                            <Typography variant="h6" mb={2}>Fähigkeiten</Typography>
-                            <Stack gap={1.5}>
+                            <Typography variant="h6" sx={{mb: 2}}>Fähigkeiten</Typography>
+                            <Stack spacing={1.5}>
                                 {/* Skills are plain strings in the profile schema. This block
                                     used to read skill.name / skill.years / skill.level off them,
                                     so every imported skill rendered as an empty row. */}
@@ -700,8 +703,8 @@ const ProfileView = () => {
                         </Card>
 
                         <Card>
-                            <Typography variant="h6" mb={2}>Besondere Fähigkeiten</Typography>
-                            <Stack direction="row" gap={1} sx={{flexWrap: 'wrap'}}>
+                            <Typography variant="h6" sx={{mb: 2}}>Besondere Fähigkeiten</Typography>
+                            <Stack direction="row" spacing={1} sx={{flexWrap: 'wrap'}}>
                                 {profile.specialSkills?.map((skill, index) => (
                                     <Badge key={index} variant="outline">{skill}</Badge>
                                 ))}
@@ -710,8 +713,8 @@ const ProfileView = () => {
 
                         <Box sx={{gridColumn: {lg: 'span 2'}}}>
                             <Card>
-                                <Typography variant="h6" mb={2}>Sprachen</Typography>
-                                <Stack direction="row" gap={1} sx={{flexWrap: 'wrap'}}>
+                                <Typography variant="h6" sx={{mb: 2}}>Sprachen</Typography>
+                                <Stack direction="row" spacing={1} sx={{flexWrap: 'wrap'}}>
                                     {/* {language, level} objects. Rendering the object itself
                                         threw "Objects are not valid as a React child" and took
                                         the whole tab down with it. */}
@@ -741,7 +744,7 @@ const ProfileView = () => {
                         : `${modalType === 'work' ? 'Neues Projekt' : 'Neue Ausbildung'} hinzufügen`
                 }
             >
-                <Stack gap={2}>
+                <Stack spacing={2}>
                     {modalType === 'work' ? (
                         <>
                             <Input
@@ -850,7 +853,7 @@ const ProfileView = () => {
                         placeholder="Zusätzliche Details..."
                     />
 
-                    <Stack direction="row" gap={1.5} pt={2}>
+                    <Stack direction="row" spacing={1.5} sx={{pt: 2}}>
                         <Button onClick={handleSave} disabled={saving} icon={saving ? Loader : Check}>
                             {editingItem ? 'Aktualisieren' : 'Hinzufügen'}
                         </Button>
@@ -867,7 +870,7 @@ const ProfileView = () => {
                 onClose={() => setShowSyncModal(false)}
                 title="Profil synchronisieren"
             >
-                <Stack gap={2}>
+                <Stack spacing={2}>
                     {/*
                       This list used to promise that the profile photo, the setcard, the
                       filmography and the languages all go out. They do not. A profile
@@ -894,7 +897,7 @@ const ProfileView = () => {
                                 Keine Plattformen verbunden.
                             </Typography>
                         ) : (
-                            <Stack gap={1}>
+                            <Stack spacing={1}>
                                 {connectedPlatforms.map(platform => (
                                     <Stack
                                         key={platform.id}
@@ -907,7 +910,7 @@ const ProfileView = () => {
                         )}
                     </Box>
 
-                    <Stack direction="row" gap={1.5} pt={2}>
+                    <Stack direction="row" spacing={1.5} sx={{pt: 2}}>
                         <Button
                             onClick={handleSyncProfile}
                             disabled={connectedPlatforms.length === 0 || saving}

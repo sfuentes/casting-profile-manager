@@ -9,9 +9,17 @@ import { createTheme } from '@mui/material/styles';
  * restyle every screen: what changes is which library draws the control, not
  * what the app looks like.
  *
- * Tailwind is still in the build and still lays the views out. The two coexist
- * on purpose: moving the primitives first means every screen renders MUI
- * controls without 3,900 lines of view markup being rewritten in one go.
+ * The font stack is a system stack rather than Roboto, which MUI would
+ * otherwise want downloaded. On Windows that renders as Segoe UI, on macOS as
+ * San Francisco - the face the rest of the machine is already using, no
+ * webfont request, no flash of unstyled text.
+ *
+ * It has to be stated here. `fontFamily: 'inherit'` used to sit in this spot,
+ * with a comment saying index.css would set it - and index.css set the font
+ * only because Tailwind's preflight was in it. Taking Tailwind out took the
+ * font stack with it, and MUI then inherited the browser default: every screen
+ * in the app, every heading and every button, rendered in Times New Roman.
+ * Nothing failed, nothing warned, and a build cannot see it.
  */
 export const theme = createTheme({
   palette: {
@@ -24,7 +32,10 @@ export const theme = createTheme({
   },
   shape: { borderRadius: 8 },        // rounded-lg
   typography: {
-    fontFamily: 'inherit',           // keep whatever index.css already sets
+    fontFamily: [
+      '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto',
+      '"Helvetica Neue"', 'Arial', 'sans-serif'
+    ].join(','),
     button: { textTransform: 'none' } // the old buttons were not upper-cased
   }
 });

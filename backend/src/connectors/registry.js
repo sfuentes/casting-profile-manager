@@ -39,8 +39,12 @@ const CONNECTORS = [
   // Backstage signs in with Google and is behind Cloudflare: recorded here so
   // it is a platform like any other, automated by nothing.
   BackstageConnector,
-  ManualConnector.forPlatform(6, 'Agentur (manuell)'),
-  ManualConnector.forPlatform(7, 'Agentur (manuell)')
+  // Numbered, because both were called "Agentur (manuell)" and the platform
+  // list therefore showed two identical cards with no way to tell which was
+  // which. What these two agencies actually are is not recorded anywhere in
+  // this project, and a name is not something to invent for them.
+  ManualConnector.forPlatform(6, 'Agentur 1 (manuell)'),
+  ManualConnector.forPlatform(7, 'Agentur 2 (manuell)')
 ];
 
 const byId = new Map();

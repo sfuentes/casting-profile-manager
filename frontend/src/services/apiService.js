@@ -327,21 +327,6 @@ export const apiService = {
         return handleResponse(response);
     },
 
-    getPlatformDescription: (id, name) => {
-        const descriptions = {
-            1: 'European film industry network - agent-based profile sync',
-            2: 'Global casting platform - automated profile management',
-            3: 'German actor video database - API key required',
-            4: 'European casting network - browser-based sync',
-            5: 'German job platform - browser-based sync',
-            6: 'Traditional talent agency - manual coordination required',
-            7: 'Professional talent agency - manual coordination required',
-            8: 'Boutique talent agency - personal management',
-            9: 'Entertainment job portal - automated sync available'
-        };
-        return descriptions[id] || `${name} platform integration`;
-    },
-
     // What integrations exist and how each connects. Replaces the hard-coded
     // list the client used to ship, which disagreed with the backend.
     getPlatformCatalog: async () => {

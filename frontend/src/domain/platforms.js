@@ -55,6 +55,10 @@ export const connectionTypeText = (platform) => {
     if (platform?.authType === 'manual') return 'Manuell';
     if (platform?.authType === 'apiKey') return 'API-Integration';
     if (platform?.authType === 'credentials') return 'Agent-basiert';
+    // Backstage. The registry has said `oauth` since it was added; the list did
+    // not, so the one platform whose sign-in is precisely known was labelled
+    // "Unbekannt". It is not automated and deliberately so - see CLAUDE.md.
+    if (platform?.authType === 'oauth') return 'Google-Login';
     return 'Unbekannt';
 };
 
@@ -128,3 +132,31 @@ export const previewImported = (value) => {
     }
     return String(value);
 };
+
+/**
+ * What a connector can actually do, in words, from the registry's own answer.
+ *
+ * The platform list used to work this out from `platform.features`, which the
+ * API does not send - so "Foto-Upload" and "Verfügbarkeit" were never shown for
+ * anything, and the two that were left came out of `isAutomated` and
+ * `isApiBased`, which is one badge repeated on every browser-driven platform.
+ *
+ * `capabilities` is different: AppContext merges it in from `/platforms/catalog`,
+ * it is the manifest's own list, and it differs per platform because it was
+ * written down per platform - a connector declares a capability only once
+ * somebody has read the page it needs. So this is the one place in the UI that
+ * can say "Filmmakers can import a profile but cannot push a calendar" and be
+ * right about it.
+ */
+export const CAPABILITY_LABELS = {
+    verify: 'Login prüfen',
+    pullProfile: 'Profil importieren',
+    pushProfile: 'Profil übertragen',
+    pushMedia: 'Bilder & Videos übertragen',
+    pushAvailability: 'Blockzeiten übertragen',
+    pushWorkHistory: 'Vita abgleichen'
+};
+
+export const capabilityLabels = (platform) => (platform?.capabilities || [])
+    .map((name) => CAPABILITY_LABELS[name])
+    .filter(Boolean);

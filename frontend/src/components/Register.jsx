@@ -54,7 +54,7 @@ const Register = ({ onSwitchToLogin }) => {
     if (registered) {
         return (
             <Frame>
-                <Stack gap={3} sx={{textAlign: 'center'}}>
+                <Stack spacing={3} sx={{textAlign: 'center'}}>
                     <Box sx={{ color: 'success.main', display: 'flex', justifyContent: 'center' }}>
                         <CheckCircle size={64} />
                     </Box>
@@ -75,12 +75,12 @@ const Register = ({ onSwitchToLogin }) => {
 
     return (
         <Frame>
-            <Stack gap={3}>
+            <Stack spacing={3}>
                 <Box sx={{textAlign: 'center'}}>
                     <Typography variant="h4" component="h2" fontWeight={800}>
                         Konto erstellen
                     </Typography>
-                    <Typography variant="body2" color="text.secondary" mt={1}>
+                    <Typography variant="body2" color="text.secondary" sx={{mt: 1}}>
                         Oder{' '}
                         <Link component="button" type="button" onClick={onSwitchToLogin} fontWeight={500}>
                             melden Sie sich mit Ihrem bestehenden Konto an
@@ -93,7 +93,7 @@ const Register = ({ onSwitchToLogin }) => {
                 )}
 
                 <Box component="form" onSubmit={handleSubmit}>
-                    <Stack gap={2}>
+                    <Stack spacing={2}>
                         <Input
                             label="Vollständiger Name"
                             value={name}
