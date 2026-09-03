@@ -21,7 +21,14 @@ export class FilmmakersConnector extends BrowserConnector {
     {
       name: 'password', type: 'password', required: true, label: 'Passwort'
     }],
-    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia', 'pullProfile']
+    // No pushAvailability. Read on 2026-09-03 while logged in: Filmmakers has no calendar
+    // at all. Nothing the logged-in site links to mentions Termine,
+    // Verfügbarkeit or a Kalender, and /profile/availability - the path this
+    // descriptor carried - answers 404, as do /availability and /calendar.
+    // The method below stays - it is groundwork, and the day this platform
+    // grows a calendar it is most of the work already done - but declaring the
+    // capability puts a button in the UI that can only ever fail.
+    capabilities: ['verify', 'pushProfile', 'pushMedia', 'pullProfile']
   });
 
   /**

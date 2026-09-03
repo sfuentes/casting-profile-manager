@@ -1,5 +1,14 @@
 import { BrowserConnector } from './BrowserConnector.js';
 
+/** A Date or date string as the `YYYY-MM-DD` an `input[type=date]` takes. */
+const isoDay = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    + `-${String(date.getDate()).padStart(2, '0')}`;
+};
+
 /**
  * IM OFF Berlin
  * Platform ID: 12
@@ -20,7 +29,7 @@ export class ImOffConnector extends BrowserConnector {
     {
       name: 'password', type: 'password', required: true, label: 'Passwort'
     }],
-    capabilities: ['verify', 'pullProfile', 'pushMedia']
+    capabilities: ['verify', 'pullProfile', 'pushMedia', 'pushAvailability']
   });
 
   /**
@@ -44,7 +53,12 @@ export class ImOffConnector extends BrowserConnector {
     },
     paths: {
       profileEdit: '/external/extras',
-      media: '/external/extras/photos'
+      media: '/external/extras/photos',
+      // Read off the live page on 2026-09-03, logged in. It is the only
+      // calendar any connected platform turned out to have: Filmmakers has
+      // none at all, JobWork has none, and Casting Network's "CN Kalender" is
+      // an editorial list of festivals and film releases.
+      availability: '/external/extras/calendar'
     },
     /**
      * The upload slots, in the order the page presents them. Each one takes a
@@ -136,6 +150,114 @@ export class ImOffConnector extends BrowserConnector {
     // buttons per page and nobody has watched what that does.
     profileFields: []
   });
+
+  /**
+   * Write block times into "Längere Abwesenheit".
+   *
+   * The page carries two things: a day grid where availability is dragged out
+   * by hand, and this form - `#from`, `#to`, a Speichern button, and a table of
+   * the periods already entered. The form is the one that matches what this app
+   * has to say. It takes a period and nothing else, which is exactly the shape
+   * `blockedPeriods.js` reduces the calendar to.
+   *
+   * Both inputs are `type="date"`, so they take `YYYY-MM-DD` and not the
+   * `dd.mm.yyyy` the table displays. The Speichern button is `type="button"` -
+   * the form is posted by the page's own script, so the button is clicked and
+   * never the form submitted.
+   *
+   * Periods already in the table are skipped. This platform *lists* what it
+   * holds, unlike the others whose availability pushes could only add, so a
+   * second sync of the same calendar adds nothing rather than a second copy of
+   * every absence.
+   *
+   * Nothing has been submitted to IM OFF. This has been run as a dry run only.
+   */
+  async pushAvailability(blocked, { dryRun = false } = {}) {
+    return this.withRateLimit(() => this.withRetry(async () => {
+      if (!this.isAuthenticated || !this.page) {
+        throw new Error('Not authenticated. Call authenticate() first.');
+      }
+
+      await this.openPage(`${this.site.baseUrl}${this.site.paths.availability}`);
+
+      const existing = await this.readAbsences();
+      const wanted = (blocked || [])
+        .map((item) => ({ from: isoDay(item.startDate), to: isoDay(item.endDate) }))
+        .filter((item) => item.from && item.to);
+      const missing = wanted.filter((item) => !existing
+        .some((have) => have.from === item.from && have.to === item.to));
+
+      this.log('info', `${dryRun ? 'Dry run:' : 'Pushing'} ${missing.length} block times to IM OFF`, {
+        alreadyThere: wanted.length - missing.length
+      });
+
+      let written = 0;
+      for (const period of missing) {
+        // eslint-disable-next-line no-await-in-loop
+        await this.page.evaluate((p) => {
+          const set = (id, value) => {
+            const el = document.getElementById(id);
+            el.value = value;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          };
+          set('from', p.from);
+          set('to', p.to);
+        }, period);
+
+        if (dryRun) break;
+
+        // eslint-disable-next-line no-await-in-loop
+        await this.page.click('#extras-form button.btn-save');
+        // eslint-disable-next-line no-await-in-loop
+        await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
+          .catch(() => {});
+        written += 1;
+      }
+
+      if (dryRun) {
+        const screenshot = await this.captureFilledForm();
+
+        return {
+          success: true,
+          dryRun: true,
+          submitted: false,
+          count: 0,
+          planned: missing,
+          alreadyThere: wanted.length - missing.length,
+          screenshot,
+          url: this.page.url()
+        };
+      }
+
+      return {
+        success: true,
+        count: written,
+        itemsSynced: written,
+        details: { written: missing.slice(0, written), alreadyThere: wanted.length - missing.length }
+      };
+    }));
+  }
+
+  /**
+   * The absence periods the page already lists, as `YYYY-MM-DD` pairs.
+   *
+   * The table's own column classes are not used: the account this was read on
+   * has no absences, so the header is all that could be seen and the row markup
+   * could not. The first two cells that parse as `dd.mm.yyyy` are the period -
+   * a row that parses as nothing (the "keine Datensätze" placeholder) is
+   * skipped. Worst case this finds nothing and a period is offered twice, which
+   * is what every other connector here does unconditionally.
+   */
+  async readAbsences() {
+    return this.page.$$eval('#extras_views_skills tbody tr', (rows) => rows
+      .map((row) => [...row.querySelectorAll('td')]
+        .map((cell) => /(\d{2})\.(\d{2})\.(\d{4})/.exec(cell.innerText || ''))
+        .filter(Boolean)
+        .map((m) => `${m[3]}-${m[2]}-${m[1]}`))
+      .filter((dates) => dates.length >= 2)
+      .map((dates) => ({ from: dates[0], to: dates[1] }))).catch(() => []);
+  }
 }
 
 export default ImOffConnector;

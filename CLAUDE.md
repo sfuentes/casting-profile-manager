@@ -462,6 +462,38 @@ question a casting platform needs answered. Blocks less than a day apart merge,
 periods entirely in the past are dropped, and `partially_available` counts as
 blocked - a day the actor cannot freely take is not advertised as free.
 
+### Which platforms actually have a calendar
+
+Read on 2026-09-03, logged in, on all four connected platforms. The answer was
+not what the descriptors said, and it is the reason the import half of this
+feature is one platform and not four:
+
+| Plattform | Kalender | Was da wirklich ist |
+|---|---|---|
+| Filmmakers | **nein** | Kein Kalender. `/profile/availability` = 404, ebenso `/availability` und `/calendar`. Kein Link, kein Menüpunkt. |
+| JobWork | **nein** | Navigation: Jobs, Für dich, Favoriten, Bewerbungen, Nachrichten, Medien, Profil. `/applications` listet 23 Bewerbungen mit Status und Bewerbungsdatum - keine Zeiträume. `/profil/verfuegbarkeit` war immer als NOT verified markiert und existiert nicht. |
+| IM OFF | **ja** | `/external/extras/calendar`: ein Tagesraster zum Ziehen und ein Formular "Längere Abwesenheit" (`#from`, `#to`, beide `type=date`, Speichern) plus eine Tabelle der schon eingetragenen Zeiträume. |
+| Casting Network (DE) | **nein** | `/cn-kalender` ist ein redaktioneller Branchenkalender - Festivals, Filmstarts, "Kuratiert von Carla & Harry". |
+
+Filmmakers and JobWork **declared `pushAvailability`** against those missing
+pages, and IM OFF - the only one that has a calendar - did not. Both
+declarations are gone; the methods stay, because they are groundwork and a
+declaration is what puts a button in the UI. IM OFF now declares it and writes
+the "Längere Abwesenheit" form, skipping periods its table already lists, so a
+second sync of the same calendar adds nothing rather than a duplicate of every
+absence.
+
+**That push has only ever been a dry run**, like every other push in this
+project: the form was filled with 24.12.2026 - 31.12.2026, photographed, and
+Speichern was not clicked.
+
+**The import direction does not exist yet, and there is currently nothing to
+import.** Bookings and appointments were meant to flow from the platforms into
+the manager; none of the four holds any. JobWork's 23 applications are all
+"Beworben", Casting Network's "Laufende Bewerbungen" is empty, and IM OFF's
+absence table has no rows. The shape to read them back is written for IM OFF
+(`readAbsences`), because the push needed it.
+
 This mattered: all four connectors that push availability write `item.notes`
 into a notes field and `item.status` into a status select, and one of them maps
 a status to `gebucht`. Their code is untouched; nothing reaches those fields any

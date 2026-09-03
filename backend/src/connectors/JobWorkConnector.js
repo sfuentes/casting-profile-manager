@@ -28,7 +28,15 @@ export class JobWorkConnector extends BrowserConnector {
     // profile's sections each route to a real editor at
     // /@<handle>/edit/<section>, and a dry run filled every field of the
     // credits drawer - including the two listboxes - and pressed Abbrechen.
-    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia', 'pullProfile', 'pushWorkHistory']
+    // No pushAvailability. Read on 2026-09-03 while logged in: JobWork has no calendar
+    // either. Its navigation is Jobs, Für dich, Favoriten, Bewerbungen,
+    // Nachrichten, Medien, Profil - and /applications lists applications with
+    // a status and the date applied, not periods. /profil/verfuegbarkeit was
+    // always marked NOT verified here; it is not a route the app has.
+    // The method below stays - it is groundwork, and the day this platform
+    // grows a calendar it is most of the work already done - but declaring the
+    // capability puts a button in the UI that can only ever fail.
+    capabilities: ['verify', 'pushProfile', 'pushMedia', 'pullProfile', 'pushWorkHistory']
   });
 
   /**

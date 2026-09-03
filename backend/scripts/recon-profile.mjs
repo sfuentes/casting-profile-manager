@@ -155,7 +155,10 @@ try {
       .filter((l) => l.href && !seen.has(l.href) && seen.add(l.href));
   });
 
-  const interesting = links.filter((l) => /profil|profile|edit|bearbeiten|konto|account|mein|my|setcard|vita|cv|einstellungen|settings/i
+  // Calendar words are in here for the same reason the profile words are: a
+  // platform's calendar page is found by following what the site itself
+  // offers, never by trying /profil/verfuegbarkeit and believing a 404.
+  const interesting = links.filter((l) => /profil|profile|edit|bearbeiten|konto|account|mein|my|setcard|vita|cv|einstellungen|settings|termin|kalender|calendar|verf[uü]gbar|availability|schedule|disposition|buchung|booking|option/i
     .test(`${l.href} ${l.text}`));
 
   console.log('\nlinks the logged-in page offers that look profile-related:');
