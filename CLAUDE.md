@@ -609,10 +609,9 @@ The view keeps what is genuinely its own: which dialog is open, what the alert
 says, which platform is selected. The hooks are destructured under the names the
 markup already used, so moving the logic out changed no JSX at all.
 
-**A view should not call `apiService` directly.** The only reference left in
-`components/` is `apiService.demoMode` in SyncIndicator, which is read in seven
-places across the app and defined nowhere - it is always `undefined`, so every
-`if (!apiService.demoMode)` is dead weight that reads like a feature.
+**A view should not call `apiService` directly.** No component does any more:
+the last reference was `apiService.demoMode` in SyncIndicator, and the demo mode
+is gone (see below).
 
 ### The API envelope, and the field that keeps getting lost
 

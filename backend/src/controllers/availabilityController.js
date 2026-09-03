@@ -410,25 +410,6 @@ export const syncAvailabilityToPlatforms = asyncHandler(async (req, res) => {
   // Sync to each platform
   for (const platform of platforms) {
     try {
-      // Prepare availability data for the platform
-      const availabilityData = {
-        userId: req.user.id,
-        slots: availabilitySlots.map((slot) => ({
-          id: slot._id.toString(),
-          startDate: slot.startDate,
-          endDate: slot.endDate,
-          startTime: slot.startTime,
-          endTime: slot.endTime,
-          type: slot.type,
-          reason: slot.reason,
-          preferredCallStart: slot.preferredCallStart,
-          preferredCallEnd: slot.preferredCallEnd,
-          minimumNotice: slot.minimumNotice,
-          recurring: slot.recurring,
-          recurringPattern: slot.recurringPattern
-        }))
-      };
-
       // Sync through the connector layer. This used to call platformAgent,
       // which simulated the work and always reported success.
       const result = await connectorService.syncAvailability(

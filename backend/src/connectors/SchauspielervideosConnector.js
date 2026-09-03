@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { PlatformConnector } from './PlatformConnector.js';
-import { AuthError, classifyHttpError } from './errors.js';
+import { AuthError, NotSupportedError, classifyHttpError } from './errors.js';
 
 /**
  * Schauspielervideos Platform Adapter
@@ -17,7 +17,10 @@ export class SchauspielervideosConnector extends PlatformConnector {
     name: 'Schauspielervideos',
     authType: 'apiKey',
     credentialFields: [{ name: 'apiKey', type: 'password', required: true, label: 'API-Key' }],
-    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia']
+    // No pushAvailability: this platform does not manage a calendar, and a
+    // capability it cannot perform puts a button in the UI that can only
+    // lie about what it did.
+    capabilities: ['verify', 'pushProfile', 'pushMedia']
   });
 
   // ---- unified interface ----
@@ -105,19 +108,19 @@ export class SchauspielervideosConnector extends PlatformConnector {
   }
 
   /**
-   * Push availability data to Schauspielervideos
-   * Note: Schauspielervideos doesn't typically manage availability
-   * @param {Array} availability
-   * @returns {Promise<Object>}
+   * Schauspielervideos keeps no calendar.
+   *
+   * This used to return `{ success: true, count: 0 }`, which `ConnectorService`
+   * recorded as a successful sync and which moved `platform.lastSync` - a
+   * green "synced" for a push that sent nothing. Refusing is the honest answer,
+   * and `assertSupports` now refuses it one layer earlier, before a SyncLog is
+   * written at all.
    */
-  async pushAvailability(availability) {
-    this.log('warn', 'Schauspielervideos does not support availability sync');
-
-    return {
-      success: true,
-      count: 0,
-      message: 'Schauspielervideos does not manage availability data'
-    };
+  async pushAvailability() {
+    throw new NotSupportedError(
+      'Schauspielervideos does not manage availability data',
+      { platform: 'schauspielervideos' }
+    );
   }
 
   /**
