@@ -7,11 +7,9 @@ import mongoose from 'mongoose';
  * @param {Function} fn - The async function to wrap
  * @returns {Function} - Express middleware function
  */
-export const asyncHandler = (fn) => {
-    return (req, res, next) => {
-        // Execute the async function and catch any errors
-        Promise.resolve(fn(req, res, next)).catch(next);
-    };
+export const asyncHandler = (fn) => (req, res, next) => {
+  // Execute the async function and catch any errors
+  Promise.resolve(fn(req, res, next)).catch(next);
 };
 
 /**
@@ -24,28 +22,28 @@ export const asyncHandler = (fn) => {
  * @returns {Function} - Express middleware function
  */
 export const createAsyncHandler = (fn, options = {}) => {
-    const { onError, logErrors = true } = options;
+  const { onError, logErrors = true } = options;
 
-    return (req, res, next) => {
-        Promise.resolve(fn(req, res, next)).catch((error) => {
-            if (logErrors) {
-                console.error('Async handler error:', {
-                    error: error.message,
-                    stack: error.stack,
-                    url: req.originalUrl,
-                    method: req.method,
-                    userId: req.user?.id,
-                    timestamp: new Date().toISOString()
-                });
-            }
-
-            if (onError) {
-                return onError(error, req, res, next);
-            }
-
-            next(error);
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch((error) => {
+      if (logErrors) {
+        console.error('Async handler error:', {
+          error: error.message,
+          stack: error.stack,
+          url: req.originalUrl,
+          method: req.method,
+          userId: req.user?.id,
+          timestamp: new Date().toISOString()
         });
-    };
+      }
+
+      if (onError) {
+        return onError(error, req, res, next);
+      }
+
+      next(error);
+    });
+  };
 };
 
 /**
@@ -57,28 +55,29 @@ export const createAsyncHandler = (fn, options = {}) => {
  * @returns {Function} - Express middleware function
  */
 export const dbAsyncHandler = (fn, options = {}) => {
-    const { useTransaction = false } = options;
+  const { useTransaction = false } = options;
 
-    return asyncHandler(async (req, res, next) => {
-        if (useTransaction) {
-            const session = await mongoose.startSession();
-            session.startTransaction();
+  return asyncHandler(async (req, res, next) => {
+    if (useTransaction) {
+      const session = await mongoose.startSession();
+      session.startTransaction();
 
-            try {
-                req.session = session;
-                const result = await fn(req, res, next);
-                await session.commitTransaction();
-                return result;
-            } catch (error) {
-                await session.abortTransaction();
-                throw error;
-            } finally {
-                session.endSession();
-            }
-        } else {
-            return await fn(req, res, next);
-        }
-    });
+      try {
+        req.session = session;
+        const result = await fn(req, res, next);
+        await session.commitTransaction();
+
+        return result;
+      } catch (error) {
+        await session.abortTransaction();
+        throw error;
+      } finally {
+        session.endSession();
+      }
+    } else {
+      return await fn(req, res, next);
+    }
+  });
 };
 
 export default asyncHandler;

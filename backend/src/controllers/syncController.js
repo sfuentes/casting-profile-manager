@@ -51,7 +51,7 @@ export const syncAvailability = catchAsync(async (req, res) => {
     // connector sees them. See connectors/blockedPeriods.js.
     const result = await connectorService.syncAvailability(
       userId,
-      parseInt(platformId),
+      parseInt(platformId, 10),
       availability
     );
 
@@ -60,7 +60,6 @@ export const syncAvailability = catchAsync(async (req, res) => {
       data: result,
       message: `Successfully synced ${result.itemsProcessed} block times to platform`
     });
-
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -100,14 +99,13 @@ export const syncMedia = catchAsync(async (req, res) => {
   }
 
   try {
-    const result = await connectorService.syncMedia(userId, parseInt(platformId), profile);
+    const result = await connectorService.syncMedia(userId, parseInt(platformId, 10), profile);
 
     res.status(200).json({
       success: true,
       data: result,
       message: `Successfully uploaded ${result.itemsProcessed} file(s) to platform`
     });
-
   } catch (error) {
     // A platform whose uploader nobody has read yet is not a server fault, and
     // it is not retryable either - it says so in the message.
@@ -147,7 +145,7 @@ export const syncProfile = catchAsync(async (req, res) => {
   try {
     const result = await connectorService.syncProfile(
       userId,
-      parseInt(platformId),
+      parseInt(platformId, 10),
       profile
     );
 
@@ -156,7 +154,6 @@ export const syncProfile = catchAsync(async (req, res) => {
       data: result,
       message: 'Successfully synced profile to platform'
     });
-
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -195,7 +192,7 @@ export const syncWorkHistory = catchAsync(async (req, res) => {
   try {
     const result = await connectorService.syncWorkHistory(
       userId,
-      parseInt(platformId),
+      parseInt(platformId, 10),
       profile,
       { resolutions: req.body?.resolutions || {} }
     );
@@ -208,7 +205,6 @@ export const syncWorkHistory = catchAsync(async (req, res) => {
         ? `${result.itemsProcessed} credit(s) added, ${result.questions.length} need a decision`
         : `${result.itemsProcessed} credit(s) added`
     });
-
   } catch (error) {
     const status = error.name === 'NotSupportedError' ? 400 : 500;
     res.status(status).json({
@@ -229,7 +225,7 @@ export const syncWorkHistory = catchAsync(async (req, res) => {
  */
 export const getSyncHistory = catchAsync(async (req, res) => {
   const userId = req.user.id;
-  const limit = parseInt(req.query.limit) || 20;
+  const limit = parseInt(req.query.limit, 10) || 20;
 
   const history = await connectorService.getSyncHistory(userId, limit);
 
@@ -248,7 +244,7 @@ export const getSyncStatus = catchAsync(async (req, res) => {
   const { platformId } = req.params;
   const userId = req.user.id;
 
-  const status = await connectorService.getSyncStatus(userId, parseInt(platformId));
+  const status = await connectorService.getSyncStatus(userId, parseInt(platformId, 10));
 
   res.status(200).json({
     success: true,
@@ -271,7 +267,6 @@ export const retrySync = catchAsync(async (req, res) => {
       data: result,
       message: 'Sync retry completed successfully'
     });
-
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -320,7 +315,6 @@ export const bulkSync = catchAsync(async (req, res) => {
           results.push({ platformId, operation: 'profile', ...result });
         }
       }
-
     } catch (error) {
       errors.push({
         platformId,

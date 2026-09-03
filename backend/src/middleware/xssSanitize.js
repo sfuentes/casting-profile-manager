@@ -7,6 +7,7 @@
 
 const escapeHtml = (str) => {
   if (typeof str !== 'string') return str;
+
   return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -27,8 +28,10 @@ const sanitize = (data) => {
     for (const [key, value] of Object.entries(data)) {
       sanitized[key] = sanitize(value);
     }
+
     return sanitized;
   }
+
   return data;
 };
 

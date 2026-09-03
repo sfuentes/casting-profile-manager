@@ -169,6 +169,7 @@ const toDateOnly = (value) => {
 
   if (value instanceof Date) {
     if (Number.isNaN(value.getTime())) return null;
+
     return value.toISOString().slice(0, 10);
   }
 
@@ -195,6 +196,7 @@ const toCentimetres = (value) => {
   if (metres) return String(Math.round(parseFloat(metres[1]) * 100));
 
   const digits = text.match(/\d+/);
+
   return digits ? digits[0] : null;
 };
 
@@ -202,6 +204,7 @@ const toCentimetres = (value) => {
 const toKilograms = (value) => {
   if (value === null || value === undefined) return null;
   const digits = String(value).match(/\d+/);
+
   return digits ? digits[0] : null;
 };
 
@@ -218,7 +221,9 @@ export const normalizeProfileFields = (fields = {}) => {
   const unmapped = [];
 
   const ask = (path, field, value) => {
-    unmapped.push({ path, field, value, options: VOCABULARY[field] || [] });
+    unmapped.push({
+      path, field, value, options: VOCABULARY[field] || []
+    });
   };
 
   // ---- plain text: trim only ----
@@ -237,7 +242,9 @@ export const normalizeProfileFields = (fields = {}) => {
     if (date) out.dateOfBirth = date;
     else {
       delete out.dateOfBirth;
-      unmapped.push({ path: 'dateOfBirth', field: 'dateOfBirth', value: fields.dateOfBirth, options: [] });
+      unmapped.push({
+        path: 'dateOfBirth', field: 'dateOfBirth', value: fields.dateOfBirth, options: []
+      });
     }
   }
 
@@ -275,6 +282,7 @@ export const normalizeProfileFields = (fields = {}) => {
           context: language
         });
       }
+
       return { language, level: level || '' };
     }).filter((entry) => entry.language);
   }
@@ -291,6 +299,7 @@ export const normalizeProfileFields = (fields = {}) => {
   // unclassified.
   const media = (items, kind) => {
     const seen = new Set();
+
     return items
       .filter((item) => typeof item?.url === 'string' && /^https?:\/\//i.test(item.url))
       .filter((item) => !seen.has(item.url) && seen.add(item.url))

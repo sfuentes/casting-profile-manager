@@ -20,6 +20,7 @@ const findUserPlatform = async (id, userId) => {
   }
   const numeric = parseInt(id, 10);
   if (Number.isNaN(numeric)) return null;
+
   return Platform.findOne({ platformId: numeric, user: userId });
 };
 

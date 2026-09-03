@@ -11,9 +11,9 @@ export const connectDB = async () => {
     if (process.env.MONGO_ROOT_PASSWORD) {
       const username = encodeURIComponent(process.env.MONGO_ROOT_USERNAME || 'admin');
       const password = encodeURIComponent(process.env.MONGO_ROOT_PASSWORD);
-      const host     = process.env.MONGO_HOST || 'mongodb';
-      const port     = process.env.MONGO_PORT || '27017';
-      const db       = process.env.MONGO_DB   || 'darsteller-manager';
+      const host = process.env.MONGO_HOST || 'mongodb';
+      const port = process.env.MONGO_PORT || '27017';
+      const db = process.env.MONGO_DB || 'darsteller-manager';
       uri = `mongodb://${username}:${password}@${host}:${port}/${db}?authSource=admin`;
     } else {
       uri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/darsteller-manager';

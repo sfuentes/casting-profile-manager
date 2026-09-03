@@ -19,8 +19,12 @@ export class CastingNetworkDeConnector extends BrowserConnector {
     key: 'casting-network-de',
     name: 'Casting Network (DE)',
     authType: 'credentials',
-    credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
-      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    credentialFields: [{
+      name: 'email', type: 'email', required: true, label: 'E-Mail'
+    },
+    {
+      name: 'password', type: 'password', required: true, label: 'Passwort'
+    }],
     // The import reads the account page, which is where this platform keeps
     // the personal data. Pushing back is not offered: nothing has been written
     // to this site and nobody has watched what its save buttons do.
@@ -97,9 +101,13 @@ export class CastingNetworkDeConnector extends BrowserConnector {
       { field: 'firstName', selector: 'input[name="client_first_name"]', kind: 'text' },
       { field: 'lastName', selector: 'input[name="client_last_name"]', kind: 'text' },
       // The form asks for a year; the profile stores a date.
-      { field: 'dateOfBirth', selector: 'input[name="client_birth_year"]', kind: 'text', transform: 'year' },
+      {
+        field: 'dateOfBirth', selector: 'input[name="client_birth_year"]', kind: 'text', transform: 'year'
+      },
       // "Berlin, Deutschland" here, "Wohnort" there.
-      { field: 'location', selector: 'input[name="client_residence"]', kind: 'text', transform: 'firstSegment' },
+      {
+        field: 'location', selector: 'input[name="client_residence"]', kind: 'text', transform: 'firstSegment'
+      },
       // Radios labelled männlich / weiblich / divers, valued m / w / d. The
       // real control is a Radix button[role="radio"]; the input beside it is
       // invisible and only carries the value. Both are named here, and the

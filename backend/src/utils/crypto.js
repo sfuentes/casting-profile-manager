@@ -60,12 +60,13 @@ export const describeKeyProblem = () => {
   const firstNonHex = value.search(/[^0-9a-fA-F]/);
   if (firstNonHex !== -1) {
     const looksBase64 = /[+/=]/.test(value);
+
     return `CREDENTIAL_ENCRYPTION_KEY contains a non-hex character at position ${firstNonHex + 1} `
-      + `of ${value.length}.`
-      + (looksBase64
-        ? ' The value looks base64-encoded; this key must be hex. Generate it with'
+      + `of ${value.length}.${
+        looksBase64
+          ? ' The value looks base64-encoded; this key must be hex. Generate it with'
           + ' openssl rand -hex 32, not openssl rand -base64 32.'
-        : ' Expected only the characters 0-9 and a-f.');
+          : ' Expected only the characters 0-9 and a-f.'}`;
   }
 
   if (value.length !== HEX_CHARS) {
@@ -91,6 +92,7 @@ const getKey = () => {
   }
 
   cachedKey = Buffer.from(process.env.CREDENTIAL_ENCRYPTION_KEY.trim(), 'hex');
+
   return cachedKey;
 };
 
@@ -103,6 +105,7 @@ export const resetKeyCache = () => {
 export const isEncryptionConfigured = () => {
   try {
     getKey();
+
     return true;
   } catch {
     return false;
@@ -133,8 +136,7 @@ export const encryptSecret = (plaintext) => {
 };
 
 /** Whether a value carries our envelope. */
-export const isEncrypted = (value) =>
-  typeof value === 'string' && value.startsWith(`${PREFIX}:`);
+export const isEncrypted = (value) => typeof value === 'string' && value.startsWith(`${PREFIX}:`);
 
 /**
  * Decrypt a value produced by encryptSecret.

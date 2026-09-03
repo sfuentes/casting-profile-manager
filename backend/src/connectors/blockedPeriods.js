@@ -46,11 +46,13 @@ const at = (date, time, edge) => {
   const match = /^(\d{1,2}):(\d{2})/.exec(String(time || ''));
   if (match) {
     base.setHours(Number(match[1]), Number(match[2]), 0, 0);
+
     return base;
   }
 
   if (edge === 'end') base.setHours(23, 59, 59, 999);
   else base.setHours(0, 0, 0, 0);
+
   return base;
 };
 
@@ -107,10 +109,9 @@ export const toBlockedPeriods = (entries, { now = new Date() } = {}) => {
  * those connectors because a platform may one day have a legitimate use for a
  * status; what changes is that nothing reaches them to write.
  */
-export const toBlockedFormItems = (entries, options) =>
-  toBlockedPeriods(entries, options).map(({ start, end }) => ({
-    startDate: start,
-    endDate: end
-  }));
+export const toBlockedFormItems = (entries, options) => toBlockedPeriods(entries, options).map(({ start, end }) => ({
+  startDate: start,
+  endDate: end
+}));
 
 export default { BLOCKING_TYPES, toBlockedPeriods, toBlockedFormItems };

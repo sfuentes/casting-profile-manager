@@ -14,8 +14,12 @@ export class ImOffConnector extends BrowserConnector {
     authType: 'credentials',
     // The account field is `user_name`, not an email address - the form asks
     // for a user name, so the UI does too.
-    credentialFields: [{ name: 'username', type: 'text', required: true, label: 'Benutzername' },
-      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    credentialFields: [{
+      name: 'username', type: 'text', required: true, label: 'Benutzername'
+    },
+    {
+      name: 'password', type: 'password', required: true, label: 'Passwort'
+    }],
     capabilities: ['verify', 'pullProfile', 'pushMedia']
   });
 
@@ -91,13 +95,27 @@ export class ImOffConnector extends BrowserConnector {
           // rather than guessed.
           path: '/external/extras/photos',
           fields: [
-            { field: 'setcard.photos', selector: 'img[src*="front1"]', kind: 'images', type: 'portrait', primary: true },
-            { field: 'setcard.photos', selector: 'img[src*="front2"]', kind: 'images', type: 'portrait' },
-            { field: 'setcard.photos', selector: 'img[src*="front3"]', kind: 'images', type: 'portrait' },
-            { field: 'setcard.photos', selector: 'img[src*="full"]', kind: 'images', type: 'fullbody' },
-            { field: 'setcard.photos', selector: 'img[src*="left"]', kind: 'images', type: 'character' },
-            { field: 'setcard.photos', selector: 'img[src*="right"]', kind: 'images', type: 'character' },
-            { field: 'setcard.photos', selector: 'img[src*="hands"]', kind: 'images', type: 'other' }
+            {
+              field: 'setcard.photos', selector: 'img[src*="front1"]', kind: 'images', type: 'portrait', primary: true
+            },
+            {
+              field: 'setcard.photos', selector: 'img[src*="front2"]', kind: 'images', type: 'portrait'
+            },
+            {
+              field: 'setcard.photos', selector: 'img[src*="front3"]', kind: 'images', type: 'portrait'
+            },
+            {
+              field: 'setcard.photos', selector: 'img[src*="full"]', kind: 'images', type: 'fullbody'
+            },
+            {
+              field: 'setcard.photos', selector: 'img[src*="left"]', kind: 'images', type: 'character'
+            },
+            {
+              field: 'setcard.photos', selector: 'img[src*="right"]', kind: 'images', type: 'character'
+            },
+            {
+              field: 'setcard.photos', selector: 'img[src*="hands"]', kind: 'images', type: 'other'
+            }
           ]
         },
         {

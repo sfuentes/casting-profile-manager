@@ -36,6 +36,7 @@ class ConnectorService {
         { platform: platform.platformId }
       );
     }
+
     return new Connector(platform, platform.authData || {});
   }
 
@@ -49,15 +50,18 @@ class ConnectorService {
     try {
       connector = this.instantiate(platform);
     } catch (error) {
-      return { ok: false, verified: false, message: error.message, capabilities: [] };
+      return {
+        ok: false, verified: false, message: error.message, capabilities: []
+      };
     }
 
-    const manifest = connector.manifest;
+    const { manifest } = connector;
 
     // Manual platforms have nothing to log into; ask the connector rather than
     // testing the id against a list here.
     if (!connector.supports('verify')) {
       const result = await connector.verify().catch(() => null);
+
       return {
         ok: result?.ok ?? true,
         verified: false,
@@ -78,6 +82,7 @@ class ConnectorService {
 
     try {
       const result = await connector.verify();
+
       return {
         ok: result.ok !== false,
         verified: true,
@@ -97,6 +102,7 @@ class ConnectorService {
       logger.warn(`[connectors] verify failed for ${manifest.key}`, {
         error: error.message, url: forensics?.url, title: forensics?.title
       });
+
       return {
         ok: false,
         verified: false,
@@ -130,6 +136,7 @@ class ConnectorService {
    */
   syncAvailability(userId, platformId, availability, options = {}) {
     const blocked = toBlockedFormItems(availability);
+
     return this.#run(userId, platformId, 'pushAvailability', 'push_availability', blocked, options);
   }
 
@@ -425,11 +432,13 @@ class ConnectorService {
       case 'push_profile': {
         const profile = await Profile.findOne({ user: userId }).lean();
         if (!profile) throw new Error('No profile data to sync');
+
         return this.syncProfile(userId, platformId, profile);
       }
       case 'push_availability': {
         const availability = await Availability.find({ user: userId }).lean();
         if (!availability.length) throw new Error('No availability data to sync');
+
         return this.syncAvailability(userId, platformId, availability);
       }
       case 'push_media':

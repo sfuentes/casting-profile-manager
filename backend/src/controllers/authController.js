@@ -91,7 +91,7 @@ export const register = catchAsync(async (req, res, next) => {
 
   // Create default platforms for the new user
   try {
-    const platformsToCreate = defaultPlatforms().map(platform => ({
+    const platformsToCreate = defaultPlatforms().map((platform) => ({
       ...platform,
       user: user._id
     }));

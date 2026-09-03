@@ -120,6 +120,7 @@ export const classifyHttpError = (error, { platform, name } = {}) => {
 
   if (status === 429) {
     const retryAfter = Number(error?.response?.headers?.['retry-after']);
+
     return new RateLimitError(`${label} is rate limiting this account (HTTP 429)`, {
       ...options,
       retryAfterMs: Number.isFinite(retryAfter) ? retryAfter * 1000 : null

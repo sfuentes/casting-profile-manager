@@ -45,23 +45,23 @@ const addPlatformsToExistingUsers = async () => {
 
       // Check which platforms the user already has
       const existingPlatforms = await Platform.find({ user: user._id });
-      const existingPlatformIds = existingPlatforms.map(p => p.platformId);
+      const existingPlatformIds = existingPlatforms.map((p) => p.platformId);
 
       console.log(`  - Existing platforms: ${existingPlatformIds.length} (IDs: ${existingPlatformIds.join(', ') || 'none'})`);
 
       // Filter out platforms that already exist
       const platformsToAdd = knownPlatforms().filter(
-        platform => !existingPlatformIds.includes(platform.platformId)
+        (platform) => !existingPlatformIds.includes(platform.platformId)
       );
 
       if (platformsToAdd.length === 0) {
-        console.log(`  - All platforms already exist for this user`);
+        console.log('  - All platforms already exist for this user');
         totalSkipped += existingPlatformIds.length;
         continue;
       }
 
       // Add missing platforms
-      const platformsWithUser = platformsToAdd.map(platform => ({
+      const platformsWithUser = platformsToAdd.map((platform) => ({
         ...platform,
         user: user._id
       }));

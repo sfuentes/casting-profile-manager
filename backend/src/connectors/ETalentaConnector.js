@@ -19,8 +19,12 @@ export class ETalentaConnector extends BrowserConnector {
     key: 'e-talenta',
     name: 'e-TALENTA',
     authType: 'credentials',
-    credentialFields: [{ name: 'username', type: 'text', required: true, label: 'Benutzername' },
-      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    credentialFields: [{
+      name: 'username', type: 'text', required: true, label: 'Benutzername'
+    },
+    {
+      name: 'password', type: 'password', required: true, label: 'Passwort'
+    }],
     // Only the login has been established. The previous manifest claimed
     // pushProfile, pushAvailability and pushMedia against an API it could not
     // reach - three buttons in the UI that could only ever fail.

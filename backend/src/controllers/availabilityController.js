@@ -46,32 +46,32 @@ export const getAvailability = asyncHandler(async (req, res) => {
   }
 
   // Calculate pagination
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
   const total = await Availability.countDocuments(query);
 
   // Execute query with pagination
   const availability = await Availability.find(query)
     .sort(sort)
     .skip(skip)
-    .limit(parseInt(limit))
+    .limit(parseInt(limit, 10))
     .populate('user', 'name email')
     .lean();
 
   // Calculate pagination info
-  const totalPages = Math.ceil(total / parseInt(limit));
-  const hasNextPage = parseInt(page) < totalPages;
-  const hasPrevPage = parseInt(page) > 1;
+  const totalPages = Math.ceil(total / parseInt(limit, 10));
+  const hasNextPage = parseInt(page, 10) < totalPages;
+  const hasPrevPage = parseInt(page, 10) > 1;
 
   res.status(200).json({
     success: true,
     count: availability.length,
     total,
     pagination: {
-      currentPage: parseInt(page),
+      currentPage: parseInt(page, 10),
       totalPages,
       hasNextPage,
       hasPrevPage,
-      limit: parseInt(limit)
+      limit: parseInt(limit, 10)
     },
     data: availability
   });

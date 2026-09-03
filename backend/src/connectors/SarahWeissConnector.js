@@ -18,8 +18,12 @@ export class SarahWeissConnector extends BrowserConnector {
     name: 'Sarah Weiß Casting',
     authType: 'credentials',
     // The form asks for a user name, not an email address.
-    credentialFields: [{ name: 'username', type: 'text', required: true, label: 'Benutzername' },
-      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    credentialFields: [{
+      name: 'username', type: 'text', required: true, label: 'Benutzername'
+    },
+    {
+      name: 'password', type: 'password', required: true, label: 'Passwort'
+    }],
     // Login only: nothing behind it has been seen.
     capabilities: ['verify']
   });
