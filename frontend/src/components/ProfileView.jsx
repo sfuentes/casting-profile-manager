@@ -89,12 +89,15 @@ const Pair = ({children}) => (
  * uppercase exemption covers variables but not parameters - a destructured
  * `{icon: Icon}` is reported as unused even though the JSX below renders it.
  */
-const Detail = (props) => (
+// Nothing to show means nothing is shown. Without this, a profile with no
+// contact details rendered an envelope and a telephone receiver on their own
+// under the name, labelling two blanks.
+const Detail = (props) => (props.children ? (
     <Stack direction="row" spacing={0.5} sx={{alignItems: 'center'}}>
         <props.icon size={12}/>
         <span>{props.children}</span>
     </Stack>
-);
+) : null);
 
 /** The empty state each list tab shows before anything has been added. */
 const Empty = (props) => (

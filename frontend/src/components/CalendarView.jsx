@@ -29,6 +29,14 @@ import {Button, Modal, Input, Badge, Card, TimeInput} from './ui';
  * the Tailwind classes drew: bookings green, options yellow, availability blue,
  * partial orange, blocked red.
  */
+/** Midnight local time on the day a date falls in. */
+const startOfDay = (value) => {
+    const d = new Date(value);
+    d.setHours(0, 0, 0, 0);
+
+    return d;
+};
+
 const EVENT_STYLES = {
     booking: {bg: '#dcfce7', border: '#22c55e', text: '#166534'},
     option: {bg: '#fef9c3', border: '#eab308', text: '#854d0e'},
@@ -112,37 +120,32 @@ const CalendarView = () => {
         );
     }
 
+    /**
+     * Which entries fall on a calendar day.
+     *
+     * Compared by day, not by instant. A cell is that day at midnight local
+     * time, and an entry's dates carry whatever time they were stored with -
+     * so `date >= startDate` was false for every entry starting later that same
+     * day, and a one-day booking, option or availability never appeared at all.
+     * A date picker stores midnight UTC, which is 02:00 here in summer, so this
+     * hit ordinary entries and not just odd ones.
+     */
+    const sameOrAfter = (dayStart, value) => dayStart >= startOfDay(new Date(value));
+    const sameOrBefore = (dayStart, value) => dayStart <= startOfDay(new Date(value));
+
     const getEventsForDate = (date) => {
-        const events = [];
+        const day = startOfDay(date);
 
-        // Add bookings
-        bookings.forEach(booking => {
-            const startDate = new Date(booking.startDate);
-            const endDate = new Date(booking.endDate);
-            if (date >= startDate && date <= endDate) {
-                events.push({...booking, eventType: 'booking'});
-            }
-        });
+        const on = (items, eventType) => items
+            .filter((item) => sameOrAfter(day, item.startDate)
+                && sameOrBefore(day, item.endDate || item.startDate))
+            .map((item) => ({...item, eventType}));
 
-        // Add options
-        options.forEach(option => {
-            const startDate = new Date(option.startDate);
-            const endDate = new Date(option.endDate);
-            if (date >= startDate && date <= endDate) {
-                events.push({...option, eventType: 'option'});
-            }
-        });
-
-        // Add availability
-        availability.forEach(avail => {
-            const startDate = new Date(avail.startDate);
-            const endDate = new Date(avail.endDate);
-            if (date >= startDate && date <= endDate) {
-                events.push({...avail, eventType: 'availability'});
-            }
-        });
-
-        return events;
+        return [
+            ...on(bookings, 'booking'),
+            ...on(options, 'option'),
+            ...on(availability, 'availability')
+        ];
     };
 
     const openModal = (type, item = null) => {
@@ -251,8 +254,17 @@ const CalendarView = () => {
     return (
         <Stack spacing={3}>
             {/* Header */}
-            <Stack direction="row" spacing={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap'}}>
-                <Stack direction="row" spacing={2} sx={{alignItems: 'center'}}>
+            {/*
+              Two rows, not one. The month stepper used to sit against the
+              heading and the five actions wrapped underneath it starting with a
+              bare gear icon, so the eye met "Kalender ‹ September 2026 ›" as one
+              run of text and then a row of buttons with no beginning.
+            */}
+            <Stack spacing={2}>
+                <Stack
+                    direction="row" spacing={2}
+                    sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap'}}
+                >
                     <Typography variant="h4" component="h1" fontWeight={700}>Kalender</Typography>
                     <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                         <Button variant="outline" onClick={() => navigateMonth(-1)} icon={ChevronLeft} size="sm"/>
@@ -262,8 +274,14 @@ const CalendarView = () => {
                         <Button variant="outline" onClick={() => navigateMonth(1)} icon={ChevronRight} size="sm"/>
                     </Stack>
                 </Stack>
-                <Stack direction="row" spacing={1.5} sx={{flexWrap: 'wrap'}}>
-                    <Button onClick={() => setShowAvailabilitySettings(true)} variant="outline" icon={Settings} size="sm"/>
+                <Stack direction="row" spacing={1.5} sx={{flexWrap: 'wrap', rowGap: 1.5}}>
+                    <Button
+                        onClick={() => setShowAvailabilitySettings(true)}
+                        variant="outline"
+                        icon={Settings}
+                        size="sm"
+                        title="Verfügbarkeits-Einstellungen"
+                    />
                     <Button
                         onClick={() => setShowSyncModal(true)}
                         variant="outline"
