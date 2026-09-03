@@ -1,21 +1,61 @@
 import React, {useState, useMemo} from 'react';
+import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
+import TextField from '@mui/material/TextField';
+import MenuItem from '@mui/material/MenuItem';
+import Alert from '@mui/material/Alert';
+import AlertTitle from '@mui/material/AlertTitle';
+import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import CircularProgress from '@mui/material/CircularProgress';
 import {
     Plus,
     Loader,
     ChevronLeft,
     ChevronRight,
-    Calendar as CalendarIcon,
     Clock,
-    Edit2,
     Trash2,
     RefreshCw,
     X,
     Check,
-    AlertCircle,
     Settings
 } from 'lucide-react';
 import {useAppContext} from '../context/AppContext';
 import {Button, Modal, Input, Badge, Card, TimeInput} from './ui';
+
+/**
+ * What each kind of entry looks like in a day cell. The palette is the same one
+ * the Tailwind classes drew: bookings green, options yellow, availability blue,
+ * partial orange, blocked red.
+ */
+const EVENT_STYLES = {
+    booking: {bg: '#dcfce7', border: '#22c55e', text: '#166534'},
+    option: {bg: '#fef9c3', border: '#eab308', text: '#854d0e'},
+    available: {bg: '#dbeafe', border: '#3b82f6', text: '#1e40af'},
+    partially_available: {bg: '#ffedd5', border: '#f97316', text: '#9a3412'},
+    unavailable: {bg: '#fee2e2', border: '#ef4444', text: '#991b1b'},
+    other: {bg: '#f3f4f6', border: '#6b7280', text: '#1f2937'}
+};
+
+const LEGEND = [
+    {color: '#22c55e', label: 'Buchungen'},
+    {color: '#eab308', label: 'Optionen'},
+    {color: '#3b82f6', label: 'Verfügbar'},
+    {color: '#f97316', label: 'Teilweise verfügbar'},
+    {color: '#ef4444', label: 'Nicht verfügbar'}
+];
+
+const WEEKDAYS = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+
+const UNAVAILABLE_REASONS = ['Urlaub', 'Krankheit', 'Andere Verpflichtung', 'Persönliche Termine', 'Sonstiges'];
+
+/** Two fields side by side - the shape this dialog uses over and over. */
+const Pair = ({children}) => (
+    <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 2}}>
+        {children}
+    </Box>
+);
 
 const CalendarView = () => {
     const {
@@ -42,17 +82,8 @@ const CalendarView = () => {
     const [modalType, setModalType] = useState('booking');
     const [editingItem, setEditingItem] = useState(null);
     const [formData, setFormData] = useState({});
-    const [viewMode, setViewMode] = useState('month'); // month, week, day
     const [showSyncModal, setShowSyncModal] = useState(false);
     const [showAvailabilitySettings, setShowAvailabilitySettings] = useState(false);
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-64">
-                <Loader size={48} className="animate-spin text-blue-600"/>
-            </div>
-        );
-    }
 
     // Calendar logic
     const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -73,8 +104,15 @@ const CalendarView = () => {
         return days;
     }, [startOfCalendar, endOfCalendar]);
 
+    if (loading) {
+        return (
+            <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: 256}}>
+                <CircularProgress size={48}/>
+            </Box>
+        );
+    }
+
     const getEventsForDate = (date) => {
-        const dateStr = date.toISOString().split('T')[0];
         const events = [];
 
         // Add bookings
@@ -199,23 +237,9 @@ const CalendarView = () => {
         }
     };
 
-    const getEventColor = (eventType, status, availType) => {
-        if (eventType === 'booking') return 'bg-green-100 border-green-500 text-green-800';
-        if (eventType === 'option') return 'bg-yellow-100 border-yellow-500 text-yellow-800';
-        if (eventType === 'availability') {
-            if (availType === 'available') return 'bg-blue-100 border-blue-500 text-blue-800';
-            if (availType === 'partially_available') return 'bg-orange-100 border-orange-500 text-orange-800';
-            return 'bg-red-100 border-red-500 text-red-800';
-        }
-        return 'bg-gray-100 border-gray-500 text-gray-800';
-    };
-
-    const getEventIcon = (eventType, availType) => {
-        if (eventType === 'availability' && (availType === 'available' || availType === 'partially_available')) {
-            return <Clock size={12} className="inline mr-1"/>;
-        }
-        return null;
-    };
+    const eventStyle = (event) => (event.eventType === 'availability'
+        ? EVENT_STYLES[event.type] || EVENT_STYLES.other
+        : EVENT_STYLES[event.eventType] || EVENT_STYLES.other);
 
     const formatTimeRange = (startTime, endTime) => {
         if (!startTime || !endTime) return '';
@@ -225,36 +249,21 @@ const CalendarView = () => {
     const syncEnabledPlatforms = platforms.filter(p => p.connected && p.syncSettings.syncAvailability);
 
     return (
-        <div className="space-y-6">
+        <Stack gap={3}>
             {/* Header */}
-            <div className="flex justify-between items-center">
-                <div className="flex items-center space-x-4">
-                    <h1 className="text-3xl font-bold text-gray-900">Kalender</h1>
-                    <div className="flex items-center space-x-2">
-                        <Button
-                            variant="outline"
-                            onClick={() => navigateMonth(-1)}
-                            icon={ChevronLeft}
-                            size="sm"
-                        />
-                        <span className="text-lg font-medium min-w-[180px] text-center">
+            <Stack direction="row" gap={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap'}}>
+                <Stack direction="row" gap={2} sx={{alignItems: 'center'}}>
+                    <Typography variant="h4" component="h1" fontWeight={700}>Kalender</Typography>
+                    <Stack direction="row" gap={1} sx={{alignItems: 'center'}}>
+                        <Button variant="outline" onClick={() => navigateMonth(-1)} icon={ChevronLeft} size="sm"/>
+                        <Typography sx={{minWidth: 180, textAlign: 'center', fontWeight: 500}}>
                             {currentDate.toLocaleDateString('de-DE', {month: 'long', year: 'numeric'})}
-                        </span>
-                        <Button
-                            variant="outline"
-                            onClick={() => navigateMonth(1)}
-                            icon={ChevronRight}
-                            size="sm"
-                        />
-                    </div>
-                </div>
-                <div className="flex gap-3">
-                    <Button
-                        onClick={() => setShowAvailabilitySettings(true)}
-                        variant="outline"
-                        icon={Settings}
-                        size="sm"
-                    />
+                        </Typography>
+                        <Button variant="outline" onClick={() => navigateMonth(1)} icon={ChevronRight} size="sm"/>
+                    </Stack>
+                </Stack>
+                <Stack direction="row" gap={1.5} sx={{flexWrap: 'wrap'}}>
+                    <Button onClick={() => setShowAvailabilitySettings(true)} variant="outline" icon={Settings} size="sm"/>
                     <Button
                         onClick={() => setShowSyncModal(true)}
                         variant="outline"
@@ -272,100 +281,128 @@ const CalendarView = () => {
                     <Button onClick={() => openModal('booking')} icon={Plus}>
                         Buchung
                     </Button>
-                </div>
-            </div>
+                </Stack>
+            </Stack>
 
-            {/* Enhanced Legend */}
+            {/* Legend */}
             <Card>
-                <div className="flex items-center space-x-6 flex-wrap">
-                    <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 bg-green-500 rounded"></div>
-                        <span className="text-sm">Buchungen</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 bg-yellow-500 rounded"></div>
-                        <span className="text-sm">Optionen</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 bg-blue-500 rounded"></div>
-                        <span className="text-sm">Verfügbar</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 bg-orange-500 rounded"></div>
-                        <span className="text-sm">Teilweise verfügbar</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 bg-red-500 rounded"></div>
-                        <span className="text-sm">Nicht verfügbar</span>
-                    </div>
-                </div>
+                <Stack direction="row" gap={3} sx={{alignItems: 'center', flexWrap: 'wrap'}}>
+                    {LEGEND.map(({color, label}) => (
+                        <Stack key={label} direction="row" gap={1} sx={{alignItems: 'center'}}>
+                            <Box sx={{width: 16, height: 16, bgcolor: color, borderRadius: 0.5}}/>
+                            <Typography variant="body2">{label}</Typography>
+                        </Stack>
+                    ))}
+                </Stack>
             </Card>
 
-            {/* Calendar Grid */}
+            {/* Calendar grid */}
             <Card>
-                <div className="grid grid-cols-7 gap-0 border border-gray-200 rounded-lg overflow-hidden">
-                    {/* Header row */}
-                    {['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'].map(day => (
-                        <div key={day} className="bg-gray-50 p-3 text-center font-medium text-gray-700 border-b">
+                <Box
+                    sx={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                        border: 1,
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                        overflow: 'hidden'
+                    }}
+                >
+                    {WEEKDAYS.map(day => (
+                        <Box
+                            key={day}
+                            sx={{
+                                bgcolor: 'grey.50', p: 1.5, textAlign: 'center',
+                                fontWeight: 500, color: 'text.secondary',
+                                borderBottom: 1, borderColor: 'divider'
+                            }}
+                        >
                             {day}
-                        </div>
+                        </Box>
                     ))}
 
-                    {/* Calendar days */}
                     {calendarDays.map((date, index) => {
                         const events = getEventsForDate(date);
                         const isCurrentMonth = date.getMonth() === currentDate.getMonth();
                         const isToday = date.toDateString() === new Date().toDateString();
 
                         return (
-                            <div
+                            <Box
                                 key={index}
-                                className={`min-h-[140px] p-2 border-r border-b ${
-                                    isCurrentMonth ? 'bg-white' : 'bg-gray-50'
-                                } ${isToday ? 'bg-blue-50' : ''} hover:bg-gray-50`}
+                                sx={{
+                                    minHeight: 140,
+                                    p: 1,
+                                    borderRight: 1,
+                                    borderBottom: 1,
+                                    borderColor: 'divider',
+                                    bgcolor: isToday ? 'primary.50' : (isCurrentMonth ? 'background.paper' : 'grey.50'),
+                                    '&:hover': {bgcolor: 'grey.100'}
+                                }}
                             >
-                                <div className={`text-sm font-medium mb-1 ${
-                                    isCurrentMonth ? 'text-gray-900' : 'text-gray-400'
-                                } ${isToday ? 'text-blue-600' : ''}`}>
+                                <Typography
+                                    variant="body2"
+                                    sx={{
+                                        fontWeight: 500,
+                                        mb: 0.5,
+                                        color: isToday
+                                            ? 'primary.main'
+                                            : (isCurrentMonth ? 'text.primary' : 'text.disabled')
+                                    }}
+                                >
                                     {date.getDate()}
-                                </div>
+                                </Typography>
 
-                                <div className="space-y-1">
-                                    {events.slice(0, 3).map((event, eventIndex) => (
-                                        <div
-                                            key={eventIndex}
-                                            className={`text-xs p-1 rounded border-l-2 cursor-pointer hover:opacity-75 ${getEventColor(event.eventType, event.status, event.type)}`}
-                                            onClick={() => openModal(event.eventType, event)}
-                                        >
-                                            <div className="font-medium truncate flex items-center">
-                                                {getEventIcon(event.eventType, event.type)}
-                                                {event.title || event.reason}
-                                            </div>
-                                            {event.role && (
-                                                <div className="truncate opacity-75">
-                                                    {event.role}
-                                                </div>
-                                            )}
-                                            {(event.startTime && event.endTime) && (
-                                                <div className="truncate opacity-75 text-xs">
-                                                    {formatTimeRange(event.startTime, event.endTime)}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                <Stack gap={0.5}>
+                                    {events.slice(0, 3).map((event, eventIndex) => {
+                                        const style = eventStyle(event);
+                                        return (
+                                            <Box
+                                                key={eventIndex}
+                                                onClick={() => openModal(event.eventType, event)}
+                                                sx={{
+                                                    fontSize: 12,
+                                                    p: 0.5,
+                                                    borderRadius: 1,
+                                                    borderLeft: '2px solid',
+                                                    borderLeftColor: style.border,
+                                                    bgcolor: style.bg,
+                                                    color: style.text,
+                                                    cursor: 'pointer',
+                                                    '&:hover': {opacity: 0.75}
+                                                }}
+                                            >
+                                                <Box sx={{fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>
+                                                    {event.eventType === 'availability'
+                                                        && (event.type === 'available' || event.type === 'partially_available')
+                                                        && <Clock size={12} style={{display: 'inline', marginRight: 4}}/>}
+                                                    {event.title || event.reason}
+                                                </Box>
+                                                {event.role && (
+                                                    <Box sx={{opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>
+                                                        {event.role}
+                                                    </Box>
+                                                )}
+                                                {(event.startTime && event.endTime) && (
+                                                    <Box sx={{opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>
+                                                        {formatTimeRange(event.startTime, event.endTime)}
+                                                    </Box>
+                                                )}
+                                            </Box>
+                                        );
+                                    })}
                                     {events.length > 3 && (
-                                        <div className="text-xs text-gray-500 p-1">
+                                        <Typography variant="caption" color="text.secondary" sx={{p: 0.5}}>
                                             +{events.length - 3} weitere
-                                        </div>
+                                        </Typography>
                                     )}
-                                </div>
-                            </div>
+                                </Stack>
+                            </Box>
                         );
                     })}
-                </div>
+                </Box>
             </Card>
 
-            {/* Enhanced Event Modal */}
+            {/* Event modal */}
             <Modal
                 isOpen={showModal}
                 onClose={() => setShowModal(false)}
@@ -375,21 +412,21 @@ const CalendarView = () => {
                         : `${modalType === 'booking' ? 'Neue Buchung' : modalType === 'option' ? 'Neue Option' : 'Verfügbarkeit festlegen'}`
                 }
             >
-                <div className="space-y-4">
+                <Stack gap={2}>
                     {modalType === 'availability' ? (
                         <>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Verfügbarkeitstyp</label>
-                                <select
-                                    value={formData.type || 'available'}
-                                    onChange={(e) => handleInputChange('type', e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="available">Verfügbar</option>
-                                    <option value="partially_available">Teilweise verfügbar</option>
-                                    <option value="unavailable">Nicht verfügbar</option>
-                                </select>
-                            </div>
+                            <TextField
+                                select
+                                fullWidth
+                                size="small"
+                                label="Verfügbarkeitstyp"
+                                value={formData.type || 'available'}
+                                onChange={(e) => handleInputChange('type', e.target.value)}
+                            >
+                                <MenuItem value="available">Verfügbar</MenuItem>
+                                <MenuItem value="partially_available">Teilweise verfügbar</MenuItem>
+                                <MenuItem value="unavailable">Nicht verfügbar</MenuItem>
+                            </TextField>
 
                             {formData.type !== 'unavailable' ? (
                                 <Input
@@ -399,21 +436,20 @@ const CalendarView = () => {
                                     placeholder="z.B. Verfügbar für Castings, Flexible Zeiten"
                                 />
                             ) : (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Grund der Nichtverfügbarkeit</label>
-                                    <select
-                                        value={formData.reason || ''}
-                                        onChange={(e) => handleInputChange('reason', e.target.value)}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                        <option value="">Grund auswählen</option>
-                                        <option value="Urlaub">Urlaub</option>
-                                        <option value="Krankheit">Krankheit</option>
-                                        <option value="Andere Verpflichtung">Andere Verpflichtung</option>
-                                        <option value="Persönliche Termine">Persönliche Termine</option>
-                                        <option value="Sonstiges">Sonstiges</option>
-                                    </select>
-                                </div>
+                                <TextField
+                                    select
+                                    fullWidth
+                                    size="small"
+                                    label="Grund der Nichtverfügbarkeit"
+                                    value={formData.reason || ''}
+                                    onChange={(e) => handleInputChange('reason', e.target.value)}
+                                    helperText="Bleibt in dieser App - an Plattformen geht nur, dass der Zeitraum blockiert ist."
+                                >
+                                    <MenuItem value="">Grund auswählen</MenuItem>
+                                    {UNAVAILABLE_REASONS.map((reason) => (
+                                        <MenuItem key={reason} value={reason}>{reason}</MenuItem>
+                                    ))}
+                                </TextField>
                             )}
                         </>
                     ) : (
@@ -446,7 +482,7 @@ const CalendarView = () => {
                         </>
                     )}
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <Pair>
                         <Input
                             label="Startdatum"
                             type="date"
@@ -459,11 +495,11 @@ const CalendarView = () => {
                             value={formData.endDate || ''}
                             onChange={(e) => handleInputChange('endDate', e.target.value)}
                         />
-                    </div>
+                    </Pair>
 
                     {/* Time inputs - show for all types except unavailable availability */}
                     {(modalType !== 'availability' || formData.type !== 'unavailable') && (
-                        <div className="grid grid-cols-2 gap-4">
+                        <Pair>
                             <TimeInput
                                 label="Startzeit"
                                 value={formData.startTime || ''}
@@ -474,127 +510,116 @@ const CalendarView = () => {
                                 value={formData.endTime || ''}
                                 onChange={(e) => handleInputChange('endTime', e.target.value)}
                             />
-                        </div>
+                        </Pair>
                     )}
 
                     {/* Additional availability options */}
                     {modalType === 'availability' && formData.type !== 'unavailable' && (
-                        <Card className="bg-blue-50 border border-blue-200">
-                            <h4 className="text-sm font-medium text-blue-900 mb-2">Casting-Plattform Information</h4>
-                            <p className="text-xs text-blue-700 mb-3">
-                                Diese Zeiten werden an verbundene Casting-Plattformen übertragen, damit Caster wissen, wann Sie verfügbar sind.
-                            </p>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-medium text-blue-700 mb-1">Bevorzugte Anrufzeit</label>
-                                    <div className="flex space-x-2">
-                                        <input
-                                            type="time"
-                                            value={formData.preferredCallStart || '09:00'}
-                                            onChange={(e) => handleInputChange('preferredCallStart', e.target.value)}
-                                            className="text-xs px-2 py-1 border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                        />
-                                        <span className="text-xs text-blue-600 self-center">bis</span>
-                                        <input
-                                            type="time"
-                                            value={formData.preferredCallEnd || '17:00'}
-                                            onChange={(e) => handleInputChange('preferredCallEnd', e.target.value)}
-                                            className="text-xs px-2 py-1 border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                        />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-blue-700 mb-1">Vorlaufzeit (Stunden)</label>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        max="168"
-                                        value={formData.minimumNotice || '24'}
-                                        onChange={(e) => handleInputChange('minimumNotice', e.target.value)}
-                                        className="w-full text-xs px-2 py-1 border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                        placeholder="24"
+                        <Alert severity="info" icon={false}>
+                            <AlertTitle sx={{fontSize: 14}}>Kontaktzeiten</AlertTitle>
+                            <Typography variant="caption" display="block" mb={1.5}>
+                                Diese Angaben bleiben in dieser App. An die Casting-Plattformen geht
+                                ausschließlich, welche Zeiträume blockiert sind.
+                            </Typography>
+                            <Pair>
+                                <Stack direction="row" gap={1} sx={{alignItems: 'center'}}>
+                                    <TimeInput
+                                        label="Anruf ab"
+                                        value={formData.preferredCallStart || '09:00'}
+                                        onChange={(e) => handleInputChange('preferredCallStart', e.target.value)}
                                     />
-                                </div>
-                            </div>
-                        </Card>
+                                    <TimeInput
+                                        label="bis"
+                                        value={formData.preferredCallEnd || '17:00'}
+                                        onChange={(e) => handleInputChange('preferredCallEnd', e.target.value)}
+                                    />
+                                </Stack>
+                                <Input
+                                    label="Vorlaufzeit (Stunden)"
+                                    type="number"
+                                    value={formData.minimumNotice || '24'}
+                                    onChange={(e) => handleInputChange('minimumNotice', e.target.value)}
+                                />
+                            </Pair>
+                        </Alert>
                     )}
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
-                        <textarea
-                            value={formData.notes || ''}
-                            onChange={(e) => handleInputChange('notes', e.target.value)}
-                            rows={3}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Zusätzliche Informationen..."
-                        />
-                    </div>
+                    <TextField
+                        label="Notizen"
+                        value={formData.notes || ''}
+                        onChange={(e) => handleInputChange('notes', e.target.value)}
+                        multiline
+                        rows={3}
+                        fullWidth
+                        size="small"
+                        placeholder="Zusätzliche Informationen..."
+                    />
 
-                    <div className="flex gap-3 pt-4">
-                        <Button onClick={handleSave} disabled={saving}>
-                            {saving ? <Loader size={16} className="animate-spin"/> : <Check size={16}/>}
+                    <Stack direction="row" gap={1.5} pt={2}>
+                        <Button onClick={handleSave} disabled={saving} icon={saving ? Loader : Check}>
                             {editingItem ? 'Aktualisieren' : 'Speichern'}
                         </Button>
                         {editingItem && (
-                            <Button
-                                variant="danger"
-                                onClick={() => handleDelete(editingItem)}
-                                icon={Trash2}
-                            >
+                            <Button variant="danger" onClick={() => handleDelete(editingItem)} icon={Trash2}>
                                 Löschen
                             </Button>
                         )}
                         <Button variant="secondary" onClick={() => setShowModal(false)} icon={X}>
                             Abbrechen
                         </Button>
-                    </div>
-                </div>
+                    </Stack>
+                </Stack>
             </Modal>
 
-            {/* Sync Modal */}
+            {/* Sync modal */}
             <Modal
                 isOpen={showSyncModal}
                 onClose={() => setShowSyncModal(false)}
                 title="Verfügbarkeit synchronisieren"
             >
-                <div className="space-y-4">
-                    <div className="flex items-start space-x-3">
-                        <AlertCircle className="text-blue-500 mt-1" size={20}/>
-                        <div>
-                            <p className="text-sm text-gray-600 mb-2">
-                                Ihre aktuellen Buchungen, Optionen, Verfügbarkeitszeiten und Blockierungen werden mit folgenden Plattformen synchronisiert:
-                            </p>
-                            <div className="bg-blue-50 rounded p-3 text-xs text-blue-700">
-                                <strong>Übertragene Daten:</strong>
-                                <ul className="mt-1 space-y-1">
-                                    <li>• Gebuchte Zeiten (Buchungen & Optionen)</li>
-                                    <li>• Verfügbare Zeitfenster mit genauen Uhrzeiten</li>
-                                    <li>• Blockierte Zeiten mit Begründung</li>
-                                    <li>• Bevorzugte Kontaktzeiten</li>
-                                    <li>• Minimale Vorlaufzeiten</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
+                <Stack gap={2}>
+                    {/*
+                      This list used to promise the platforms were sent blocked times
+                      "mit Begründung", the preferred call hours and the minimum notice.
+                      None of that leaves the app: ConnectorService reduces the calendar
+                      to start/end pairs before any connector sees it, and merges them,
+                      so a platform learns that a period is not bookable and nothing
+                      else. Saying otherwise here told the user their reasons were
+                      being published.
+                    */}
+                    <Alert severity="info">
+                        <AlertTitle>Übertragen wird nur, wann Sie blockiert sind</AlertTitle>
+                        <Typography variant="body2" component="div">
+                            Aus Buchungen, Optionen und Nichtverfügbarkeiten werden zusammenhängende
+                            Zeiträume gebildet und als reine Von-Bis-Angaben übertragen.
+                            <Box component="ul" sx={{mt: 1, mb: 0, pl: 2.5}}>
+                                <li>Nicht übertragen: Titel, Produktion, Rolle und Honorar</li>
+                                <li>Nicht übertragen: der Grund einer Nichtverfügbarkeit und Ihre Notizen</li>
+                                <li>Nicht übertragen: ob es eine feste Buchung oder eine Option ist</li>
+                            </Box>
+                        </Typography>
+                    </Alert>
 
-                    <div className="bg-gray-50 rounded-lg p-4">
+                    <Box sx={{bgcolor: 'grey.50', borderRadius: 2, p: 2}}>
                         {syncEnabledPlatforms.length === 0 ? (
-                            <p className="text-sm text-gray-500">
+                            <Typography variant="body2" color="text.secondary">
                                 Keine Plattformen für Verfügbarkeits-Sync konfiguriert.
-                            </p>
+                            </Typography>
                         ) : (
-                            <div className="space-y-2">
+                            <Stack gap={1}>
                                 {syncEnabledPlatforms.map(platform => (
-                                    <div key={platform.id} className="flex items-center justify-between">
-                                        <span className="text-sm font-medium">{platform.name}</span>
-                                        <Badge color="green">Zeitbasierte Sync aktiv</Badge>
-                                    </div>
+                                    <Stack
+                                        key={platform.id}
+                                        direction="row" sx={{alignItems: 'center', justifyContent: 'space-between'}}>
+                                        <Typography variant="body2" fontWeight={500}>{platform.name}</Typography>
+                                        <Badge color="green">Blockzeiten-Sync aktiv</Badge>
+                                    </Stack>
                                 ))}
-                            </div>
+                            </Stack>
                         )}
-                    </div>
+                    </Box>
 
-                    <div className="flex gap-3 pt-4">
+                    <Stack direction="row" gap={1.5} pt={2}>
                         <Button
                             onClick={handleSyncAvailability}
                             disabled={syncEnabledPlatforms.length === 0 || saving}
@@ -605,77 +630,49 @@ const CalendarView = () => {
                         <Button variant="secondary" onClick={() => setShowSyncModal(false)}>
                             Abbrechen
                         </Button>
-                    </div>
-                </div>
+                    </Stack>
+                </Stack>
             </Modal>
 
-            {/* Availability Settings Modal */}
+            {/* Availability settings modal */}
             <Modal
                 isOpen={showAvailabilitySettings}
                 onClose={() => setShowAvailabilitySettings(false)}
                 title="Verfügbarkeits-Einstellungen"
             >
-                <div className="space-y-4">
-                    <p className="text-sm text-gray-600">
+                <Stack gap={2}>
+                    <Typography variant="body2" color="text.secondary">
                         Konfigurieren Sie Ihre Standard-Verfügbarkeitszeiten für Casting-Plattformen.
-                    </p>
+                    </Typography>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <TimeInput
-                            label="Standard Startzeit"
-                            value="08:00"
-                            onChange={() => {}}
-                        />
-                        <TimeInput
-                            label="Standard Endzeit"
-                            value="18:00"
-                            onChange={() => {}}
-                        />
-                    </div>
+                    <Pair>
+                        <TimeInput label="Standard Startzeit" value="08:00" onChange={() => {}}/>
+                        <TimeInput label="Standard Endzeit" value="18:00" onChange={() => {}}/>
+                    </Pair>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <TimeInput
-                            label="Bevorzugte Anrufzeit (von)"
-                            value="09:00"
-                            onChange={() => {}}
-                        />
-                        <TimeInput
-                            label="Bevorzugte Anrufzeit (bis)"
-                            value="17:00"
-                            onChange={() => {}}
-                        />
-                    </div>
+                    <Pair>
+                        <TimeInput label="Bevorzugte Anrufzeit (von)" value="09:00" onChange={() => {}}/>
+                        <TimeInput label="Bevorzugte Anrufzeit (bis)" value="17:00" onChange={() => {}}/>
+                    </Pair>
 
-                    <Input
-                        label="Standard Vorlaufzeit (Stunden)"
-                        type="number"
-                        value="24"
-                        onChange={() => {}}
+                    <Input label="Standard Vorlaufzeit (Stunden)" type="number" value="24" onChange={() => {}}/>
+
+                    <FormControlLabel
+                        control={<Checkbox defaultChecked id="weekendBookings"/>}
+                        label={<Typography variant="body2">Wochenend-Buchungen akzeptieren</Typography>}
                     />
 
-                    <div className="flex items-center space-x-2">
-                        <input
-                            type="checkbox"
-                            id="weekendBookings"
-                            defaultChecked
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <label htmlFor="weekendBookings" className="text-sm text-gray-700">
-                            Wochenend-Buchungen akzeptieren
-                        </label>
-                    </div>
-
-                    <div className="flex gap-3 pt-4">
+                    <Stack direction="row" gap={1.5} pt={2}>
                         <Button onClick={() => setShowAvailabilitySettings(false)}>
                             Einstellungen speichern
                         </Button>
                         <Button variant="secondary" onClick={() => setShowAvailabilitySettings(false)}>
                             Abbrechen
                         </Button>
-                    </div>
-                </div>
+                    </Stack>
+                </Stack>
             </Modal>
-        </div>
+        </Stack>
     );
 };
 

@@ -51,6 +51,23 @@ EOF
 node check.mjs
 ```
 
+**`npm run build` is not a check that the frontend works.** Vite compiles each
+module without resolving names across them, so an identifier that is referenced
+but no longer defined builds cleanly and throws `X is not defined` in the
+browser on first render. That is exactly how `disconnectPlatform` was deleted
+out of `AppContext.jsx` while still being exported and called: the build passed,
+and the app broke on the platforms page. `cd frontend && npm run lint` reports
+it as `no-undef` in a second. Run it for any frontend change - the build is a
+compile, the lint is the check.
+
+Beware of editing by replacing everything between two anchors, which is how that
+deletion happened: two other functions sat between them and went with it. After
+such an edit, compare what the file defines before and after:
+
+```bash
+diff <(git show HEAD:path/to/File.jsx | grep -oE "const [a-zA-Z]+ = ")      <(grep -oE "const [a-zA-Z]+ = " path/to/File.jsx)
+```
+
 **A patch series can apply partially and commit clean.** The stack was
 flattened onto `master` with **12 of its 47 files silently skipped**, and the
 result was committed. `git status` was clean, the tree looked plausible, and the
@@ -420,16 +437,62 @@ time available:
 A platform learns that a period is not bookable, and nothing else. Not the
 reason, not the production, not whether it is a firm booking or a tentative
 option, and not the actor's notes. `connectors/blockedPeriods.js` reduces the
-Availability entries to `{start, end}` pairs and the reduction happens in
+calendar to `{start, end}` pairs and the reduction happens in
 `ConnectorService.syncAvailability` - the one place every platform passes
 through, so a connector cannot leak what it was never handed, and a connector
 added later inherits the rule without knowing it exists.
+
+**All three collections converge before that.** Bookings, options and
+availability entries are three things to the actor and one thing to a casting
+platform: the date is taken. `utils/calendarEntries.js` loads them into one
+list, `blocksCalendar` decides per entry - Availability by its `type`, a booking
+or an option by existing unless it was cancelled, declined or expired. A pending
+option blocks, because that is what an option is.
+
+Until this, **only Availability was ever synced**: a confirmed booking in the
+manager blocked nothing on any platform, which is the double booking the whole
+calendar exists to prevent - and the sync dialog already promised the user that
+bookings and options were being sent. It also stopped filtering on
+`synced: false`. The merge turns the calendar into one statement about what is
+free, and a merge fed half the calendar makes a different, wrong statement.
 
 Merging is part of the rule, not tidying. Five separate blocks in a month say
 "five separate jobs"; one merged block says "not available", which is the only
 question a casting platform needs answered. Blocks less than a day apart merge,
 periods entirely in the past are dropped, and `partially_available` counts as
 blocked - a day the actor cannot freely take is not advertised as free.
+
+### Which platforms actually have a calendar
+
+Read on 2026-09-03, logged in, on all four connected platforms. The answer was
+not what the descriptors said, and it is the reason the import half of this
+feature is one platform and not four:
+
+| Plattform | Kalender | Was da wirklich ist |
+|---|---|---|
+| Filmmakers | **nein** | Kein Kalender. `/profile/availability` = 404, ebenso `/availability` und `/calendar`. Kein Link, kein Menüpunkt. |
+| JobWork | **nein** | Navigation: Jobs, Für dich, Favoriten, Bewerbungen, Nachrichten, Medien, Profil. `/applications` listet 23 Bewerbungen mit Status und Bewerbungsdatum - keine Zeiträume. `/profil/verfuegbarkeit` war immer als NOT verified markiert und existiert nicht. |
+| IM OFF | **ja** | `/external/extras/calendar`: ein Tagesraster zum Ziehen und ein Formular "Längere Abwesenheit" (`#from`, `#to`, beide `type=date`, Speichern) plus eine Tabelle der schon eingetragenen Zeiträume. |
+| Casting Network (DE) | **nein** | `/cn-kalender` ist ein redaktioneller Branchenkalender - Festivals, Filmstarts, "Kuratiert von Carla & Harry". |
+
+Filmmakers and JobWork **declared `pushAvailability`** against those missing
+pages, and IM OFF - the only one that has a calendar - did not. Both
+declarations are gone; the methods stay, because they are groundwork and a
+declaration is what puts a button in the UI. IM OFF now declares it and writes
+the "Längere Abwesenheit" form, skipping periods its table already lists, so a
+second sync of the same calendar adds nothing rather than a duplicate of every
+absence.
+
+**That push has only ever been a dry run**, like every other push in this
+project: the form was filled with 24.12.2026 - 31.12.2026, photographed, and
+Speichern was not clicked.
+
+**The import direction does not exist yet, and there is currently nothing to
+import.** Bookings and appointments were meant to flow from the platforms into
+the manager; none of the four holds any. JobWork's 23 applications are all
+"Beworben", Casting Network's "Laufende Bewerbungen" is empty, and IM OFF's
+absence table has no rows. The shape to read them back is written for IM OFF
+(`readAbsences`), because the push needed it.
 
 This mattered: all four connectors that push availability write `item.notes`
 into a notes field and `item.status` into a status select, and one of them maps
@@ -514,6 +577,87 @@ stored password then decrypts to something else and is genuinely rejected -
 `npm run check:encryption-key` inside the container reports a fingerprint
 without revealing the key), a consent banner that differs by IP or region, or
 the platform treating a datacenter address differently from a home one.
+
+### The UI: MUI
+
+The frontend is Material UI. Tailwind is gone - no classes in `src`, no plugin
+in `vite.config.js`, no config file, nothing in `package.json`. The CSS bundle
+went from 27.5 kB to zero, and `dependencies` is MUI, emotion, lucide and React.
+
+The migration went from the primitives up. `components/ui/` holds seven
+components every view already drew through, so reimplementing those on MUI put
+the whole app onto MUI controls before a single view was touched. **Their prop
+contracts did not change**: `variant="outline"`, `color="green"`, `size="sm"`,
+`icon={Download}` are the app's own words and are mapped inside the primitives.
+Renaming props at four hundred call sites as well would have tangled two changes
+into one.
+
+Things worth keeping in mind:
+
+- A `Button` with an icon and no children becomes an `IconButton`, and it
+  forwards `type`. MUI defaults a button to `type="button"` while a bare
+  `<button>` in a form defaults to submit, so the first pass silently stopped
+  `Login` and `Register` submitting at all.
+- **MUI 9 dropped the system-props API from `Stack` and `Box`.** `alignItems`,
+  `justifyContent`, `flexWrap` and `textAlign` are forwarded to the DOM node,
+  where React warns and - the part that matters - the rule never applies. 57
+  tags across nine files were passing them, so those layouts were quietly not
+  aligning: the login heading sat left instead of centred, and rows of icons
+  crowded their text instead of reaching the right edge. They belong in `sx`.
+  This is invisible in a build and in a screenshot you have not compared; both
+  rounds were found by asking the live DOM which elements carried an
+  `alignitems` or `textalign` attribute. `Typography` still takes them.
+- `Badge` honours `icon` and `variant`, `Input` honours `placeholder` and takes
+  a `hint` line, and `Input` shrinks the label for date and time types so MUI's
+  floating label does not sit on the native control's own text.
+
+`theme.js` holds the palette the Tailwind classes used, so what changed is which
+library draws a control, not what the app looks like.
+
+**There is no demo mode.** `apiService.demoMode` was read 29 times and defined
+nowhere, so every `if (!apiService.demoMode)` was always true and every `else`
+behind one was unreachable. Those branches simulated success locally - one of
+them, in the `catch` of a failed profile sync, set `lastSync` on every connected
+platform and returned a count, which is this project's oldest forbidden pattern
+wearing a disguise. All of it is gone.
+
+**How the screens were checked.** They live behind a login, so "it builds" is
+all a build proves. A throwaway page rendered each view against a stubbed
+context with fixture data - five platforms in different states, a profile with
+provenance, bookings and availability - and every screen and dialog was looked
+at in the browser. That is how the `Stack` prop bug surfaced. The page is not in
+the repository: fixture data rots, and a harness that lies is worse than none.
+
+### Sync and import logic is not in the views
+
+`PlatformsView` was a 1,300-line file that both drew the screen and did the
+work: it called `apiService` directly for the import, the credit reconciliation
+and the agent health check, held their state, and carried a dozen predicates
+about what a platform is. That is why converting it to MUI was the risky part
+of the migration - the markup could not be touched without touching the logic.
+
+Now:
+
+- `domain/platforms.js` - pure functions, no React. The predicates
+  (`isAutomated`, `canImportProfile`, `hasStoredCredentials`), the wording
+  (`connectionTypeText`, `syncIntervalText`, `importFieldLabel`) and the two
+  formatters (`sourceLabel`, `previewImported`). `npm run check:platform-rules`
+  exercises them without a browser: 30 cases, each one a shape that actually
+  turned up, including the `{language, level}` objects that threw "Objects are
+  not valid as a React child" and the bare locator string older imports stored.
+- `hooks/usePlatformImport.js` - read a profile, pick fields, apply. Reading
+  writes nothing; applying takes the values from the import's SyncLog on the
+  server, never from the client.
+- `hooks/usePlatformCredits.js` - the two-call credit push, questions and all.
+- `hooks/useAgentHealth.js` - the health check and its state.
+
+The view keeps what is genuinely its own: which dialog is open, what the alert
+says, which platform is selected. The hooks are destructured under the names the
+markup already used, so moving the logic out changed no JSX at all.
+
+**A view should not call `apiService` directly.** No component does any more:
+the last reference was `apiService.demoMode` in SyncIndicator, and the demo mode
+is gone (see below).
 
 ### The API envelope, and the field that keeps getting lost
 

@@ -41,6 +41,7 @@ const run = async () => {
     // look decrypted either way.
     const plaintextFields = SECRET_FIELDS.filter((field) => {
       const raw = platform.get(`authData.${field}`, null, { getters: false });
+
       return typeof raw === 'string' && raw !== '' && !isEncrypted(raw);
     });
 
@@ -50,8 +51,8 @@ const run = async () => {
     }
 
     console.log(
-      `platform ${platform._id} (id ${platform.platformId}): ` +
-      `${plaintextFields.join(', ')}${dryRun ? ' [dry run]' : ''}`
+      `platform ${platform._id} (id ${platform.platformId}): `
+      + `${plaintextFields.join(', ')}${dryRun ? ' [dry run]' : ''}`
     );
 
     if (!dryRun) {
@@ -67,8 +68,8 @@ const run = async () => {
   }
 
   console.log(
-    `\n${dryRun ? 'Would encrypt' : 'Encrypted'} ${migrated} platform(s); ` +
-    `${alreadyDone} already encrypted or empty.`
+    `\n${dryRun ? 'Would encrypt' : 'Encrypted'} ${migrated} platform(s); `
+    + `${alreadyDone} already encrypted or empty.`
   );
 
   await mongoose.connection.close();

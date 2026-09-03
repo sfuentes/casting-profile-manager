@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { PlatformConnector } from './PlatformConnector.js';
-import { AuthError, classifyHttpError } from './errors.js';
+import { AuthError, NotSupportedError, classifyHttpError } from './errors.js';
 
 /**
  * Schauspielervideos Platform Adapter
@@ -16,8 +16,13 @@ export class SchauspielervideosConnector extends PlatformConnector {
     key: 'schauspielervideos',
     name: 'Schauspielervideos',
     authType: 'apiKey',
-    credentialFields: [{ name: 'apiKey', type: 'password', required: true, label: 'API-Key' }],
-    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia']
+    credentialFields: [{
+      name: 'apiKey', type: 'password', required: true, label: 'API-Key'
+    }],
+    // No pushAvailability: this platform does not manage a calendar, and a
+    // capability it cannot perform puts a button in the UI that can only
+    // lie about what it did.
+    capabilities: ['verify', 'pushProfile', 'pushMedia']
   });
 
   // ---- unified interface ----
@@ -26,6 +31,7 @@ export class SchauspielervideosConnector extends PlatformConnector {
 
   async verify() {
     await this.authenticate();
+
     return { ok: true, message: 'Login succeeded.' };
   }
 
@@ -80,7 +86,7 @@ export class SchauspielervideosConnector extends PlatformConnector {
         headers: {
           'X-API-Key': this.apiKey,
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          Accept: 'application/json'
         },
         timeout: 30000
       });
@@ -93,8 +99,8 @@ export class SchauspielervideosConnector extends PlatformConnector {
       }
 
       this.log('info', 'Successfully authenticated with Schauspielervideos');
-      return true;
 
+      return true;
     } catch (error) {
       this.log('error', 'Schauspielervideos authentication failed', {
         error: error.message,
@@ -105,19 +111,19 @@ export class SchauspielervideosConnector extends PlatformConnector {
   }
 
   /**
-   * Push availability data to Schauspielervideos
-   * Note: Schauspielervideos doesn't typically manage availability
-   * @param {Array} availability
-   * @returns {Promise<Object>}
+   * Schauspielervideos keeps no calendar.
+   *
+   * This used to return `{ success: true, count: 0 }`, which `ConnectorService`
+   * recorded as a successful sync and which moved `platform.lastSync` - a
+   * green "synced" for a push that sent nothing. Refusing is the honest answer,
+   * and `assertSupports` now refuses it one layer earlier, before a SyncLog is
+   * written at all.
    */
-  async pushAvailability(availability) {
-    this.log('warn', 'Schauspielervideos does not support availability sync');
-
-    return {
-      success: true,
-      count: 0,
-      message: 'Schauspielervideos does not manage availability data'
-    };
+  async pushAvailability() {
+    throw new NotSupportedError(
+      'Schauspielervideos does not manage availability data',
+      { platform: 'schauspielervideos' }
+    );
   }
 
   /**
@@ -126,74 +132,72 @@ export class SchauspielervideosConnector extends PlatformConnector {
    * @returns {Promise<Object>}
    */
   async pushMedia(media) {
-    return this.withRateLimit(async () => {
-      return this.withRetry(async () => {
-        this.log('info', 'Uploading media to Schauspielervideos', {
-          type: media.type,
-          filename: media.filename
-        });
-
-        if (!this.apiClient) {
-          throw new Error('API client not initialized. Call authenticate() first.');
-        }
-
-        // Determine media type
-        const isVideo = media.type === 'video' || media.mimeType?.includes('video');
-
-        // Create form data for file upload
-        const FormData = (await import('form-data')).default;
-        const formData = new FormData();
-
-        formData.append('file', media.buffer, {
-          filename: media.filename,
-          contentType: media.mimeType
-        });
-
-        formData.append('type', isVideo ? 'video' : 'photo');
-
-        if (media.title) {
-          formData.append('title', media.title);
-        }
-
-        if (media.description) {
-          formData.append('description', media.description);
-        }
-
-        if (media.category) {
-          formData.append('category', media.category);
-        }
-
-        // Set as showreel if specified
-        if (media.isShowreel) {
-          formData.append('is_showreel', 'true');
-        }
-
-        // Upload to Schauspielervideos
-        const endpoint = isVideo ? '/media/videos' : '/media/photos';
-        const response = await this.apiClient.post(endpoint, formData, {
-          headers: {
-            ...formData.getHeaders(),
-            'X-API-Key': this.apiKey
-          },
-          maxBodyLength: Infinity,
-          maxContentLength: Infinity,
-          timeout: 120000 // 2 minutes for video uploads
-        });
-
-        this.log('info', 'Successfully uploaded media to Schauspielervideos', {
-          externalId: response.data.id,
-          url: response.data.url,
-          type: isVideo ? 'video' : 'photo'
-        });
-
-        return {
-          success: true,
-          externalId: response.data.id,
-          url: response.data.url,
-          thumbnailUrl: response.data.thumbnail_url
-        };
+    return this.withRateLimit(async () => this.withRetry(async () => {
+      this.log('info', 'Uploading media to Schauspielervideos', {
+        type: media.type,
+        filename: media.filename
       });
-    });
+
+      if (!this.apiClient) {
+        throw new Error('API client not initialized. Call authenticate() first.');
+      }
+
+      // Determine media type
+      const isVideo = media.type === 'video' || media.mimeType?.includes('video');
+
+      // Create form data for file upload
+      const FormData = (await import('form-data')).default;
+      const formData = new FormData();
+
+      formData.append('file', media.buffer, {
+        filename: media.filename,
+        contentType: media.mimeType
+      });
+
+      formData.append('type', isVideo ? 'video' : 'photo');
+
+      if (media.title) {
+        formData.append('title', media.title);
+      }
+
+      if (media.description) {
+        formData.append('description', media.description);
+      }
+
+      if (media.category) {
+        formData.append('category', media.category);
+      }
+
+      // Set as showreel if specified
+      if (media.isShowreel) {
+        formData.append('is_showreel', 'true');
+      }
+
+      // Upload to Schauspielervideos
+      const endpoint = isVideo ? '/media/videos' : '/media/photos';
+      const response = await this.apiClient.post(endpoint, formData, {
+        headers: {
+          ...formData.getHeaders(),
+          'X-API-Key': this.apiKey
+        },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        timeout: 120000 // 2 minutes for video uploads
+      });
+
+      this.log('info', 'Successfully uploaded media to Schauspielervideos', {
+        externalId: response.data.id,
+        url: response.data.url,
+        type: isVideo ? 'video' : 'photo'
+      });
+
+      return {
+        success: true,
+        externalId: response.data.id,
+        url: response.data.url,
+        thumbnailUrl: response.data.thumbnail_url
+      };
+    }));
   }
 
   /**
@@ -202,31 +206,29 @@ export class SchauspielervideosConnector extends PlatformConnector {
    * @returns {Promise<Object>}
    */
   async updateProfile(profile) {
-    return this.withRateLimit(async () => {
-      return this.withRetry(async () => {
-        this.log('info', 'Updating profile on Schauspielervideos');
+    return this.withRateLimit(async () => this.withRetry(async () => {
+      this.log('info', 'Updating profile on Schauspielervideos');
 
-        if (!this.apiClient) {
-          throw new Error('API client not initialized. Call authenticate() first.');
-        }
+      if (!this.apiClient) {
+        throw new Error('API client not initialized. Call authenticate() first.');
+      }
 
-        // Transform profile data
-        const schauspielerProfile = this.transformProfile(profile);
+      // Transform profile data
+      const schauspielerProfile = this.transformProfile(profile);
 
-        // Update profile via API
-        const response = await this.apiClient.patch('/profile', schauspielerProfile);
+      // Update profile via API
+      const response = await this.apiClient.patch('/profile', schauspielerProfile);
 
-        this.log('info', 'Successfully updated profile on Schauspielervideos', {
-          profileId: response.data.id
-        });
-
-        return {
-          success: true,
-          profileId: response.data.id,
-          updatedFields: Object.keys(schauspielerProfile)
-        };
+      this.log('info', 'Successfully updated profile on Schauspielervideos', {
+        profileId: response.data.id
       });
-    });
+
+      return {
+        success: true,
+        profileId: response.data.id,
+        updatedFields: Object.keys(schauspielerProfile)
+      };
+    }));
   }
 
   /**
@@ -244,7 +246,7 @@ export class SchauspielervideosConnector extends PlatformConnector {
 
       // Physical attributes
       height_cm: this.parseHeight(profile.height),
-      weight_kg: profile.weight ? parseInt(profile.weight) : null,
+      weight_kg: profile.weight ? parseInt(profile.weight, 10) : null,
       eye_color: profile.eyeColor?.toLowerCase(),
       hair_color: profile.hairColor?.toLowerCase(),
       gender: profile.gender?.toLowerCase(),
@@ -254,7 +256,7 @@ export class SchauspielervideosConnector extends PlatformConnector {
       country: profile.country,
 
       // Languages
-      languages: profile.languages?.map(lang => ({
+      languages: profile.languages?.map((lang) => ({
         language_code: this.getLanguageCode(lang.language),
         proficiency: this.mapLanguageLevel(lang.level)
       })) || [],
@@ -264,7 +266,7 @@ export class SchauspielervideosConnector extends PlatformConnector {
       specializations: profile.specializations || [],
 
       // Filmography/Work history
-      filmography: profile.workHistory?.map(work => ({
+      filmography: profile.workHistory?.map((work) => ({
         title: work.production || work.title,
         role: work.role,
         year: work.year,
@@ -274,9 +276,7 @@ export class SchauspielervideosConnector extends PlatformConnector {
       })) || [],
 
       // Training
-      training: profile.education?.filter(edu =>
-        edu.type === 'training' || edu.institution?.toLowerCase().includes('schauspiel')
-      ).map(edu => ({
+      training: profile.education?.filter((edu) => edu.type === 'training' || edu.institution?.toLowerCase().includes('schauspiel')).map((edu) => ({
         institution: edu.institution,
         degree: edu.degree,
         year: edu.year,
@@ -298,7 +298,7 @@ export class SchauspielervideosConnector extends PlatformConnector {
     const match = height.match(/(\d+)/);
     if (!match) return null;
 
-    const value = parseInt(match[1]);
+    const value = parseInt(match[1], 10);
 
     if (height.toLowerCase().includes('cm')) {
       return value;
@@ -306,7 +306,8 @@ export class SchauspielervideosConnector extends PlatformConnector {
 
     if (value < 10) {
       const inches = height.match(/['"](\d+)/)?.[1] || 0;
-      return Math.round((value * 12 + parseInt(inches)) * 2.54);
+
+      return Math.round((value * 12 + parseInt(inches, 10)) * 2.54);
     }
 
     return value;
@@ -319,19 +320,20 @@ export class SchauspielervideosConnector extends PlatformConnector {
    */
   mapWorkType(type) {
     const typeMap = {
-      'film': 'feature_film',
-      'movie': 'feature_film',
-      'tv': 'television',
-      'television': 'television',
-      'series': 'tv_series',
-      'theater': 'theater',
-      'theatre': 'theater',
-      'commercial': 'commercial',
-      'short': 'short_film',
+      film: 'feature_film',
+      movie: 'feature_film',
+      tv: 'television',
+      television: 'television',
+      series: 'tv_series',
+      theater: 'theater',
+      theatre: 'theater',
+      commercial: 'commercial',
+      short: 'short_film',
       'short film': 'short_film',
-      'web': 'web_series',
-      'voice': 'voice_acting'
+      web: 'web_series',
+      voice: 'voice_acting'
     };
+
     return typeMap[type?.toLowerCase()] || 'other';
   }
 
@@ -342,17 +344,18 @@ export class SchauspielervideosConnector extends PlatformConnector {
    */
   getLanguageCode(language) {
     const languageMap = {
-      'german': 'de',
-      'deutsch': 'de',
-      'english': 'en',
-      'englisch': 'en',
-      'french': 'fr',
-      'französisch': 'fr',
-      'spanish': 'es',
-      'spanisch': 'es',
-      'italian': 'it',
-      'italienisch': 'it'
+      german: 'de',
+      deutsch: 'de',
+      english: 'en',
+      englisch: 'en',
+      french: 'fr',
+      französisch: 'fr',
+      spanish: 'es',
+      spanisch: 'es',
+      italian: 'it',
+      italienisch: 'it'
     };
+
     return languageMap[language?.toLowerCase()] || language?.toLowerCase().slice(0, 2);
   }
 
@@ -363,17 +366,18 @@ export class SchauspielervideosConnector extends PlatformConnector {
    */
   mapLanguageLevel(level) {
     const levelMap = {
-      'native': 'native',
-      'muttersprache': 'native',
-      'fluent': 'fluent',
-      'fließend': 'fluent',
-      'advanced': 'advanced',
-      'fortgeschritten': 'advanced',
-      'intermediate': 'intermediate',
-      'mittel': 'intermediate',
-      'basic': 'basic',
-      'grundkenntnisse': 'basic'
+      native: 'native',
+      muttersprache: 'native',
+      fluent: 'fluent',
+      fließend: 'fluent',
+      advanced: 'advanced',
+      fortgeschritten: 'advanced',
+      intermediate: 'intermediate',
+      mittel: 'intermediate',
+      basic: 'basic',
+      grundkenntnisse: 'basic'
     };
+
     return levelMap[level?.toLowerCase()] || 'basic';
   }
 
@@ -384,7 +388,7 @@ export class SchauspielervideosConnector extends PlatformConnector {
    */
   cleanObject(obj) {
     if (Array.isArray(obj)) {
-      return obj.map(item => this.cleanObject(item)).filter(item => item != null);
+      return obj.map((item) => this.cleanObject(item)).filter((item) => item != null);
     }
 
     if (obj !== null && typeof obj === 'object') {
@@ -393,6 +397,7 @@ export class SchauspielervideosConnector extends PlatformConnector {
         if (cleaned != null && cleaned !== '' && !(Array.isArray(cleaned) && cleaned.length === 0)) {
           acc[key] = cleaned;
         }
+
         return acc;
       }, {});
     }
@@ -416,7 +421,6 @@ export class SchauspielervideosConnector extends PlatformConnector {
         success: true,
         data: response.data
       };
-
     } catch (error) {
       this.log('error', 'Failed to pull profile from Schauspielervideos', {
         error: error.message

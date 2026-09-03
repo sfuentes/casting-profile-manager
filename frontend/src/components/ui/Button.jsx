@@ -1,37 +1,81 @@
 import React from 'react';
+import MuiButton from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
+
+/**
+ * The app's button, drawn by MUI.
+ *
+ * The prop contract is unchanged on purpose - `variant`, `size`, `icon`,
+ * `className`, `disabled` - because every view already calls it this way and a
+ * migration that also renames props is two changes tangled into one.
+ *
+ * `variant` keeps the app's vocabulary rather than MUI's: primary, secondary,
+ * danger and outline are what the call sites say, and they map here.
+ */
+const VARIANTS = {
+  primary: { variant: 'contained', color: 'primary' },
+  secondary: { variant: 'contained', color: 'secondary' },
+  danger: { variant: 'contained', color: 'error' },
+  outline: { variant: 'outlined', color: 'inherit' }
+};
+
+const SIZES = { sm: 'small', md: 'medium', lg: 'large' };
+const ICON_PX = { sm: 16, md: 20, lg: 22 };
 
 const Button = ({
-                    children,
-                    variant = 'primary',
-                    size = 'md',
-                    onClick,
-                    className = '',
-                    disabled = false,
-                    icon: Icon
-                }) => {
-    const baseClasses = 'font-medium rounded-lg transition-colors flex items-center gap-2 justify-center';
-    const sizeClasses = {
-        sm: 'px-3 py-1.5 text-sm',
-        md: 'px-4 py-2',
-        lg: 'px-6 py-3 text-lg'
-    };
-    const variantClasses = {
-        primary: 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400',
-        secondary: 'bg-gray-200 text-gray-800 hover:bg-gray-300',
-        danger: 'bg-red-600 text-white hover:bg-red-700',
-        outline: 'border-2 border-gray-300 text-gray-700 hover:bg-gray-50'
-    };
+  children,
+  variant = 'primary',
+  size = 'md',
+  onClick,
+  className = '',
+  disabled = false,
+  title,
+  // Forwarded because MUI defaults to type="button" while a bare <button> in a
+  // form defaults to submit - Login and Register put a Button inside a <form
+  // onSubmit> and stopped submitting without this.
+  type = 'button',
+  fullWidth = false,
+  icon: Icon
+}) => {
+  const look = VARIANTS[variant] || VARIANTS.primary;
+  const muiSize = SIZES[size] || 'medium';
+  const glyph = Icon ? <Icon size={ICON_PX[size] || 20} /> : null;
 
+  // Several call sites pass only an icon - the settings, expand and disconnect
+  // controls. A Button with a startIcon and no label keeps the label's spacing
+  // and renders lopsided, so an icon on its own becomes an IconButton.
+  if (!children && glyph) {
     return (
-        <button
-            onClick={onClick}
-            disabled={disabled}
-            className={`${baseClasses} ${sizeClasses[size]} ${variantClasses[variant]} ${className} ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
-        >
-            {Icon && <Icon size={size === 'sm' ? 16 : 20}/>}
-            {children}
-        </button>
+      <IconButton
+        type={type}
+        onClick={onClick}
+        disabled={disabled}
+        size={muiSize}
+        color={look.color === 'inherit' ? 'default' : look.color}
+        className={className}
+        title={title}
+      >
+        {glyph}
+      </IconButton>
     );
+  }
+
+  return (
+    <MuiButton
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      variant={look.variant}
+      color={look.color}
+      size={muiSize}
+      startIcon={glyph}
+      fullWidth={fullWidth}
+      className={className}
+      title={title}
+    >
+      {children}
+    </MuiButton>
+  );
 };
 
 export default Button;

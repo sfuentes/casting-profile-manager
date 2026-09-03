@@ -63,7 +63,7 @@ const SyncLogSchema = new mongoose.Schema({
 });
 
 // Calculate duration before save
-SyncLogSchema.pre('save', function(next) {
+SyncLogSchema.pre('save', function (next) {
   if (this.completedAt && this.startedAt) {
     this.duration = this.completedAt - this.startedAt;
   }
@@ -75,7 +75,7 @@ SyncLogSchema.index({ user: 1, platform: 1, createdAt: -1 });
 SyncLogSchema.index({ status: 1, createdAt: -1 });
 
 // Static method to get recent sync history
-SyncLogSchema.statics.getRecentHistory = function(userId, limit = 20) {
+SyncLogSchema.statics.getRecentHistory = function (userId, limit = 20) {
   return this.find({ user: userId })
     .sort({ createdAt: -1 })
     .limit(limit)
@@ -83,7 +83,7 @@ SyncLogSchema.statics.getRecentHistory = function(userId, limit = 20) {
 };
 
 // Static method to get platform sync status
-SyncLogSchema.statics.getPlatformStatus = function(userId, platformId) {
+SyncLogSchema.statics.getPlatformStatus = function (userId, platformId) {
   return this.findOne({
     user: userId,
     platform: platformId,
@@ -94,8 +94,9 @@ SyncLogSchema.statics.getPlatformStatus = function(userId, platformId) {
 };
 
 // Static method to get failed syncs that can be retried
-SyncLogSchema.statics.getFailedSyncs = function(userId, maxAge = 24 * 60 * 60 * 1000) {
+SyncLogSchema.statics.getFailedSyncs = function (userId, maxAge = 24 * 60 * 60 * 1000) {
   const cutoffDate = new Date(Date.now() - maxAge);
+
   return this.find({
     user: userId,
     status: 'failed',

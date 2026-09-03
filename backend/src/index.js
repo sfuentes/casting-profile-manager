@@ -6,9 +6,9 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import mongoSanitize from 'express-mongo-sanitize';
-import { xssSanitize } from './middleware/xssSanitize.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { xssSanitize } from './middleware/xssSanitize.js';
 
 // Import utilities and config
 import { connectDB } from './config/database.js';
@@ -93,8 +93,8 @@ app.use(helmet({
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 600000, // 10 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX) || 100, // 100 requests per window
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 600000, // 10 minutes
+  max: parseInt(process.env.RATE_LIMIT_MAX, 10) || 100, // 100 requests per window
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.',

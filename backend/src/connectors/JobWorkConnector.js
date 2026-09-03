@@ -18,13 +18,25 @@ export class JobWorkConnector extends BrowserConnector {
     key: 'jobwork',
     name: 'JobWork',
     authType: 'credentials',
-    credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
-      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    credentialFields: [{
+      name: 'email', type: 'email', required: true, label: 'E-Mail'
+    },
+    {
+      name: 'password', type: 'password', required: true, label: 'Passwort'
+    }],
     // pushWorkHistory is new and, unlike the rest, has been driven: the
     // profile's sections each route to a real editor at
     // /@<handle>/edit/<section>, and a dry run filled every field of the
     // credits drawer - including the two listboxes - and pressed Abbrechen.
-    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia', 'pullProfile', 'pushWorkHistory']
+    // No pushAvailability. Read on 2026-09-03 while logged in: JobWork has no calendar
+    // either. Its navigation is Jobs, Für dich, Favoriten, Bewerbungen,
+    // Nachrichten, Medien, Profil - and /applications lists applications with
+    // a status and the date applied, not periods. /profil/verfuegbarkeit was
+    // always marked NOT verified here; it is not a route the app has.
+    // The method below stays - it is groundwork, and the day this platform
+    // grows a calendar it is most of the work already done - but declaring the
+    // capability puts a button in the UI that can only ever fail.
+    capabilities: ['verify', 'pushProfile', 'pushMedia', 'pullProfile', 'pushWorkHistory']
   });
 
   /**
@@ -131,6 +143,7 @@ export class JobWorkConnector extends BrowserConnector {
       { field: 'hairColor', selector: 'select[name="hair_color"], select[name="haarfarbe"]', kind: 'select' }
     ]
   });
+
   async pullProfile() {
     return this.readProfile();
   }
@@ -153,6 +166,7 @@ export class JobWorkConnector extends BrowserConnector {
         { platform: 'jobwork' }
       );
     }
+
     return handle;
   }
 
@@ -172,9 +186,14 @@ export class JobWorkConnector extends BrowserConnector {
       let node = hidden.parentElement;
       for (let up = 0; up < 6 && node; up += 1) {
         const box = node.querySelector('[aria-haspopup="listbox"]');
-        if (box) { box.click(); return true; }
+        if (box) {
+          box.click();
+
+          return true;
+        }
         node = node.parentElement;
       }
+
       return false;
     }, fieldNameSelector);
 
@@ -187,12 +206,14 @@ export class JobWorkConnector extends BrowserConnector {
         .find((el) => (el.innerText || '').trim().toLowerCase() === want);
       if (!option) return false;
       option.click();
+
       return true;
     }, String(wanted));
 
     if (!clicked) {
       // Close the list again rather than leaving it open over the next field.
       await this.page.keyboard.press('Escape').catch(() => {});
+
       return false;
     }
 
@@ -205,6 +226,7 @@ export class JobWorkConnector extends BrowserConnector {
         if (box) return (box.innerText || '').trim().toLowerCase() === String(text).trim().toLowerCase();
         node = node.parentElement;
       }
+
       return false;
     }, fieldNameSelector, String(wanted));
   }
@@ -221,11 +243,16 @@ export class JobWorkConnector extends BrowserConnector {
           node = node.parentElement;
           const text = (node?.innerText || '').replace(/\s+/g, ' ').trim();
           if (text.length > 40) {
-            if (text.startsWith(sectionName)) { button.click(); return true; }
+            if (text.startsWith(sectionName)) {
+              button.click();
+
+              return true;
+            }
             break;
           }
         }
       }
+
       return false;
     }, section, texts);
   }
@@ -251,8 +278,14 @@ export class JobWorkConnector extends BrowserConnector {
 
       const ours = profile?.workHistory || [];
       if (ours.length === 0) {
-        return { success: true, dryRun, added: [], planned: [], count: 0,
-          details: { message: 'No credits in the profile to push' } };
+        return {
+          success: true,
+          dryRun,
+          added: [],
+          planned: [],
+          count: 0,
+          details: { message: 'No credits in the profile to push' }
+        };
       }
 
       // What the platform already has, read the way the importer reads it.
@@ -271,7 +304,12 @@ export class JobWorkConnector extends BrowserConnector {
 
       if (planned.length === 0) {
         return {
-          success: true, dryRun, added: [], planned: [], count: 0, questions,
+          success: true,
+          dryRun,
+          added: [],
+          planned: [],
+          count: 0,
+          questions,
           details: {
             message: questions.length > 0
               ? `Nothing to add without an answer: ${questions.length} credit(s) need deciding`
@@ -284,9 +322,7 @@ export class JobWorkConnector extends BrowserConnector {
 
       const handle = await this.profileHandle();
       await this.openPage(`${this.site.app.baseUrl}/${handle}${spec.editPath}`);
-      await this.page.waitForFunction(
-        () => document.body.innerText.trim().length > 200, { timeout: 20000 }
-      ).catch(() => {});
+      await this.page.waitForFunction(() => document.body.innerText.trim().length > 200, { timeout: 20000 }).catch(() => {});
 
       const added = [];
       const failed = [];
@@ -323,9 +359,12 @@ export class JobWorkConnector extends BrowserConnector {
           await this.clickDrawerButton(spec.cancelTexts);
           await this.page.waitForFunction(
             (name) => !document.querySelector(`input[name="${name}"]`),
-            { timeout: 5000 }, spec.fields.production
+            { timeout: 5000 },
+            spec.fields.production
           ).catch(() => {});
-          added.push({ entry: describe(entry), category, year, unwritten });
+          added.push({
+            entry: describe(entry), category, year, unwritten
+          });
           continue;
         }
 
@@ -344,7 +383,8 @@ export class JobWorkConnector extends BrowserConnector {
         }
         await this.page.waitForFunction(
           (name) => !document.querySelector(`input[name="${name}"]`),
-          { timeout: 15000 }, spec.fields.production
+          { timeout: 15000 },
+          spec.fields.production
         ).catch(() => {});
         added.push({ entry: describe(entry), category, year });
       }
@@ -389,6 +429,7 @@ export class JobWorkConnector extends BrowserConnector {
       const target = matches[matches.length - 1];
       if (!target) return false;
       target.click();
+
       return true;
     }, this.site.experience.drawer, texts);
   }
@@ -424,13 +465,14 @@ export class JobWorkConnector extends BrowserConnector {
           || (Array.isArray(value) && value.length === 0);
         if (empty) {
           missing.push(key);
+
           return;
         }
         fields[key] = value;
         sources[key] = source;
       };
 
-      const meta = this.site.meta;
+      const { meta } = this.site;
       for (const [field, fieldName] of Object.entries(meta)) {
         set(field, this.constructor.metaValue(profile, fieldName), `graphql:${fieldName}`);
       }
@@ -546,6 +588,7 @@ export class JobWorkConnector extends BrowserConnector {
     // JobWork's option table, and inventing a meaning would be worse than
     // admitting we do not have one.
     if (suffix === '' || /^\d+$/.test(suffix)) return null;
+
     return suffix;
   }
 
@@ -655,6 +698,7 @@ export class JobWorkConnector extends BrowserConnector {
       .map((row) => {
         const code = this.decodeOption('profileLanguage', row.profileLanguage);
         const level = this.decodeOption('profileLanguageLevel', row.profileLanguageLevel);
+
         return {
           language: this.LANGUAGE_NAMES[(code || '').toLowerCase()] || code,
           // "Native", "Fluent", "Basic" - words the normaliser already maps.
@@ -678,6 +722,7 @@ export class JobWorkConnector extends BrowserConnector {
         }
       }
     }
+
     return skills;
   }
 
@@ -746,95 +791,92 @@ export class JobWorkConnector extends BrowserConnector {
    * @returns {Promise<Object>}
    */
   async pushAvailability(availability) {
-    return this.withRateLimit(async () => {
-      return this.withRetry(async () => {
-        this.log('info', `Pushing ${availability.length} availability items to JobWork`);
+    return this.withRateLimit(async () => this.withRetry(async () => {
+      this.log('info', `Pushing ${availability.length} availability items to JobWork`);
 
-        if (!this.isAuthenticated || !this.page) {
-          throw new Error('Not authenticated. Call authenticate() first.');
-        }
+      if (!this.isAuthenticated || !this.page) {
+        throw new Error('Not authenticated. Call authenticate() first.');
+      }
 
-        // Navigate to availability/calendar page
-        await this.page.goto(`${this.baseUrl}/profil/verfuegbarkeit`, {
-          waitUntil: 'networkidle2',
-          timeout: 30000
-        });
+      // Navigate to availability/calendar page
+      await this.page.goto(`${this.baseUrl}/profil/verfuegbarkeit`, {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      });
 
-        let successCount = 0;
-        let firstItemError = null;
+      let successCount = 0;
+      let firstItemError = null;
 
-        // Process each availability item
-        for (const item of availability) {
-          try {
-            // Structural selectors first, label as the fallback. This used to be
-            // `button:contains("Hinzufügen")` - jQuery, not CSS - so `page.$`
-            // threw and the `if (addButton)` guard quietly skipped every item.
-            const addButton = await findByCssOrText(this.page, {
-              css: ['[data-action="add-availability"]', '.add-availability'],
-              texts: ['verfügbarkeit hinzufügen', 'hinzufügen', 'neu', 'add'],
-              timeout: 5000
-            });
+      // Process each availability item
+      for (const item of availability) {
+        try {
+          // Structural selectors first, label as the fallback. This used to be
+          // `button:contains("Hinzufügen")` - jQuery, not CSS - so `page.$`
+          // threw and the `if (addButton)` guard quietly skipped every item.
+          const addButton = await findByCssOrText(this.page, {
+            css: ['[data-action="add-availability"]', '.add-availability'],
+            texts: ['verfügbarkeit hinzufügen', 'hinzufügen', 'neu', 'add'],
+            timeout: 5000
+          });
 
-            if (!addButton) {
-              throw new PlatformChangedError('No "add availability" control found on the availability page', {
-                platform: 'jobwork'
-              });
-            }
-
-            await addButton.click();
-            await addButton.dispose().catch(() => {});
-            await this.delay(500);
-
-            // Fill form
-            await this.fillAvailabilityForm(item);
-
-            // Submit
-            const submitButton = await findByCssOrText(this.page, {
-              css: ['button[type="submit"]', 'input[type="submit"]'],
-              texts: ['speichern', 'übernehmen', 'save'],
-              timeout: 5000
-            });
-
-            if (!submitButton) {
-              throw new PlatformChangedError('Availability form has no submit control', {
-                platform: 'jobwork'
-              });
-            }
-
-            await submitButton.click();
-            await submitButton.dispose().catch(() => {});
-            await this.delay(1000);
-            successCount++;
-
-          } catch (itemError) {
-            firstItemError = firstItemError || itemError;
-            this.log('warn', 'Failed to add availability item', {
-              item,
-              error: itemError.message
+          if (!addButton) {
+            throw new PlatformChangedError('No "add availability" control found on the availability page', {
+              platform: 'jobwork'
             });
           }
+
+          await addButton.click();
+          await addButton.dispose().catch(() => {});
+          await this.delay(500);
+
+          // Fill form
+          await this.fillAvailabilityForm(item);
+
+          // Submit
+          const submitButton = await findByCssOrText(this.page, {
+            css: ['button[type="submit"]', 'input[type="submit"]'],
+            texts: ['speichern', 'übernehmen', 'save'],
+            timeout: 5000
+          });
+
+          if (!submitButton) {
+            throw new PlatformChangedError('Availability form has no submit control', {
+              platform: 'jobwork'
+            });
+          }
+
+          await submitButton.click();
+          await submitButton.dispose().catch(() => {});
+          await this.delay(1000);
+          successCount++;
+        } catch (itemError) {
+          firstItemError = firstItemError || itemError;
+          this.log('warn', 'Failed to add availability item', {
+            item,
+            error: itemError.message
+          });
         }
+      }
 
-        // Every item failed: keeping going is right for one bad date, wrong
-        // when nothing worked - the caller would log a successful sync of zero.
-        if (successCount === 0 && availability.length > 0) {
-          throw firstItemError || new PlatformChangedError(
-            'No availability item could be added on JobWork',
-            { platform: 'jobwork' }
-          );
-        }
+      // Every item failed: keeping going is right for one bad date, wrong
+      // when nothing worked - the caller would log a successful sync of zero.
+      if (successCount === 0 && availability.length > 0) {
+        throw firstItemError || new PlatformChangedError(
+          'No availability item could be added on JobWork',
+          { platform: 'jobwork' }
+        );
+      }
 
-        this.log('info', `Pushed ${successCount}/${availability.length} availability items`);
+      this.log('info', `Pushed ${successCount}/${availability.length} availability items`);
 
-        return {
-          success: true,
-          count: successCount,
-          total: availability.length,
-          externalIds: [],
-          details: { added: successCount, total: availability.length }
-        };
-      });
-    });
+      return {
+        success: true,
+        count: successCount,
+        total: availability.length,
+        externalIds: [],
+        details: { added: successCount, total: availability.length }
+      };
+    }));
   }
 
   /**
@@ -860,10 +902,10 @@ export class JobWorkConnector extends BrowserConnector {
     // Status (German platform)
     if (item.status) {
       const statusMap = {
-        'available': 'verfuegbar',
-        'unavailable': 'nicht_verfuegbar',
-        'booking': 'gebucht',
-        'option': 'option'
+        available: 'verfuegbar',
+        unavailable: 'nicht_verfuegbar',
+        booking: 'gebucht',
+        option: 'option'
       };
       const mappedStatus = statusMap[item.status] || item.status;
 
@@ -888,67 +930,63 @@ export class JobWorkConnector extends BrowserConnector {
    * @returns {Promise<Object>}
    */
   async pushMedia(media) {
-    return this.withRateLimit(async () => {
-      return this.withRetry(async () => {
-        this.log('info', 'Uploading media to JobWork', {
-          type: media.type,
-          filename: media.filename
-        });
-
-        if (!this.isAuthenticated || !this.page) {
-          throw new Error('Not authenticated. Call authenticate() first.');
-        }
-
-        // Navigate to media page
-        await this.page.goto(`${this.baseUrl}/profil/bilder`, {
-          waitUntil: 'networkidle2',
-          timeout: 30000
-        });
-
-        // Find file upload input
-        const uploadInput = await this.page.$('input[type="file"]');
-        if (!uploadInput) {
-          throw new Error('Could not find file upload input');
-        }
-
-        // Save to temp file
-        const fs = await import('fs/promises');
-        const path = await import('path');
-        const os = await import('os');
-
-        const tempDir = os.tmpdir();
-        const tempFilePath = path.join(tempDir, media.filename);
-        await fs.writeFile(tempFilePath, media.buffer);
-
-        try {
-          // Upload
-          await uploadInput.uploadFile(tempFilePath);
-
-          // Wait for upload confirmation
-          await this.page.waitForSelector('.upload-success, .erfolg, .success', {
-            timeout: 60000
-          });
-
-          this.log('info', 'Successfully uploaded media to JobWork');
-
-          return {
-            success: true,
-            externalId: null,
-            url: null
-          };
-
-        } finally {
-          // Cleanup
-          try {
-            await fs.unlink(tempFilePath);
-          } catch (e) {
-            // Ignore
-          }
-        }
+    return this.withRateLimit(async () => this.withRetry(async () => {
+      this.log('info', 'Uploading media to JobWork', {
+        type: media.type,
+        filename: media.filename
       });
-    });
-  }
 
+      if (!this.isAuthenticated || !this.page) {
+        throw new Error('Not authenticated. Call authenticate() first.');
+      }
+
+      // Navigate to media page
+      await this.page.goto(`${this.baseUrl}/profil/bilder`, {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      });
+
+      // Find file upload input
+      const uploadInput = await this.page.$('input[type="file"]');
+      if (!uploadInput) {
+        throw new Error('Could not find file upload input');
+      }
+
+      // Save to temp file
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const os = await import('os');
+
+      const tempDir = os.tmpdir();
+      const tempFilePath = path.join(tempDir, media.filename);
+      await fs.writeFile(tempFilePath, media.buffer);
+
+      try {
+        // Upload
+        await uploadInput.uploadFile(tempFilePath);
+
+        // Wait for upload confirmation
+        await this.page.waitForSelector('.upload-success, .erfolg, .success', {
+          timeout: 60000
+        });
+
+        this.log('info', 'Successfully uploaded media to JobWork');
+
+        return {
+          success: true,
+          externalId: null,
+          url: null
+        };
+      } finally {
+        // Cleanup
+        try {
+          await fs.unlink(tempFilePath);
+        } catch (e) {
+          // Ignore
+        }
+      }
+    }));
+  }
 }
 
 export default JobWorkConnector;

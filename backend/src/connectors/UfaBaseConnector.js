@@ -12,8 +12,12 @@ export class UfaBaseConnector extends BrowserConnector {
     key: 'ufa-base',
     name: 'UFA Base',
     authType: 'credentials',
-    credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
-      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    credentialFields: [{
+      name: 'email', type: 'email', required: true, label: 'E-Mail'
+    },
+    {
+      name: 'password', type: 'password', required: true, label: 'Passwort'
+    }],
     // Login only: the pages behind it have never been seen. See FilmpoolConnector.
     capabilities: ['verify']
   });

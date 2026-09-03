@@ -1,26 +1,45 @@
 import React from 'react';
-import {X} from 'lucide-react';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import IconButton from '@mui/material/IconButton';
+import { X } from 'lucide-react';
 
-const Modal = ({isOpen, onClose, title, children}) => {
-    if (!isOpen) return null;
-
-    // The body scrolls and the whole dialog is capped at the viewport height:
-    // a long dialog (the profile import lists every field it found) otherwise
-    // grows past the bottom of the screen and takes its own confirm and cancel
-    // buttons with it, leaving no way to finish.
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full max-h-full flex flex-col">
-                <div className="flex justify-between items-center p-6 border-b shrink-0">
-                    <h3 className="text-xl font-semibold">{title}</h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-                        <X size={24} />
-                    </button>
-                </div>
-                <div className="p-6 overflow-y-auto">{children}</div>
-            </div>
-        </div>
-    );
-};
+/**
+ * A dialog.
+ *
+ * The behaviour the hand-rolled version had to spell out - cap the height at
+ * the viewport and scroll the body, so a long dialog does not push its own
+ * confirm and cancel buttons off the bottom of the screen - is what Dialog with
+ * `scroll="paper"` does by itself. The import dialog, which lists every field a
+ * platform returned, is the one that needs it.
+ *
+ * `maxWidth="sm"` matches the old `max-w-md` closely enough that the dialogs
+ * keep their proportions.
+ */
+const Modal = ({ isOpen, onClose, title, children }) => (
+  <Dialog
+    open={Boolean(isOpen)}
+    onClose={onClose}
+    scroll="paper"
+    fullWidth
+    maxWidth="sm"
+  >
+    <DialogTitle
+      sx={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        borderBottom: 1, borderColor: 'divider', fontSize: '1.25rem', fontWeight: 600
+      }}
+    >
+      {title}
+      <IconButton onClick={onClose} size="small" aria-label="Schließen">
+        <X size={20} />
+      </IconButton>
+    </DialogTitle>
+    <DialogContent dividers={false} sx={{ pt: 3 }}>
+      {children}
+    </DialogContent>
+  </Dialog>
+);
 
 export default Modal;

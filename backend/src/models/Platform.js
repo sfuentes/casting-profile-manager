@@ -134,6 +134,7 @@ const PlatformSchema = new mongoose.Schema({
           hasToken: Boolean(ret.authData.token)
         };
       }
+
       return ret;
     }
   }

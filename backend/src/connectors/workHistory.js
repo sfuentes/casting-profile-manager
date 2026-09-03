@@ -30,8 +30,8 @@
  */
 export const canonical = (value) => String(value ?? '')
   .toLowerCase()
-  .replace(/[\u2010-\u2015]/g, '-')      // the dash family, all spelled '-'
-  .replace(/[^\p{L}\p{N}]+/gu, ' ')      // punctuation is noise, letters are not
+  .replace(/[\u2010-\u2015]/g, '-') // the dash family, all spelled '-'
+  .replace(/[^\p{L}\p{N}]+/gu, ' ') // punctuation is noise, letters are not
   .trim()
   .replace(/\s+/g, ' ');
 
@@ -41,6 +41,7 @@ export const productionOf = (entry) => entry?.production || entry?.title || '';
 /** The first year of a credit, from a year, a range, or a date. */
 export const yearOf = (entry) => {
   const raw = String(entry?.year ?? entry?.startYear ?? '');
+
   return (raw.match(/\d{4}/) || [''])[0];
 };
 
@@ -74,6 +75,7 @@ export const isSameCredit = (a, b) => {
   // A year on both sides must agree. A year on one side only is not evidence
   // of a different credit, and refusing to match on it would write a duplicate.
   if (x.year && y.year && x.year !== y.year) return false;
+
   return true;
 };
 
@@ -101,6 +103,7 @@ export const editDistance = (a, b, cap = 3) => {
     if (best > cap) return cap + 1;
     previous = row;
   }
+
   return previous[b.length];
 };
 
@@ -175,6 +178,7 @@ export const diffWorkHistory = (ours = [], theirs = []) => {
   }
 
   const theirsOnly = theirs.filter((_, i) => !matched.has(i));
+
   return { missing, shared, theirsOnly };
 };
 
@@ -233,7 +237,6 @@ export const describe = (entry) => [
   entry?.company && entry.company !== '-' && `(${entry.company})`
 ].filter(Boolean).join(' ');
 
-
 /** The answer that means "this really is a credit of its own - add it". */
 export const ADD_AS_NEW = '__add__';
 
@@ -288,7 +291,9 @@ export const reconcileWorkHistory = (ours = [], theirs = [], labels = {}) => {
     });
   }
 
-  return { missing: certain, shared, theirsOnly, questions };
+  return {
+    missing: certain, shared, theirsOnly, questions
+  };
 };
 
 /**
@@ -316,6 +321,14 @@ export const applyCreditResolutions = (questions = [], answers = {}) => {
 };
 
 export default {
-  canonical, identityOf, isSameCredit, diffWorkHistory, mergeWorkHistory, describe,
-  nearMatches, reconcileWorkHistory, applyCreditResolutions, ADD_AS_NEW
+  canonical,
+  identityOf,
+  isSameCredit,
+  diffWorkHistory,
+  mergeWorkHistory,
+  describe,
+  nearMatches,
+  reconcileWorkHistory,
+  applyCreditResolutions,
+  ADD_AS_NEW
 };

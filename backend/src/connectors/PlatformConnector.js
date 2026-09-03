@@ -85,6 +85,7 @@ export class PlatformConnector {
 
   async withRateLimit(fn) {
     await this.rateLimiter.consume(this.manifest.key);
+
     return fn();
   }
 
@@ -95,7 +96,7 @@ export class PlatformConnector {
         return await fn();
       } catch (error) {
         if (i === maxRetries - 1 || !this.isRetryable(error)) throw error;
-        await this.delay(Math.pow(2, i) * 1000);
+        await this.delay(2 ** i * 1000);
       }
     }
   }
@@ -108,6 +109,7 @@ export class PlatformConnector {
     if (typeof error?.retryable === 'boolean') return error.retryable;
     if (['ETIMEDOUT', 'ECONNRESET', 'ENOTFOUND'].includes(error?.code)) return true;
     const status = error?.response?.status;
+
     return status >= 500 || status === 429;
   }
 
@@ -203,7 +205,11 @@ export class PlatformConnector {
   }
 
   /** Uniform result shape, so callers never branch on which platform ran. */
-  static result({ ok = true, itemsSynced = 0, itemsFailed = 0, errors = [], details = {} } = {}) {
-    return { ok, itemsSynced, itemsFailed, errors, details };
+  static result({
+    ok = true, itemsSynced = 0, itemsFailed = 0, errors = [], details = {}
+  } = {}) {
+    return {
+      ok, itemsSynced, itemsFailed, errors, details
+    };
   }
 }

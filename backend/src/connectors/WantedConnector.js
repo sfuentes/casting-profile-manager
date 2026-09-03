@@ -15,8 +15,12 @@ export class WantedConnector extends BrowserConnector {
     key: 'wanted',
     name: 'Wanted',
     authType: 'credentials',
-    credentialFields: [{ name: 'username', type: 'text', required: true, label: 'Benutzername' },
-      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    credentialFields: [{
+      name: 'username', type: 'text', required: true, label: 'Benutzername'
+    },
+    {
+      name: 'password', type: 'password', required: true, label: 'Passwort'
+    }],
     capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia']
   });
 
@@ -56,101 +60,99 @@ export class WantedConnector extends BrowserConnector {
       { field: 'hairColor', selector: 'select[name="hair_color"], select[name="haarfarbe"]', kind: 'select' }
     ]
   });
+
   /**
    * Push availability data to Wanted
    * @param {Array} availability
    * @returns {Promise<Object>}
    */
   async pushAvailability(availability) {
-    return this.withRateLimit(async () => {
-      return this.withRetry(async () => {
-        this.log('info', `Pushing ${availability.length} availability items to Wanted`);
+    return this.withRateLimit(async () => this.withRetry(async () => {
+      this.log('info', `Pushing ${availability.length} availability items to Wanted`);
 
-        if (!this.isAuthenticated || !this.page) {
-          throw new Error('Not authenticated. Call authenticate() first.');
-        }
+      if (!this.isAuthenticated || !this.page) {
+        throw new Error('Not authenticated. Call authenticate() first.');
+      }
 
-        // Navigate to availability management
-        await this.page.goto(`${this.baseUrl}/profil/verfuegbarkeit`, {
-          waitUntil: 'networkidle2',
-          timeout: 30000
-        });
+      // Navigate to availability management
+      await this.page.goto(`${this.baseUrl}/profil/verfuegbarkeit`, {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      });
 
-        let successCount = 0;
-        let firstItemError = null;
+      let successCount = 0;
+      let firstItemError = null;
 
-        // Process each availability item
-        for (const item of availability) {
-          try {
-            // Structural selectors first, German labels as the fallback. These
-            // were `button:contains("Hinzufügen")` - jQuery, not CSS - so
-            // `page.$` threw and the guard quietly skipped every item.
-            const addButton = await findByCssOrText(this.page, {
-              css: ['[data-action="add"]', '.add-availability'],
-              texts: ['verfügbarkeit hinzufügen', 'hinzufügen', 'neu', 'add'],
-              timeout: 5000
-            });
+      // Process each availability item
+      for (const item of availability) {
+        try {
+          // Structural selectors first, German labels as the fallback. These
+          // were `button:contains("Hinzufügen")` - jQuery, not CSS - so
+          // `page.$` threw and the guard quietly skipped every item.
+          const addButton = await findByCssOrText(this.page, {
+            css: ['[data-action="add"]', '.add-availability'],
+            texts: ['verfügbarkeit hinzufügen', 'hinzufügen', 'neu', 'add'],
+            timeout: 5000
+          });
 
-            if (!addButton) {
-              throw new PlatformChangedError('No "add availability" control found on the availability page', {
-                platform: 'wanted'
-              });
-            }
-
-            await addButton.click();
-            await addButton.dispose().catch(() => {});
-            await this.delay(500);
-
-            // Fill form
-            await this.fillAvailabilityForm(item);
-
-            // Submit
-            const submitButton = await findByCssOrText(this.page, {
-              css: ['button[type="submit"]', 'input[type="submit"]'],
-              texts: ['speichern', 'übernehmen', 'save'],
-              timeout: 5000
-            });
-
-            if (!submitButton) {
-              throw new PlatformChangedError('Availability form has no submit control', {
-                platform: 'wanted'
-              });
-            }
-
-            await submitButton.click();
-            await submitButton.dispose().catch(() => {});
-            await this.delay(1000);
-            successCount++;
-
-          } catch (itemError) {
-            firstItemError = firstItemError || itemError;
-            this.log('warn', 'Failed to add availability item', {
-              item,
-              error: itemError.message
+          if (!addButton) {
+            throw new PlatformChangedError('No "add availability" control found on the availability page', {
+              platform: 'wanted'
             });
           }
+
+          await addButton.click();
+          await addButton.dispose().catch(() => {});
+          await this.delay(500);
+
+          // Fill form
+          await this.fillAvailabilityForm(item);
+
+          // Submit
+          const submitButton = await findByCssOrText(this.page, {
+            css: ['button[type="submit"]', 'input[type="submit"]'],
+            texts: ['speichern', 'übernehmen', 'save'],
+            timeout: 5000
+          });
+
+          if (!submitButton) {
+            throw new PlatformChangedError('Availability form has no submit control', {
+              platform: 'wanted'
+            });
+          }
+
+          await submitButton.click();
+          await submitButton.dispose().catch(() => {});
+          await this.delay(1000);
+          successCount++;
+        } catch (itemError) {
+          firstItemError = firstItemError || itemError;
+          this.log('warn', 'Failed to add availability item', {
+            item,
+            error: itemError.message
+          });
         }
+      }
 
-        // Every item failed: keeping going is right for one bad date, wrong
-        // when nothing worked - the caller would log a successful sync of zero.
-        if (successCount === 0 && availability.length > 0) {
-          throw firstItemError || new PlatformChangedError(
-            'No availability item could be added on Wanted',
-            { platform: 'wanted' }
-          );
-        }
+      // Every item failed: keeping going is right for one bad date, wrong
+      // when nothing worked - the caller would log a successful sync of zero.
+      if (successCount === 0 && availability.length > 0) {
+        throw firstItemError || new PlatformChangedError(
+          'No availability item could be added on Wanted',
+          { platform: 'wanted' }
+        );
+      }
 
-        this.log('info', `Pushed ${successCount}/${availability.length} availability items to Wanted`);
+      this.log('info', `Pushed ${successCount}/${availability.length} availability items to Wanted`);
 
-        return {
-          success: true,
-          count: successCount,
-          total: availability.length,
-          externalIds: [],
-          details: { added: successCount, total: availability.length }
-        };
-      });
-    });
+      return {
+        success: true,
+        count: successCount,
+        total: availability.length,
+        externalIds: [],
+        details: { added: successCount, total: availability.length }
+      };
+    }));
   }
 
   /**
@@ -176,10 +178,10 @@ export class WantedConnector extends BrowserConnector {
     // Status (German mapping)
     if (item.status) {
       const statusMap = {
-        'available': 'verfuegbar',
-        'unavailable': 'nicht_verfuegbar',
-        'booking': 'gebucht',
-        'option': 'option'
+        available: 'verfuegbar',
+        unavailable: 'nicht_verfuegbar',
+        booking: 'gebucht',
+        option: 'option'
       };
       const mappedStatus = statusMap[item.status] || item.status;
 
@@ -208,67 +210,63 @@ export class WantedConnector extends BrowserConnector {
    * @returns {Promise<Object>}
    */
   async pushMedia(media) {
-    return this.withRateLimit(async () => {
-      return this.withRetry(async () => {
-        this.log('info', 'Uploading media to Wanted', {
-          type: media.type,
-          filename: media.filename
-        });
-
-        if (!this.isAuthenticated || !this.page) {
-          throw new Error('Not authenticated. Call authenticate() first.');
-        }
-
-        // Navigate to media/photos page
-        await this.page.goto(`${this.baseUrl}/profil/fotos`, {
-          waitUntil: 'networkidle2',
-          timeout: 30000
-        });
-
-        // Find file upload input
-        const uploadInput = await this.page.$('input[type="file"]');
-        if (!uploadInput) {
-          throw new Error('Could not find file upload input');
-        }
-
-        // Save to temp file
-        const fs = await import('fs/promises');
-        const path = await import('path');
-        const os = await import('os');
-
-        const tempDir = os.tmpdir();
-        const tempFilePath = path.join(tempDir, media.filename);
-        await fs.writeFile(tempFilePath, media.buffer);
-
-        try {
-          // Upload
-          await uploadInput.uploadFile(tempFilePath);
-
-          // Wait for upload success (German: Erfolgreich/Hochgeladen)
-          await this.page.waitForSelector('.upload-success, .erfolgreich, .hochgeladen, .success', {
-            timeout: 60000
-          });
-
-          this.log('info', 'Successfully uploaded media to Wanted');
-
-          return {
-            success: true,
-            externalId: null,
-            url: null
-          };
-
-        } finally {
-          // Cleanup temp file
-          try {
-            await fs.unlink(tempFilePath);
-          } catch (e) {
-            // Ignore cleanup errors
-          }
-        }
+    return this.withRateLimit(async () => this.withRetry(async () => {
+      this.log('info', 'Uploading media to Wanted', {
+        type: media.type,
+        filename: media.filename
       });
-    });
-  }
 
+      if (!this.isAuthenticated || !this.page) {
+        throw new Error('Not authenticated. Call authenticate() first.');
+      }
+
+      // Navigate to media/photos page
+      await this.page.goto(`${this.baseUrl}/profil/fotos`, {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      });
+
+      // Find file upload input
+      const uploadInput = await this.page.$('input[type="file"]');
+      if (!uploadInput) {
+        throw new Error('Could not find file upload input');
+      }
+
+      // Save to temp file
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const os = await import('os');
+
+      const tempDir = os.tmpdir();
+      const tempFilePath = path.join(tempDir, media.filename);
+      await fs.writeFile(tempFilePath, media.buffer);
+
+      try {
+        // Upload
+        await uploadInput.uploadFile(tempFilePath);
+
+        // Wait for upload success (German: Erfolgreich/Hochgeladen)
+        await this.page.waitForSelector('.upload-success, .erfolgreich, .hochgeladen, .success', {
+          timeout: 60000
+        });
+
+        this.log('info', 'Successfully uploaded media to Wanted');
+
+        return {
+          success: true,
+          externalId: null,
+          url: null
+        };
+      } finally {
+        // Cleanup temp file
+        try {
+          await fs.unlink(tempFilePath);
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
+    }));
+  }
 }
 
 export default WantedConnector;

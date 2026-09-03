@@ -1,8 +1,7 @@
-@import "tailwindcss";
-@import './custom-styles.css';
+/* Global styles.
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Import custom styles */
+ * The reset lives in MUI's CssBaseline now (see main.jsx). This file used to
+ * be Tailwind's three directives and an import of an empty stylesheet; it is
+ * kept because main.jsx imports it and a project-wide stylesheet is where a
+ * genuinely global rule would go.
+ */

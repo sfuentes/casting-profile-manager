@@ -12,8 +12,12 @@ export class FilmpoolConnector extends BrowserConnector {
     key: 'filmpool',
     name: 'filmpool Casting',
     authType: 'credentials',
-    credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
-      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
+    credentialFields: [{
+      name: 'email', type: 'email', required: true, label: 'E-Mail'
+    },
+    {
+      name: 'password', type: 'password', required: true, label: 'Passwort'
+    }],
     // Only what has actually been established. The login page was read on
     // 2026-08-30; nothing behind it has been seen, so nothing behind it is
     // offered. Declaring pushProfile here would put a button in the UI that

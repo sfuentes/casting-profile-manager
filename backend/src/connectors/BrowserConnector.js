@@ -179,6 +179,7 @@ export class BrowserConnector extends PlatformConnector {
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
       + '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     );
+
     return this.page;
   }
 
@@ -221,6 +222,7 @@ export class BrowserConnector extends PlatformConnector {
 
   async verify() {
     await this.authenticate();
+
     return { ok: true, message: 'Login succeeded.' };
   }
 
@@ -280,6 +282,7 @@ export class BrowserConnector extends PlatformConnector {
 
       this.isAuthenticated = true;
       this.log('info', `Successfully authenticated with ${this.manifest.name}`);
+
       return true;
     } catch (error) {
       const failure = this.classifyFailure(error);
@@ -318,6 +321,7 @@ export class BrowserConnector extends PlatformConnector {
       // eslint-disable-next-line no-await-in-loop
       await this.delay(500);
     }
+
     return false;
   }
 
@@ -366,6 +370,7 @@ export class BrowserConnector extends PlatformConnector {
 
     await button.click();
     await button.dispose().catch(() => {});
+
     return true;
   }
 
@@ -413,6 +418,7 @@ export class BrowserConnector extends PlatformConnector {
       const visible = (el) => {
         const style = getComputedStyle(el);
         const box = el.getBoundingClientRect();
+
         return style.display !== 'none' && style.visibility !== 'hidden'
           && box.width > 0 && box.height > 0;
       };
@@ -425,6 +431,7 @@ export class BrowserConnector extends PlatformConnector {
       const decline = matching(vocab.decline);
       if (decline) {
         decline.click();
+
         return { action: 'declined', label: decline.innerText.trim() };
       }
 
@@ -439,6 +446,7 @@ export class BrowserConnector extends PlatformConnector {
       const acknowledge = matching(vocab.acknowledge);
       if (acknowledge) {
         acknowledge.click();
+
         return { action: 'acknowledged', label: acknowledge.innerText.trim() };
       }
 
@@ -452,9 +460,12 @@ export class BrowserConnector extends PlatformConnector {
     if (outcome?.action === 'left-standing') {
       // Not a failure, but worth seeing in the log: whatever this banner covers
       // stays covered, and a click into it will fail somewhere further down.
-      this.log('warn',
+      this.log(
+        'warn',
         `A consent banner offers a choice ("${outcome.label}") and no way to decline. `
-        + 'Leaving it alone: giving consent is not something this connector does.');
+        + 'Leaving it alone: giving consent is not something this connector does.'
+      );
+
       return false;
     }
 
@@ -465,6 +476,7 @@ export class BrowserConnector extends PlatformConnector {
       // The overlay unmounts asynchronously; give it a moment before anything
       // tries to click what it was covering.
       await this.delay(500);
+
       return true;
     }
 
@@ -550,11 +562,13 @@ export class BrowserConnector extends PlatformConnector {
       for (const option of select.options) {
         if (option.value) map[option.value] = option.text.trim();
       }
+
       return map;
     }).catch(() => ({}));
 
     return entries.map((entry) => {
       const [code, level] = entry.split('#');
+
       return { name: labels[code] || code.trim(), level: (level || '').trim() };
     });
   }
@@ -644,6 +658,7 @@ export class BrowserConnector extends PlatformConnector {
       if (!input) return false;
       await input.uploadFile(value);
       await input.dispose();
+
       return true;
     }
 
@@ -652,10 +667,12 @@ export class BrowserConnector extends PlatformConnector {
       // selects nothing and returns an empty array. Treating that as a write
       // would report a field as updated whose dropdown never moved.
       const selected = await this.page.select(selector, String(value));
+
       return selected.length > 0;
     }
 
     await this.clearAndType(selector, value);
+
     return true;
   }
 
@@ -681,12 +698,14 @@ export class BrowserConnector extends PlatformConnector {
         ...document.querySelectorAll('[role="radio"]'),
         ...document.querySelectorAll(sel)
       ];
+
       return candidates.find((el) => (el.getAttribute('value') ?? el.value) === value) || null;
     }, selector, wanted);
 
     const element = handle.asElement();
     if (!element) {
       await handle.dispose();
+
       return false;
     }
 
@@ -752,7 +771,9 @@ export class BrowserConnector extends PlatformConnector {
       }
     }
 
-    return { requestedFields, updatedFields, missingFields, updatedSelector };
+    return {
+      requestedFields, updatedFields, missingFields, updatedSelector
+    };
   }
 
   /** Where this platform's profile form lives. Overridden where it is dynamic. */
@@ -802,6 +823,7 @@ export class BrowserConnector extends PlatformConnector {
         || (Array.isArray(value) && value.length === 0);
       if (empty) {
         missing.push(field);
+
         return;
       }
 
@@ -911,6 +933,7 @@ export class BrowserConnector extends PlatformConnector {
       if (!this.isAuthenticated || !this.page) {
         throw new Error('Not authenticated. Call authenticate() first.');
       }
+
       return this.readDeclaredProfile();
     }));
   }
@@ -965,7 +988,9 @@ export class BrowserConnector extends PlatformConnector {
           missingFields,
           screenshot: shot,
           url: this.page.url(),
-          details: { dryRun: true, filled: updatedFields, notFilled: missingFields, screenshot: shot }
+          details: {
+            dryRun: true, filled: updatedFields, notFilled: missingFields, screenshot: shot
+          }
         };
       }
 
@@ -1037,6 +1062,7 @@ export class BrowserConnector extends PlatformConnector {
       const isVisible = (el) => {
         const style = getComputedStyle(el);
         const box = el.getBoundingClientRect();
+
         return style.display !== 'none' && style.visibility !== 'hidden'
           && box.width > 0 && box.height > 0;
       };
@@ -1055,6 +1081,7 @@ export class BrowserConnector extends PlatformConnector {
         const ownAction = form.getAttribute('action') || '';
         const staysHere = typed.filter((el) => {
           const elsewhere = el.getAttribute('formaction');
+
           return !elsewhere || elsewhere === ownAction;
         });
 
@@ -1084,6 +1111,7 @@ export class BrowserConnector extends PlatformConnector {
     if (element) {
       await element.click();
       await element.dispose();
+
       return true;
     }
     await handle.dispose();
@@ -1099,6 +1127,7 @@ export class BrowserConnector extends PlatformConnector {
       const submitter = form.querySelector('input[type="submit"], button[type="submit"]');
       if (typeof form.requestSubmit === 'function') form.requestSubmit(submitter || undefined);
       else form.submit();
+
       return true;
     }, selector);
   }
@@ -1122,10 +1151,12 @@ export class BrowserConnector extends PlatformConnector {
     try {
       await fs.mkdir(dir, { recursive: true });
       await this.page.screenshot({ path: file, fullPage: true });
+
       return file;
     } catch (error) {
       // A dry run must not fail because a screenshot could not be written.
       this.log('warn', 'Could not save the dry-run screenshot', { error: error.message });
+
       return null;
     }
   }
@@ -1150,6 +1181,7 @@ export class BrowserConnector extends PlatformConnector {
       const bytes = new Uint8Array(buffer);
       let binary = '';
       for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+
       return { base64: btoa(binary), type: response.headers.get('content-type') || '' };
     }, url).catch(() => null);
 
@@ -1165,6 +1197,7 @@ export class BrowserConnector extends PlatformConnector {
       `cpm-${this.manifest.key}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${extension}`
     );
     await fs.writeFile(file, Buffer.from(data.base64, 'base64'));
+
     return file;
   }
 
@@ -1224,7 +1257,10 @@ export class BrowserConnector extends PlatformConnector {
     if (!extension) return { extension: '', type: '', group: '' };
 
     const group = ['mp4', 'mov', 'm4v', 'webm'].includes(extension) ? 'video' : 'image';
-    const canonical = { jpg: 'jpeg', jpe: 'jpeg', mov: 'quicktime', m4v: 'mp4' }[extension] || extension;
+    const canonical = {
+      jpg: 'jpeg', jpe: 'jpeg', mov: 'quicktime', m4v: 'mp4'
+    }[extension] || extension;
+
     return { extension, group, type: `${group}/${canonical}` };
   }
 
@@ -1293,6 +1329,7 @@ export class BrowserConnector extends PlatformConnector {
         const wanted = step.accepts.split(',').map((one) => one.trim().toLowerCase());
         const { extension, type, group } = this.mediaTypeOf(step.url);
         if (!extension) return true;
+
         return wanted.some((one) => one === type || one === `${group}/*` || one === `.${extension}`);
       };
 
@@ -1301,7 +1338,11 @@ export class BrowserConnector extends PlatformConnector {
 
       if (plan.length === 0) {
         return {
-          success: true, dryRun, uploaded: [], planned: [], skipped: slots.length,
+          success: true,
+          dryRun,
+          uploaded: [],
+          planned: [],
+          skipped: slots.length,
           details: { message: 'No picture or video in the profile matches a slot on this platform' }
         };
       }
@@ -1310,6 +1351,7 @@ export class BrowserConnector extends PlatformConnector {
         this.log('info', `Dry run: ${accepted.length} file(s) would be sent to ${this.manifest.name}`, {
           rejected: rejected.length
         });
+
         return {
           success: true,
           dryRun: true,
@@ -1375,6 +1417,7 @@ export class BrowserConnector extends PlatformConnector {
   formatDateForInput(date) {
     if (!date) return '';
     const value = new Date(date);
+
     return Number.isNaN(value.getTime()) ? '' : value.toISOString().split('T')[0];
   }
 }

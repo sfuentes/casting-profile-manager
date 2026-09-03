@@ -15,9 +15,20 @@ export class FilmmakersConnector extends BrowserConnector {
     key: 'filmmakers',
     name: 'Filmmakers',
     authType: 'credentials',
-    credentialFields: [{ name: 'email', type: 'email', required: true, label: 'E-Mail' },
-      { name: 'password', type: 'password', required: true, label: 'Passwort' }],
-    capabilities: ['verify', 'pushProfile', 'pushAvailability', 'pushMedia', 'pullProfile']
+    credentialFields: [{
+      name: 'email', type: 'email', required: true, label: 'E-Mail'
+    },
+    {
+      name: 'password', type: 'password', required: true, label: 'Passwort'
+    }],
+    // No pushAvailability. Read on 2026-09-03 while logged in: Filmmakers has no calendar
+    // at all. Nothing the logged-in site links to mentions Termine,
+    // Verfügbarkeit or a Kalender, and /profile/availability - the path this
+    // descriptor carried - answers 404, as do /availability and /calendar.
+    // The method below stays - it is groundwork, and the day this platform
+    // grows a calendar it is most of the work already done - but declaring the
+    // capability puts a button in the UI that can only ever fail.
+    capabilities: ['verify', 'pushProfile', 'pushMedia', 'pullProfile']
   });
 
   /**
@@ -65,96 +76,95 @@ export class FilmmakersConnector extends BrowserConnector {
   async profileEditUrl() {
     return `${this.baseUrl}/actors/${await this.findProfileSlug()}/edit`;
   }
+
   async pullProfile() {
     return this.readProfile();
   }
+
   /**
    * Push availability data to Filmmakers
    * @param {Array} availability
    * @returns {Promise<Object>}
    */
   async pushAvailability(availability) {
-    return this.withRateLimit(async () => {
-      return this.withRetry(async () => {
-        this.log('info', `Pushing ${availability.length} availability items to Filmmakers`);
+    return this.withRateLimit(async () => this.withRetry(async () => {
+      this.log('info', `Pushing ${availability.length} availability items to Filmmakers`);
 
-        if (!this.isAuthenticated || !this.page) {
-          throw new Error('Not authenticated. Call authenticate() first.');
-        }
+      if (!this.isAuthenticated || !this.page) {
+        throw new Error('Not authenticated. Call authenticate() first.');
+      }
 
-        // Navigate to availability management page
-        await this.page.goto(`${this.baseUrl}/profile/availability`, {
-          waitUntil: 'networkidle2',
-          timeout: 30000
-        });
+      // Navigate to availability management page
+      await this.page.goto(`${this.baseUrl}/profile/availability`, {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      });
 
-        let successCount = 0;
-        let firstItemError = null;
+      let successCount = 0;
+      let firstItemError = null;
 
-        // Process each availability item
-        for (const item of availability) {
-          try {
-            // Structural selectors first, button label as the fallback. The
-            // label used to be written as `button:contains("Add")`, which is
-            // jQuery and made the whole selector string invalid CSS.
-            const added = await clickByCssOrText(this.page, {
-              css: ['[data-action="add-availability"]', '.add-availability-btn'],
-              texts: ['add availability', 'add', 'verfügbarkeit hinzufügen', 'hinzufügen', 'neu'],
-              timeout: 5000
-            });
+      // Process each availability item
+      for (const item of availability) {
+        try {
+          // Structural selectors first, button label as the fallback. The
+          // label used to be written as `button:contains("Add")`, which is
+          // jQuery and made the whole selector string invalid CSS.
+          const added = await clickByCssOrText(this.page, {
+            css: ['[data-action="add-availability"]', '.add-availability-btn'],
+            texts: ['add availability', 'add', 'verfügbarkeit hinzufügen', 'hinzufügen', 'neu'],
+            timeout: 5000
+          });
 
-            if (!added) {
-              throw new PlatformChangedError('No "add availability" control found on the availability page', {
-                platform: 'filmmakers'
-              });
-            }
-
-            // Wait for form to appear
-            await this.page.waitForSelector('input[name="start_date"], input[name="from"]', {
-              timeout: 5000
-            });
-
-            // Fill availability form
-            await this.fillAvailabilityForm(item);
-
-            // Submit form
-            await this.page.click('button[type="submit"]');
-
-            // Wait for submission to complete
-            await this.delay(1000);
-
-            successCount++;
-
-          } catch (itemError) {
-            firstItemError = firstItemError || itemError;
-            this.log('warn', 'Failed to add availability item', {
-              item,
-              error: itemError.message
+          if (!added) {
+            throw new PlatformChangedError('No "add availability" control found on the availability page', {
+              platform: 'filmmakers'
             });
           }
+
+          // Wait for form to appear
+          await this.page.waitForSelector('input[name="start_date"], input[name="from"]', {
+            timeout: 5000
+          });
+
+          // Fill availability form
+          await this.fillAvailabilityForm(item);
+
+          // Submit form
+          await this.page.click('button[type="submit"]');
+
+          // Wait for submission to complete
+          await this.delay(1000);
+
+          successCount++;
+        } catch (itemError) {
+          firstItemError = firstItemError || itemError;
+          this.log('warn', 'Failed to add availability item', {
+            item,
+            error: itemError.message
+          });
         }
+      }
 
-        // Every item failed. A per-item catch that keeps going is right for a
-        // single bad date; it is wrong when nothing worked at all, because the
-        // caller would log a successful sync of zero items.
-        if (successCount === 0 && availability.length > 0) {
-          throw firstItemError || new PlatformChangedError(
-            'No availability item could be added on Filmmakers',
-            { platform: 'filmmakers' }
-          );
-        }
+      // Every item failed. A per-item catch that keeps going is right for a
+      // single bad date; it is wrong when nothing worked at all, because the
+      // caller would log a successful sync of zero items.
+      if (successCount === 0 && availability.length > 0) {
+        throw firstItemError || new PlatformChangedError(
+          'No availability item could be added on Filmmakers',
+          { platform: 'filmmakers' }
+        );
+      }
 
-        this.log('info', `Pushed ${successCount}/${availability.length} availability items to Filmmakers`);
+      this.log('info', `Pushed ${successCount}/${availability.length} availability items to Filmmakers`);
 
-        return {
-          success: true,
-          count: successCount,
-          total: availability.length,
-          externalIds: [], // Filmmakers doesn't return IDs via scraping
-          details: { added: successCount, total: availability.length }
-        };
-      });
-    });
+      return {
+        success: true,
+        count: successCount,
+        total: availability.length,
+        externalIds: [], // Filmmakers doesn't return IDs via scraping
+        details: { added: successCount, total: availability.length }
+      };
+    }));
   }
 
   /**
@@ -201,65 +211,62 @@ export class FilmmakersConnector extends BrowserConnector {
    * @returns {Promise<Object>}
    */
   async pushMedia(media) {
-    return this.withRateLimit(async () => {
-      return this.withRetry(async () => {
-        this.log('info', 'Uploading media to Filmmakers', {
-          type: media.type,
-          filename: media.filename
-        });
-
-        if (!this.isAuthenticated || !this.page) {
-          throw new Error('Not authenticated. Call authenticate() first.');
-        }
-
-        // Navigate to media upload page
-        await this.page.goto(`${this.baseUrl}/profile/photos`, {
-          waitUntil: 'networkidle2',
-          timeout: 30000
-        });
-
-        // Find file upload input
-        const uploadInput = await this.page.$('input[type="file"]');
-        if (!uploadInput) {
-          throw new Error('Could not find file upload input');
-        }
-
-        // Save media buffer to temporary file
-        const fs = await import('fs/promises');
-        const path = await import('path');
-        const os = await import('os');
-
-        const tempDir = os.tmpdir();
-        const tempFilePath = path.join(tempDir, media.filename);
-        await fs.writeFile(tempFilePath, media.buffer);
-
-        try {
-          // Upload file
-          await uploadInput.uploadFile(tempFilePath);
-
-          // Wait for upload to complete
-          await this.page.waitForSelector('.upload-success, .photo-uploaded', {
-            timeout: 60000
-          });
-
-          this.log('info', 'Successfully uploaded media to Filmmakers');
-
-          return {
-            success: true,
-            externalId: null, // Can't get ID via scraping
-            url: null
-          };
-
-        } finally {
-          // Clean up temp file
-          try {
-            await fs.unlink(tempFilePath);
-          } catch (e) {
-            // Ignore cleanup errors
-          }
-        }
+    return this.withRateLimit(async () => this.withRetry(async () => {
+      this.log('info', 'Uploading media to Filmmakers', {
+        type: media.type,
+        filename: media.filename
       });
-    });
+
+      if (!this.isAuthenticated || !this.page) {
+        throw new Error('Not authenticated. Call authenticate() first.');
+      }
+
+      // Navigate to media upload page
+      await this.page.goto(`${this.baseUrl}/profile/photos`, {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      });
+
+      // Find file upload input
+      const uploadInput = await this.page.$('input[type="file"]');
+      if (!uploadInput) {
+        throw new Error('Could not find file upload input');
+      }
+
+      // Save media buffer to temporary file
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const os = await import('os');
+
+      const tempDir = os.tmpdir();
+      const tempFilePath = path.join(tempDir, media.filename);
+      await fs.writeFile(tempFilePath, media.buffer);
+
+      try {
+        // Upload file
+        await uploadInput.uploadFile(tempFilePath);
+
+        // Wait for upload to complete
+        await this.page.waitForSelector('.upload-success, .photo-uploaded', {
+          timeout: 60000
+        });
+
+        this.log('info', 'Successfully uploaded media to Filmmakers');
+
+        return {
+          success: true,
+          externalId: null, // Can't get ID via scraping
+          url: null
+        };
+      } finally {
+        // Clean up temp file
+        try {
+          await fs.unlink(tempFilePath);
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
+    }));
   }
 
   /**
@@ -300,6 +307,7 @@ export class FilmmakersConnector extends BrowserConnector {
           || (Array.isArray(value) && value.length === 0);
         if (empty) {
           missing.push(key);
+
           return;
         }
         fields[key] = value;
@@ -431,6 +439,7 @@ export class FilmmakersConnector extends BrowserConnector {
       const href = els
         .map((a) => a.getAttribute('href'))
         .find((h) => h && /\/actors\/[^/?#]+$/.test(h));
+
       return href ? href.split('/actors/').pop() : null;
     }).catch(() => null);
 
@@ -440,6 +449,7 @@ export class FilmmakersConnector extends BrowserConnector {
         { platform: 'filmmakers' }
       );
     }
+
     return slug;
   }
 
@@ -454,6 +464,7 @@ export class FilmmakersConnector extends BrowserConnector {
     if (!year || !month || !day) return null;
 
     const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
     return Number.isNaN(new Date(iso).getTime()) ? null : iso;
   }
 
@@ -473,6 +484,7 @@ export class FilmmakersConnector extends BrowserConnector {
         title: (entry.querySelector('.vita-entries--entry-title')?.innerText || '').trim(),
         body: (entry.querySelector('.vita-entries--entry-body')?.innerText || '').trim()
       }));
+
       return {
         categoryId: heading && heading.classList.contains('vita-entries--title')
           ? heading.getAttribute('id')
@@ -550,6 +562,7 @@ export class FilmmakersConnector extends BrowserConnector {
       previous = text;
       text = text.replace(/\s*\([^()]{1,20}\)\s*$/, '').trim();
     } while (text !== previous && text.length > 0);
+
     return text || String(title || '').replace(/\s+/g, ' ').trim();
   }
 
@@ -593,6 +606,7 @@ export class FilmmakersConnector extends BrowserConnector {
 
     if (role) out.role = role;
     if (director) out.director = director;
+
     return out;
   }
 
@@ -603,6 +617,7 @@ export class FilmmakersConnector extends BrowserConnector {
   static splitYears(text) {
     const parts = String(text || '').split(/[–—-]/).map((part) => part.trim()).filter(Boolean);
     if (parts.length === 0) return ['', ''];
+
     return [parts[0], parts[1] || parts[0]];
   }
 
@@ -617,9 +632,9 @@ export class FilmmakersConnector extends BrowserConnector {
     if (/weiblich|female|woman/.test(value)) return 'female';
     if (/männlich|maennlich|male|man/.test(value)) return 'male';
     if (/divers|non-?binär|non-?binary|inter/.test(value)) return 'diverse';
+
     return 'not_specified';
   }
-
 }
 
 export default FilmmakersConnector;
