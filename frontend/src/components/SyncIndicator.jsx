@@ -7,7 +7,7 @@ import {useAppContext} from '../context/AppContext';
 
 /** One line of status, in the colour that matches it. */
 const Line = ({color, icon, children}) => (
-    <Stack direction="row" gap={1} sx={{alignItems: 'center', color}}>
+    <Stack direction="row" spacing={1} sx={{alignItems: 'center', color}}>
         {icon}
         <Typography variant="body2">{children}</Typography>
     </Stack>

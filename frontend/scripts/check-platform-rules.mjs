@@ -19,7 +19,7 @@
 import {
     isAutomated, isApiBased, canImportProfile, canSyncCredits, hasStoredCredentials,
     platformStatusColor, connectionTypeText, syncIntervalText,
-    sourceLabel, previewImported, importFieldLabel
+    sourceLabel, previewImported, importFieldLabel, capabilityLabels
 } from '../src/domain/platforms.js';
 
 let passed = 0;
@@ -71,9 +71,11 @@ check('connected and never synced is green, not stale',
 
 // ---- wording ---------------------------------------------------------------
 
-check('the three auth kinds each read as something',
+check('every auth kind the registry produces reads as something',
     ['manual', 'apiKey', 'credentials', 'oauth'].map((authType) => connectionTypeText({authType})),
-    ['Manuell', 'API-Integration', 'Agent-basiert', 'Unbekannt']);
+    ['Manuell', 'API-Integration', 'Agent-basiert', 'Google-Login']);
+check('and one it does not produce still does not render blank',
+    connectionTypeText({authType: 'carrier-pigeon'}), 'Unbekannt');
 check('an unknown sync interval is passed through rather than blanked',
     [syncIntervalText('daily'), syncIntervalText('fortnightly')], ['Täglich', 'fortnightly']);
 check('a field with no German label keeps its key', importFieldLabel('shoeSize'), 'shoeSize');
@@ -102,6 +104,28 @@ check('plain strings are joined', previewImported(['Reiten', 'Klavier']), 'Reite
 check('an empty list is a dash', previewImported([]), '-');
 check('an object is spelled out', previewImported({email: 'a@b.c'}), 'email: a@b.c');
 check('a plain value is itself', previewImported(178), '178');
+
+// ---- what a connector can do -----------------------------------------------
+//
+// These come from the registry manifest, so they differ per platform. The list
+// they replaced was computed from `platform.features`, which the API never
+// sends - so two of its four entries could not appear at all and the other two
+// appeared on everything.
+
+check('the capabilities of a connector are named in German',
+    capabilityLabels({capabilities: ['verify', 'pullProfile', 'pushMedia']}),
+    ['Login prüfen', 'Profil importieren', 'Bilder & Videos übertragen']);
+check('the order comes from the manifest, not from this map',
+    capabilityLabels({capabilities: ['pushMedia', 'verify']}),
+    ['Bilder & Videos übertragen', 'Login prüfen']);
+check('a capability with no label is dropped rather than printed raw',
+    capabilityLabels({capabilities: ['verify', 'somethingNew']}),
+    ['Login prüfen']);
+check('a platform that automates nothing has no capabilities - Backstage',
+    capabilityLabels({capabilities: []}), []);
+check('a platform object without the field does not throw',
+    capabilityLabels({name: 'Agentur 1 (manuell)'}), []);
+check('no platform at all does not throw', capabilityLabels(undefined), []);
 
 console.log(`\n${passed}/${passed + failed} passed.`);
 process.exit(failed ? 1 : 0);

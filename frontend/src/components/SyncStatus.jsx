@@ -116,13 +116,13 @@ const SyncStatus = ({ platformId, platformName }) => {
   const status = STATUS[syncStatus?.status];
 
   return (
-    <Stack gap={2}>
+    <Stack spacing={2}>
       <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-        <Typography variant="h6" mb={1.5}>Synchronisation für {platformName}</Typography>
+        <Typography variant="h6" sx={{mb: 1.5}}>Synchronisation für {platformName}</Typography>
 
         {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
 
-        <Stack direction="row" gap={1} sx={{flexWrap: 'wrap'}}>
+        <Stack direction="row" spacing={1} sx={{flexWrap: 'wrap'}}>
           <Button variant="contained" onClick={handleSyncAvailability} disabled={syncing}>
             {syncing ? 'Synchronisiere...' : 'Verfügbarkeit synchronisieren'}
           </Button>
@@ -134,7 +134,7 @@ const SyncStatus = ({ platformId, platformName }) => {
 
       {syncStatus && (
         <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-          <Typography fontWeight={500} mb={1}>Letzte Synchronisation</Typography>
+          <Typography fontWeight={500} sx={{mb: 1}}>Letzte Synchronisation</Typography>
 
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1.5 }}>
             <Detail label="Operation">

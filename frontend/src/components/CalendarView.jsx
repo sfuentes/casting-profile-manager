@@ -249,12 +249,12 @@ const CalendarView = () => {
     const syncEnabledPlatforms = platforms.filter(p => p.connected && p.syncSettings.syncAvailability);
 
     return (
-        <Stack gap={3}>
+        <Stack spacing={3}>
             {/* Header */}
-            <Stack direction="row" gap={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap'}}>
-                <Stack direction="row" gap={2} sx={{alignItems: 'center'}}>
+            <Stack direction="row" spacing={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap'}}>
+                <Stack direction="row" spacing={2} sx={{alignItems: 'center'}}>
                     <Typography variant="h4" component="h1" fontWeight={700}>Kalender</Typography>
-                    <Stack direction="row" gap={1} sx={{alignItems: 'center'}}>
+                    <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                         <Button variant="outline" onClick={() => navigateMonth(-1)} icon={ChevronLeft} size="sm"/>
                         <Typography sx={{minWidth: 180, textAlign: 'center', fontWeight: 500}}>
                             {currentDate.toLocaleDateString('de-DE', {month: 'long', year: 'numeric'})}
@@ -262,7 +262,7 @@ const CalendarView = () => {
                         <Button variant="outline" onClick={() => navigateMonth(1)} icon={ChevronRight} size="sm"/>
                     </Stack>
                 </Stack>
-                <Stack direction="row" gap={1.5} sx={{flexWrap: 'wrap'}}>
+                <Stack direction="row" spacing={1.5} sx={{flexWrap: 'wrap'}}>
                     <Button onClick={() => setShowAvailabilitySettings(true)} variant="outline" icon={Settings} size="sm"/>
                     <Button
                         onClick={() => setShowSyncModal(true)}
@@ -286,9 +286,9 @@ const CalendarView = () => {
 
             {/* Legend */}
             <Card>
-                <Stack direction="row" gap={3} sx={{alignItems: 'center', flexWrap: 'wrap'}}>
+                <Stack direction="row" spacing={3} sx={{alignItems: 'center', flexWrap: 'wrap'}}>
                     {LEGEND.map(({color, label}) => (
-                        <Stack key={label} direction="row" gap={1} sx={{alignItems: 'center'}}>
+                        <Stack key={label} direction="row" spacing={1} sx={{alignItems: 'center'}}>
                             <Box sx={{width: 16, height: 16, bgcolor: color, borderRadius: 0.5}}/>
                             <Typography variant="body2">{label}</Typography>
                         </Stack>
@@ -352,7 +352,7 @@ const CalendarView = () => {
                                     {date.getDate()}
                                 </Typography>
 
-                                <Stack gap={0.5}>
+                                <Stack spacing={0.5}>
                                     {events.slice(0, 3).map((event, eventIndex) => {
                                         const style = eventStyle(event);
                                         return (
@@ -412,7 +412,7 @@ const CalendarView = () => {
                         : `${modalType === 'booking' ? 'Neue Buchung' : modalType === 'option' ? 'Neue Option' : 'Verfügbarkeit festlegen'}`
                 }
             >
-                <Stack gap={2}>
+                <Stack spacing={2}>
                     {modalType === 'availability' ? (
                         <>
                             <TextField
@@ -517,12 +517,12 @@ const CalendarView = () => {
                     {modalType === 'availability' && formData.type !== 'unavailable' && (
                         <Alert severity="info" icon={false}>
                             <AlertTitle sx={{fontSize: 14}}>Kontaktzeiten</AlertTitle>
-                            <Typography variant="caption" display="block" mb={1.5}>
+                            <Typography variant="caption" display="block" sx={{mb: 1.5}}>
                                 Diese Angaben bleiben in dieser App. An die Casting-Plattformen geht
                                 ausschließlich, welche Zeiträume blockiert sind.
                             </Typography>
                             <Pair>
-                                <Stack direction="row" gap={1} sx={{alignItems: 'center'}}>
+                                <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                                     <TimeInput
                                         label="Anruf ab"
                                         value={formData.preferredCallStart || '09:00'}
@@ -555,7 +555,7 @@ const CalendarView = () => {
                         placeholder="Zusätzliche Informationen..."
                     />
 
-                    <Stack direction="row" gap={1.5} pt={2}>
+                    <Stack direction="row" spacing={1.5} sx={{pt: 2}}>
                         <Button onClick={handleSave} disabled={saving} icon={saving ? Loader : Check}>
                             {editingItem ? 'Aktualisieren' : 'Speichern'}
                         </Button>
@@ -577,7 +577,7 @@ const CalendarView = () => {
                 onClose={() => setShowSyncModal(false)}
                 title="Verfügbarkeit synchronisieren"
             >
-                <Stack gap={2}>
+                <Stack spacing={2}>
                     {/*
                       This list used to promise the platforms were sent blocked times
                       "mit Begründung", the preferred call hours and the minimum notice.
@@ -606,7 +606,7 @@ const CalendarView = () => {
                                 Keine Plattformen für Verfügbarkeits-Sync konfiguriert.
                             </Typography>
                         ) : (
-                            <Stack gap={1}>
+                            <Stack spacing={1}>
                                 {syncEnabledPlatforms.map(platform => (
                                     <Stack
                                         key={platform.id}
@@ -619,7 +619,7 @@ const CalendarView = () => {
                         )}
                     </Box>
 
-                    <Stack direction="row" gap={1.5} pt={2}>
+                    <Stack direction="row" spacing={1.5} sx={{pt: 2}}>
                         <Button
                             onClick={handleSyncAvailability}
                             disabled={syncEnabledPlatforms.length === 0 || saving}
@@ -640,7 +640,7 @@ const CalendarView = () => {
                 onClose={() => setShowAvailabilitySettings(false)}
                 title="Verfügbarkeits-Einstellungen"
             >
-                <Stack gap={2}>
+                <Stack spacing={2}>
                     <Typography variant="body2" color="text.secondary">
                         Konfigurieren Sie Ihre Standard-Verfügbarkeitszeiten für Casting-Plattformen.
                     </Typography>
@@ -662,7 +662,7 @@ const CalendarView = () => {
                         label={<Typography variant="body2">Wochenend-Buchungen akzeptieren</Typography>}
                     />
 
-                    <Stack direction="row" gap={1.5} pt={2}>
+                    <Stack direction="row" spacing={1.5} sx={{pt: 2}}>
                         <Button onClick={() => setShowAvailabilitySettings(false)}>
                             Einstellungen speichern
                         </Button>

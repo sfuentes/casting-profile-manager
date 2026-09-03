@@ -43,12 +43,12 @@ const Login = ({ onSwitchToRegister }) => {
             }}
         >
             <Card sx={{ maxWidth: 440, width: '100%', p: 4 }}>
-                <Stack gap={3}>
+                <Stack spacing={3}>
                     <Box sx={{textAlign: 'center'}}>
                         <Typography variant="h4" component="h2" fontWeight={800}>
                             Anmelden
                         </Typography>
-                        <Typography variant="body2" color="text.secondary" mt={1}>
+                        <Typography variant="body2" color="text.secondary" sx={{mt: 1}}>
                             Oder{' '}
                             <Link component="button" type="button" onClick={onSwitchToRegister} fontWeight={500}>
                                 erstellen Sie ein neues Konto
@@ -61,7 +61,7 @@ const Login = ({ onSwitchToRegister }) => {
                     )}
 
                     <Box component="form" onSubmit={handleSubmit}>
-                        <Stack gap={2}>
+                        <Stack spacing={2}>
                             <Input
                                 label="E-Mail-Adresse"
                                 type="email"

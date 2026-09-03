@@ -60,7 +60,8 @@ import {
     syncIntervalText,
     sourceLabel,
     previewImported,
-    importFieldLabel
+    importFieldLabel,
+    capabilityLabels
 } from '../domain/platforms';
 import {useAgentHealth} from '../hooks/useAgentHealth';
 import {usePlatformImport} from '../hooks/usePlatformImport';
@@ -68,7 +69,7 @@ import {usePlatformCredits} from '../hooks/usePlatformCredits';
 
 /** A "label: value" row in the expanded platform panel. */
 const DetailRow = (props) => (
-    <Stack direction="row" gap={1} sx={{alignItems: 'center', justifyContent: 'space-between'}}>
+    <Stack direction="row" spacing={1} sx={{alignItems: 'center', justifyContent: 'space-between'}}>
         <Box component="span" sx={{color: 'text.secondary'}}>{props.label}</Box>
         <Box component="span">{props.children}</Box>
     </Stack>
@@ -317,43 +318,6 @@ const PlatformsView = () => {
         return Bot;
     };
 
-    const getPlatformCapabilities = (platform) => {
-        const capabilities = [];
-
-        if (isAutomated(platform)) {
-            capabilities.push({
-                icon: Bot,
-                label: 'Automatisierung',
-                description: 'Vollautomatische Profil-Synchronisation'
-            });
-        }
-
-        if (isApiBased(platform)) {
-            capabilities.push({
-                icon: Cpu,
-                label: 'API-Zugriff',
-                description: 'Direkte Plattform-Integration'
-            });
-        }
-
-        if (platform.features?.includes('photos')) {
-            capabilities.push({
-                icon: Image,
-                label: 'Foto-Upload',
-                description: 'Automatischer Setcard-Upload'
-            });
-        }
-
-        if (platform.features?.includes('availability')) {
-            capabilities.push({
-                icon: Calendar,
-                label: 'Verfügbarkeit',
-                description: 'Kalender-Synchronisation'
-            });
-        }
-
-        return capabilities;
-    };
 
     if (loading) {
         return (
@@ -369,19 +333,21 @@ const PlatformsView = () => {
     const apiPlatforms = platforms.filter(isApiBased);
 
     return (
-        <Stack gap={3}>
+        <Stack spacing={3}>
             {/* Header */}
-            <Stack direction="row" gap={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap'}}>
-                <Stack direction="row" gap={2} sx={{alignItems: 'center', flexWrap: 'wrap'}}>
+            <Stack direction="row" spacing={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap'}}>
+                <Stack direction="row" spacing={2} sx={{alignItems: 'center', flexWrap: 'wrap'}}>
                     <Typography variant="h4" component="h1" fontWeight={700}>Plattformen</Typography>
                     <Badge color="blue">
                         {connectedPlatforms.length} von {platforms.length} verbunden
                     </Badge>
                     <Badge color={agentStatus?.success ? 'green' : 'red'} icon={Bot}>
-                        Agent: {agentStatus?.status || 'Unbekannt'}
+                        {/* `status` is the backend's own word - "healthy". Next to
+                            "4 von 14 verbunden" in German it read as a leftover. */}
+                        Agent: {agentStatus?.success ? 'bereit' : 'nicht erreichbar'}
                     </Badge>
                 </Stack>
-                <Stack direction="row" gap={1.5}>
+                <Stack direction="row" spacing={1.5}>
                     <Button onClick={checkAgentHealth} variant="outline" icon={Activity} size="sm">
                         Agent prüfen
                     </Button>
@@ -409,16 +375,24 @@ const PlatformsView = () => {
                             borderRadius: 1,
                             p: 2}}
                     >
-                        <Stack direction="row" gap={2} sx={{alignItems: 'center'}}>
+                        <Stack direction="row" spacing={2} sx={{alignItems: 'center'}}>
                             <Box sx={{color: agentStatus.success ? 'success.main' : 'error.main', display: 'flex'}}>
                                 <Bot size={32}/>
                             </Box>
                             <Box>
-                                <Typography fontWeight={600}>Platform Agent Status</Typography>
-                                <Typography variant="body2" color="text.secondary">{agentStatus.message}</Typography>
+                                <Typography fontWeight={600}>Status des Sync-Agenten</Typography>
+                                {/* The backend writes this message in English. It is the
+                                    only sentence on the screen that is not German, so it
+                                    is shown only when it says something the four counts
+                                    below do not already say. */}
+                                <Typography variant="body2" color="text.secondary">
+                                    {agentStatus.success
+                                        ? 'Der Agent läuft und kann Plattformen ansteuern.'
+                                        : agentStatus.message}
+                                </Typography>
                                 <Stack
-                                    direction="row" gap={2} mt={0.5}
-                                    sx={{flexWrap: 'wrap', fontSize: 12, color: 'text.secondary'}}
+                                    direction="row" spacing={2}
+                                    sx={{mt: 0.5, flexWrap: 'wrap', fontSize: 12, color: 'text.secondary'}}
                                 >
                                     <span>Agent-fähige Plattformen: {agentStatus.data?.automatedPlatforms ?? agentPlatforms.length}</span>
                                     <span>API-Plattformen: {apiPlatforms.length}</span>
@@ -473,24 +447,24 @@ const PlatformsView = () => {
 
             {/* Connected platforms */}
             {connectedPlatforms.length > 0 && (
-                <Stack gap={2}>
+                <Stack spacing={2}>
                     <Typography variant="h6" fontWeight={600}>Verbundene Plattformen</Typography>
-                    <Stack gap={1.5}>
+                    <Stack spacing={1.5}>
                         {connectedPlatforms.map(platform => {
                             const ConnectionTypeIcon = getConnectionTypeIcon(platform);
+                            const capabilities = capabilityLabels(platform);
                             const statusColor = platformStatusColor(platform);
                             const isExpanded = expandedPlatform === platform.id;
                             const testResult = testResults[platform.id];
                             const importResult = importResults[platform.id];
-                            const capabilities = getPlatformCapabilities(platform);
 
                             return (
                                 <Card key={platform.id}>
                                     <Stack
                                         direction="row"
-                                        gap={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', p: 2}}
+                                        spacing={2} sx={{alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', p: 2}}
                                     >
-                                        <Stack direction="row" gap={2} sx={{alignItems: 'center'}}>
+                                        <Stack direction="row" spacing={2} sx={{alignItems: 'center'}}>
                                             <Checkbox
                                                 checked={bulkSyncSelected.includes(platform.id)}
                                                 onChange={(e) => {
@@ -501,41 +475,47 @@ const PlatformsView = () => {
                                                     }
                                                 }}
                                             />
-                                            <Stack direction="row" gap={1.5} sx={{alignItems: 'center'}}>
+                                            <Stack direction="row" spacing={1.5} sx={{alignItems: 'center'}}>
                                                 <Box sx={{color: 'text.secondary', display: 'flex'}}>
                                                     <ConnectionTypeIcon size={32}/>
                                                 </Box>
                                                 <Box>
-                                                    <Stack direction="row" gap={1} sx={{alignItems: 'center'}}>
+                                                    <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                                                         <Typography fontWeight={600}>{platform.name}</Typography>
                                                         <Badge color="blue" size="sm">
                                                             {connectionTypeText(platform)}
                                                         </Badge>
                                                     </Stack>
                                                     <Stack
-                                                        direction="row" gap={1}
+                                                        direction="row" spacing={1}
                                                         sx={{alignItems: 'center', flexWrap: 'wrap', fontSize: 14, color: 'text.secondary'}}
                                                     >
+                                                        {/*
+                                                          The badge used to read "Verbunden"
+                                                          in green or in yellow, and only the
+                                                          colour said which - yellow meaning
+                                                          the last sync is more than a week
+                                                          old. It says so now. The `: 'Getrennt'`
+                                                          half was unreachable: this list is
+                                                          the connected platforms.
+                                                        */}
                                                         <Badge color={statusColor}>
-                                                            {platform.connected ? 'Verbunden' : 'Getrennt'}
+                                                            {statusColor === 'yellow' ? 'Sync veraltet' : 'Verbunden'}
                                                         </Badge>
-                                                        {platform.lastSync && (
-                                                            <Stack direction="row" gap={0.5} sx={{alignItems: 'center'}}>
-                                                                <Clock size={12}/>
-                                                                <span>Sync: {new Date(platform.lastSync).toLocaleString('de-DE')}</span>
-                                                            </Stack>
-                                                        )}
-                                                        <Stack direction="row" gap={0.5} sx={{color: 'text.disabled'}}>
-                                                            {capabilities.slice(0, 3).map((cap, idx) => (
-                                                                <cap.icon key={idx} size={12} title={cap.description}/>
-                                                            ))}
+                                                        <Stack direction="row" spacing={0.5} sx={{alignItems: 'center'}}>
+                                                            <Clock size={12}/>
+                                                            <span>
+                                                                {platform.lastSync
+                                                                    ? `Sync: ${new Date(platform.lastSync).toLocaleString('de-DE')}`
+                                                                    : 'Noch nie synchronisiert'}
+                                                            </span>
                                                         </Stack>
                                                     </Stack>
                                                 </Box>
                                             </Stack>
                                         </Stack>
 
-                                        <Stack direction="row" gap={1} sx={{alignItems: 'center', flexWrap: 'wrap'}}>
+                                        <Stack direction="row" spacing={1} sx={{alignItems: 'center', flexWrap: 'wrap'}}>
                                             {testResult && (
                                                 /* Three outcomes, not two. A platform the app does not
                                                    log into - the agencies, and Backstage with its Google
@@ -620,14 +600,14 @@ const PlatformsView = () => {
                                     </Stack>
 
                                     {isExpanded && (
-                                        <Stack gap={2} sx={{borderTop: 1, borderColor: 'divider', bgcolor: 'grey.50', p: 3}}>
+                                        <Stack spacing={2} sx={{borderTop: 1, borderColor: 'divider', bgcolor: 'grey.50', p: 3}}>
                                             <Box sx={columns({xs: 1, md: 3})}>
                                                 <Box>
-                                                    <Stack direction="row" gap={1} mb={1.5} sx={{alignItems: 'center'}}>
+                                                    <Stack direction="row" spacing={1} sx={{mb: 1.5, alignItems: 'center'}}>
                                                         <Settings size={16}/>
                                                         <Typography fontWeight={500}>Konfiguration</Typography>
                                                     </Stack>
-                                                    <Stack gap={1} sx={{fontSize: 14}}>
+                                                    <Stack spacing={1} sx={{fontSize: 14}}>
                                                         <DetailRow label="Verbindungstyp:">
                                                             <Badge color="blue" size="sm">{connectionTypeText(platform)}</Badge>
                                                         </DetailRow>
@@ -642,39 +622,36 @@ const PlatformsView = () => {
                                                         <DetailRow label="Intervall:">
                                                             {syncIntervalText(platform.syncSettings?.syncInterval)}
                                                         </DetailRow>
-                                                        <DetailRow label="Regionen:">
-                                                            {platform.regions?.join(', ') || 'Global'}
-                                                        </DetailRow>
                                                     </Stack>
                                                 </Box>
 
                                                 <Box>
-                                                    <Stack direction="row" gap={1} mb={1.5} sx={{alignItems: 'center'}}>
+                                                    <Stack direction="row" spacing={1} sx={{mb: 1.5, alignItems: 'center'}}>
                                                         <Zap size={16}/>
                                                         <Typography fontWeight={500}>Fähigkeiten</Typography>
                                                     </Stack>
-                                                    <Stack gap={1}>
-                                                        {capabilities.length > 0 ? capabilities.map((cap, idx) => (
-                                                            <Stack key={idx} direction="row" gap={1} sx={{alignItems: 'center', fontSize: 14}}>
-                                                                <Box sx={{color: 'primary.main', display: 'flex'}}>
-                                                                    <cap.icon size={14}/>
+                                                    <Stack spacing={1}>
+                                                        {capabilities.length > 0 ? capabilities.map((label) => (
+                                                            <Stack key={label} direction="row" spacing={1} sx={{alignItems: 'center', fontSize: 14}}>
+                                                                <Box sx={{color: 'success.main', display: 'flex'}}>
+                                                                    <Check size={14}/>
                                                                 </Box>
-                                                                <Box component="span" sx={{fontWeight: 500}}>{cap.label}</Box>
+                                                                <Box component="span" sx={{fontWeight: 500}}>{label}</Box>
                                                             </Stack>
                                                         )) : (
                                                             <Typography variant="body2" color="text.secondary">
-                                                                Standard-Features
+                                                                Für diese Plattform ist noch nichts automatisiert.
                                                             </Typography>
                                                         )}
                                                     </Stack>
                                                 </Box>
 
                                                 <Box>
-                                                    <Stack direction="row" gap={1} mb={1.5} sx={{alignItems: 'center'}}>
+                                                    <Stack direction="row" spacing={1} sx={{mb: 1.5, alignItems: 'center'}}>
                                                         <Activity size={16}/>
                                                         <Typography fontWeight={500}>Status</Typography>
                                                     </Stack>
-                                                    <Stack gap={1} sx={{fontSize: 14}}>
+                                                    <Stack spacing={1} sx={{fontSize: 14}}>
                                                         <DetailRow label="Verbunden seit:">
                                                             {platform.lastSync
                                                                 ? new Date(platform.lastSync).toLocaleDateString('de-DE') : 'Unbekannt'}
@@ -710,12 +687,11 @@ const PlatformsView = () => {
 
             {/* Available platforms */}
             {disconnectedPlatforms.length > 0 && (
-                <Stack gap={2}>
+                <Stack spacing={2}>
                     <Typography variant="h6" fontWeight={600}>Verfügbare Plattformen</Typography>
                     <Box sx={columns({xs: 1, md: 2, lg: 3})}>
                         {disconnectedPlatforms.map(platform => {
                             const ConnectionTypeIcon = getConnectionTypeIcon(platform);
-                            const capabilities = getPlatformCapabilities(platform);
                             // A platform whose credentials were rejected still has those
                             // credentials stored. Showing why it failed, and letting it be
                             // retried without retyping the password, is the whole point of a
@@ -729,43 +705,60 @@ const PlatformsView = () => {
                                 }
                                 : null);
 
+                            // `height: 100%` and a column layout with the button pushed
+                            // down by `mt: 'auto'`: the cards sit in a grid, and one name
+                            // that wraps to two lines ("Casting Networks (international)")
+                            // used to make its whole row ragged, with every Verbinden
+                            // button at a different height. The icon aligns to the top of
+                            // the text rather than to the middle of it, so a one-line and
+                            // a two-line card still start on the same line.
                             return (
-                                <Card key={platform.id} sx={{transition: "box-shadow 200ms", "&:hover": {boxShadow: 6}}}>
-                                    <Box sx={{p: 2}}>
-                                        <Stack direction="row" gap={1.5} mb={2} sx={{alignItems: 'center'}}>
-                                            <Box sx={{color: 'text.secondary', display: 'flex'}}>
-                                                <ConnectionTypeIcon size={40}/>
+                                <Card
+                                    key={platform.id}
+                                    sx={{
+                                        height: '100%', transition: 'box-shadow 200ms',
+                                        '&:hover': {boxShadow: 6}
+                                    }}
+                                >
+                                    <Box sx={{p: 2, height: '100%', display: 'flex', flexDirection: 'column'}}>
+                                        <Stack direction="row" spacing={1.5} sx={{mb: 2, alignItems: 'flex-start'}}>
+                                            <Box sx={{color: 'text.secondary', display: 'flex', mt: 0.25}}>
+                                                <ConnectionTypeIcon size={32}/>
                                             </Box>
-                                            <Box>
+                                            <Box sx={{minWidth: 0}}>
                                                 <Typography fontWeight={600}>{platform.name}</Typography>
-                                                <Stack direction="row" gap={1} sx={{alignItems: 'center', flexWrap: 'wrap'}}>
-                                                    <Badge variant="outline" color="gray">Nicht verbunden</Badge>
+                                                <Stack
+                                                    direction="row" spacing={1}
+                                                    sx={{mt: 0.75, alignItems: 'center', flexWrap: 'wrap', rowGap: 0.75}}
+                                                >
                                                     <Badge color={isApiBased(platform) ? 'purple' : 'blue'} size="sm">
                                                         {connectionTypeText(platform)}
                                                     </Badge>
+                                                    {hasStoredCredentials(platform) && (
+                                                        <Badge variant="outline" color="gray" size="sm">
+                                                            Zugangsdaten gespeichert
+                                                        </Badge>
+                                                    )}
                                                 </Stack>
                                             </Box>
                                         </Stack>
 
-                                        <Box mb={2}>
-                                            <Stack direction="row" gap={0.5} mb={1} sx={{flexWrap: 'wrap'}}>
-                                                {capabilities.slice(0, 4).map((cap, idx) => (
-                                                    <Badge key={idx} size="sm" variant="outline" icon={cap.icon}>
-                                                        {cap.label}
-                                                    </Badge>
-                                                ))}
-                                            </Stack>
-                                            <Typography variant="caption" color="text.secondary">
-                                                {platform.regions?.length
-                                                    ? `Regionen: ${platform.regions.join(', ')}`
-                                                    : 'Global verfügbar'}
-                                            </Typography>
-                                        </Box>
-
-                                        <Typography variant="body2" color="text.secondary" mb={2}>
-                                            {platform.description || 'Professionelle Casting-Plattform'}
-                                        </Typography>
-
+                                        {/*
+                                          Three lines used to sit here and all three were
+                                          invented. The API sends a platform as id, name,
+                                          authType, connected and syncSettings - there is no
+                                          `description`, no `regions`, no `features`. So
+                                          `platform.description || 'Professionelle
+                                          Casting-Plattform'` printed that fallback on every
+                                          card, `regions?.length ? ... : 'Global verfügbar'`
+                                          printed the fallback on every card, and the
+                                          capability badges came out as "Automatisierung" on
+                                          every browser-driven platform - which is all of
+                                          them. Ten cards, identical, asserting things nobody
+                                          established. What is actually known about an
+                                          unconnected platform is its name and how it logs
+                                          in, and that is what the header above shows.
+                                        */}
                                         {failed && !failed.success && (
                                             <Alert severity="error" sx={{mb: 1.5, py: 0.5}}>
                                                 <Typography variant="caption" sx={{wordBreak: 'break-word'}}>
@@ -783,7 +776,7 @@ const PlatformsView = () => {
                                             </Alert>
                                         )}
 
-                                        <Stack direction="row" gap={1}>
+                                        <Stack direction="row" spacing={1} sx={{mt: 'auto', pt: 1}}>
                                             <Button
                                                 size="sm"
                                                 onClick={() => openModal('connect', platform)}
@@ -819,7 +812,7 @@ const PlatformsView = () => {
                 onClose={() => setShowModal(false)}
                 title={`Verbindung zu ${selectedPlatform?.name}`}
             >
-                <Stack gap={2}>
+                <Stack spacing={2}>
                     {/* The reason the platform refused, kept on the dialog. The
                         credentials are stored either way, so this is a retry, not
                         a fresh start - and a rejected password usually just needs
@@ -844,7 +837,7 @@ const PlatformsView = () => {
                             <Box sx={{color: 'text.secondary', display: 'flex', justifyContent: 'center', mb: 1}}>
                                 <Shield size={48}/>
                             </Box>
-                            <Typography fontWeight={600} mb={0.5}>Manuelle Verwaltung</Typography>
+                            <Typography fontWeight={600} sx={{mb: 0.5}}>Manuelle Verwaltung</Typography>
                             <Typography variant="body2" color="text.secondary">
                                 Für {selectedPlatform.name} gibt es keine automatische Anbindung.
                                 Die Pflege erfolgt direkt bei der Agentur.
@@ -886,7 +879,7 @@ const PlatformsView = () => {
                         </>
                     )}
 
-                    <Stack direction="row" gap={1.5} pt={2}>
+                    <Stack direction="row" spacing={1.5} sx={{pt: 2}}>
                         <Button onClick={handleConnect} disabled={saving} icon={saving ? Loader : Check}>
                             {saving ? 'Verbinde...' : 'Verbinden'}
                         </Button>
@@ -903,7 +896,7 @@ const PlatformsView = () => {
                 onClose={() => setShowModal(false)}
                 title={`Einstellungen für ${selectedPlatform?.name}`}
             >
-                <Stack gap={2}>
+                <Stack spacing={2}>
                     {isAutomated(selectedPlatform) && (
                         <Alert severity="info" icon={<Bot size={16}/>} sx={{py: 0.5}}>
                             <Typography variant="body2">
@@ -954,7 +947,7 @@ const PlatformsView = () => {
                         }
                     />
 
-                    <Stack direction="row" gap={1.5} pt={2}>
+                    <Stack direction="row" spacing={1.5} sx={{pt: 2}}>
                         <Button onClick={handleUpdateSettings} disabled={saving} icon={saving ? Loader : Check}>
                             {saving ? 'Speichere...' : 'Speichern'}
                         </Button>
@@ -971,7 +964,7 @@ const PlatformsView = () => {
                 onClose={() => setShowModal(false)}
                 title={`Vita-Abgleich mit ${selectedPlatform?.name}`}
             >
-                <Stack gap={2}>
+                <Stack spacing={2}>
                     {creditSummary && <Alert severity="info">{creditSummary}</Alert>}
 
                     <Alert severity="warning">
@@ -983,10 +976,10 @@ const PlatformsView = () => {
                             nichts übertragen und nichts gelöscht.
                         </Typography>
 
-                        <Stack gap={2} mt={2}>
+                        <Stack spacing={2} sx={{mt: 2}}>
                             {creditQuestions.map((question) => (
                                 <Box key={question.path} sx={{borderTop: 1, borderColor: 'warning.light', pt: 1.5}}>
-                                    <Typography variant="body2" mb={1}>
+                                    <Typography variant="body2" sx={{mb: 1}}>
                                         <strong>
                                             {question.from ? `Aus ${question.from}:` : 'Ihr Eintrag:'}
                                         </strong> {question.credit}
@@ -1014,7 +1007,7 @@ const PlatformsView = () => {
                         </Stack>
                     </Alert>
 
-                    <Stack direction="row" gap={1} sx={{justifyContent: 'flex-end'}}>
+                    <Stack direction="row" spacing={1} sx={{justifyContent: 'flex-end'}}>
                         <Button variant="outline" onClick={() => setShowModal(false)}>
                             Abbrechen
                         </Button>
@@ -1049,7 +1042,7 @@ const PlatformsView = () => {
                     }
 
                     return (
-                        <Stack gap={2}>
+                        <Stack spacing={2}>
                             <Alert severity="info">
                                 Ausgewählte Felder überschreiben die entsprechenden Werte in Ihrem
                                 Profil. Nicht ausgewählte Felder bleiben unverändert.
@@ -1058,15 +1051,15 @@ const PlatformsView = () => {
                             {result.unmapped?.length > 0 && (
                                 <Alert severity="warning">
                                     <AlertTitle>Nicht zuzuordnen</AlertTitle>
-                                    <Typography variant="body2" mb={1.5}>
+                                    <Typography variant="body2" sx={{mb: 1.5}}>
                                         Diese Werte von {selectedPlatform?.name} lassen sich keinem Wert
                                         dieser App zuordnen. Bitte auswählen - ohne Auswahl werden sie
                                         nicht übernommen.
                                     </Typography>
-                                    <Stack gap={1.5}>
+                                    <Stack spacing={1.5}>
                                         {result.unmapped.map((question) => (
                                             <Box key={question.path}>
-                                                <Typography variant="caption" display="block" mb={0.5}>
+                                                <Typography variant="caption" display="block" sx={{mb: 0.5}}>
                                                     <strong>{importFieldLabel(question.field)}</strong>
                                                     {question.context ? ` (${question.context})` : ''}
                                                     : „{String(question.value)}"
@@ -1139,7 +1132,7 @@ const PlatformsView = () => {
                                 </Typography>
                             )}
 
-                            <Stack direction="row" gap={1.5} pt={1}>
+                            <Stack direction="row" spacing={1.5} sx={{pt: 1}}>
                                 <Button
                                     onClick={handleApplyImport}
                                     disabled={importing || importSelection.length === 0}
