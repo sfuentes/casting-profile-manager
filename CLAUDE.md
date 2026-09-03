@@ -437,10 +437,24 @@ time available:
 A platform learns that a period is not bookable, and nothing else. Not the
 reason, not the production, not whether it is a firm booking or a tentative
 option, and not the actor's notes. `connectors/blockedPeriods.js` reduces the
-Availability entries to `{start, end}` pairs and the reduction happens in
+calendar to `{start, end}` pairs and the reduction happens in
 `ConnectorService.syncAvailability` - the one place every platform passes
 through, so a connector cannot leak what it was never handed, and a connector
 added later inherits the rule without knowing it exists.
+
+**All three collections converge before that.** Bookings, options and
+availability entries are three things to the actor and one thing to a casting
+platform: the date is taken. `utils/calendarEntries.js` loads them into one
+list, `blocksCalendar` decides per entry - Availability by its `type`, a booking
+or an option by existing unless it was cancelled, declined or expired. A pending
+option blocks, because that is what an option is.
+
+Until this, **only Availability was ever synced**: a confirmed booking in the
+manager blocked nothing on any platform, which is the double booking the whole
+calendar exists to prevent - and the sync dialog already promised the user that
+bookings and options were being sent. It also stopped filtering on
+`synced: false`. The merge turns the calendar into one statement about what is
+free, and a merge fed half the calendar makes a different, wrong statement.
 
 Merging is part of the rule, not tidying. Five separate blocks in a month say
 "five separate jobs"; one merged block says "not available", which is the only
