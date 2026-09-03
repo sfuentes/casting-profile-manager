@@ -1,7 +1,7 @@
 import connectorService from '../connectors/ConnectorService.js';
-import Availability from '../models/Availability.js';
 import Profile from '../models/Profile.js';
 import { toBlockedPeriods } from '../connectors/blockedPeriods.js';
+import { loadCalendarEntries } from '../utils/calendarEntries.js';
 import { asyncHandler as catchAsync } from '../middleware/asyncHandler.js';
 
 /**
@@ -22,14 +22,15 @@ export const syncAvailability = catchAsync(async (req, res) => {
   const { platformId } = req.params;
   const userId = req.user.id;
 
-  // Fetch user's availability
-  const availability = await Availability.find({ user: userId }).lean();
+  // Bookings, options and availability entries together - they are three
+  // collections in the manager and one statement to a platform.
+  const availability = await loadCalendarEntries(userId);
 
-  if (!availability || availability.length === 0) {
+  if (availability.length === 0) {
     return res.status(400).json({
       success: false,
       error: {
-        message: 'No availability data to sync'
+        message: 'No calendar entries to sync'
       }
     });
   }
@@ -301,8 +302,8 @@ export const bulkSync = catchAsync(async (req, res) => {
     try {
       // Sync based on dataTypes
       if (dataTypes.includes('availability')) {
-        const availability = await Availability.find({ user: userId }).lean();
-        if (availability && availability.length > 0) {
+        const availability = await loadCalendarEntries(userId);
+        if (availability.length > 0) {
           const result = await connectorService.syncAvailability(userId, platformId, availability);
           results.push({ platformId, operation: 'availability', ...result });
         }

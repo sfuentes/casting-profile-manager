@@ -1,4 +1,5 @@
 import Availability from '../models/Availability.js';
+import { loadCalendarEntries } from '../utils/calendarEntries.js';
 import Platform from '../models/Platform.js';
 import { ApiError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
@@ -367,16 +368,17 @@ export const bulkDeleteAvailability = asyncHandler(async (req, res) => {
 export const syncAvailabilityToPlatforms = asyncHandler(async (req, res) => {
   const { platformIds = [] } = req.body;
 
-  // Get availability slots
-  const availabilitySlots = await Availability.find({
-    user: req.user.id,
-    synced: false // Only sync unsynced slots or sync all if forced
-  });
+  // The whole calendar, every time. Not `synced: false`: block times are merged
+  // into one statement about what is free, and a merge fed half the calendar
+  // makes a different, wrong statement - two blocks a day apart go out as two
+  // separate blocks because the first one was left out. Bookings and options
+  // hold dates the same way availability entries do, so they come too.
+  const availabilitySlots = await loadCalendarEntries(req.user.id);
 
   if (availabilitySlots.length === 0) {
     return res.status(200).json({
       success: true,
-      message: 'No availability slots to sync',
+      message: 'No calendar entries to sync',
       syncedCount: 0,
       results: [],
       timestamp: new Date().toISOString()
@@ -419,8 +421,10 @@ export const syncAvailabilityToPlatforms = asyncHandler(async (req, res) => {
       );
 
       // Update sync status for availability slots
+      // Only Availability rows carry `synced`/`syncedPlatforms`; bookings and
+      // options are in the list for the block times, not to be stamped.
       await Availability.updateMany(
-        { _id: { $in: availabilitySlots.map((slot) => slot._id) } },
+        { _id: { $in: availabilitySlots.filter((slot) => slot.type !== undefined).map((slot) => slot._id) } },
         {
           $set: { synced: true },
           $push: {

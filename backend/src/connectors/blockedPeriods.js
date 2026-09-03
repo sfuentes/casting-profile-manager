@@ -19,7 +19,7 @@
  */
 
 /**
- * Which calendar states count as blocked.
+ * Which availability states count as blocked.
  *
  * `unavailable` is obvious. `partially_available` is here because the calendar
  * exists to stop double bookings: a day the actor cannot freely take is not a
@@ -29,6 +29,33 @@
  * across the connectors.
  */
 export const BLOCKING_TYPES = Object.freeze(['unavailable', 'partially_available']);
+
+/**
+ * The booking and option states that do *not* block a date.
+ *
+ * A booking or an option blocks by existing - that is what it is. What does not
+ * block is one that was called off: a cancelled booking, an option that was
+ * declined or that has run out. Everything else, `pending` included, holds the
+ * date. A pending option is precisely the period somebody is holding open, and
+ * advertising it as free is the double booking this calendar exists to prevent.
+ */
+export const NON_BLOCKING_STATUSES = Object.freeze(['cancelled', 'declined', 'expired']);
+
+/**
+ * Does this calendar entry hold a date, whatever kind of entry it is?
+ *
+ * The three collections converge here: an Availability entry says whether it
+ * blocks with its `type`, a Booking or an Option with its `status`, and only
+ * Availability has a `type` at all - which is what tells them apart. Every
+ * caller can therefore hand over the whole calendar in one list and let this
+ * file decide, rather than each one reimplementing "which of these count".
+ */
+export const blocksCalendar = (entry) => {
+  if (!entry) return false;
+  if (entry.type !== undefined) return BLOCKING_TYPES.includes(entry.type);
+
+  return !NON_BLOCKING_STATUSES.includes(entry.status);
+};
 
 /** A day in milliseconds - the gap below which two blocks are treated as one. */
 const ONE_DAY = 24 * 60 * 60 * 1000;
@@ -59,7 +86,8 @@ const at = (date, time, edge) => {
 /**
  * Reduce the app's availability entries to the block times a platform may see.
  *
- * @param {Array} entries - Availability documents (or plain objects).
+ * @param {Array} entries - Availability, Booking and Option documents in
+ *   one list (or plain objects of the same shape).
  * @param {{ now?: Date }} options
  * @returns {Array<{start: Date, end: Date}>} merged, sorted, nothing else on
  *   them. The absence of any other field is deliberate: a connector cannot leak
@@ -69,7 +97,7 @@ export const toBlockedPeriods = (entries, { now = new Date() } = {}) => {
   const periods = [];
 
   for (const entry of entries || []) {
-    if (!BLOCKING_TYPES.includes(entry?.type)) continue;
+    if (!blocksCalendar(entry)) continue;
 
     const start = at(entry.startDate, entry.startTime, 'start');
     const end = at(entry.endDate || entry.startDate, entry.endTime, 'end');
@@ -114,4 +142,6 @@ export const toBlockedFormItems = (entries, options) => toBlockedPeriods(entries
   endDate: end
 }));
 
-export default { BLOCKING_TYPES, toBlockedPeriods, toBlockedFormItems };
+export default {
+  BLOCKING_TYPES, NON_BLOCKING_STATUSES, blocksCalendar, toBlockedPeriods, toBlockedFormItems
+};

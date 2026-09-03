@@ -10,7 +10,9 @@
  *
  *   node scripts/check-blocked-periods.mjs
  */
-import { toBlockedPeriods, toBlockedFormItems, BLOCKING_TYPES } from '../src/connectors/blockedPeriods.js';
+import {
+  toBlockedPeriods, toBlockedFormItems, BLOCKING_TYPES, NON_BLOCKING_STATUSES
+} from '../src/connectors/blockedPeriods.js';
 
 let passed = 0;
 let failed = 0;
@@ -137,6 +139,69 @@ check('no entries is no blocks, not a crash',
 check('the blocking states are named in one place',
   BLOCKING_TYPES,
   ['unavailable', 'partially_available']);
+
+check('the states that do not block are named in one place too',
+  NON_BLOCKING_STATUSES,
+  ['cancelled', 'declined', 'expired']);
+
+// ---- bookings and options hold dates as well ------------------------------
+//
+// Only Availability used to be synced, so a confirmed booking in the manager
+// blocked nothing on any platform - the double booking the calendar exists to
+// prevent. A Booking and an Option carry no `type`, which is what tells them
+// apart from an availability entry; they block by existing unless called off.
+
+const booking = (over) => ({ title: 'GZSZ', production: 'GZSZ', status: 'confirmed', ...over });
+
+check('a confirmed booking blocks',
+  spans(toBlockedPeriods([booking({ startDate: day(10), endDate: day(12) })], { now })),
+  [[10, 12]]);
+
+check('a pending booking blocks - the date is not free until it is called off',
+  spans(toBlockedPeriods([booking({ status: 'pending', startDate: day(10), endDate: day(10) })], { now })),
+  [[10, 10]]);
+
+check('a cancelled booking does not block',
+  toBlockedPeriods([booking({ status: 'cancelled', startDate: day(10), endDate: day(12) })], { now }),
+  []);
+
+check('a pending option blocks - that is what an option is',
+  spans(toBlockedPeriods([{ title: 'Tatort', status: 'pending', startDate: day(20), endDate: day(22) }], { now })),
+  [[20, 22]]);
+
+check('a declined option does not block',
+  toBlockedPeriods([{ title: 'Tatort', status: 'declined', startDate: day(20), endDate: day(22) }], { now }),
+  []);
+
+check('an expired option does not block',
+  toBlockedPeriods([{ title: 'Tatort', status: 'expired', startDate: day(20), endDate: day(22) }], { now }),
+  []);
+
+check('a booking with no status at all still blocks',
+  spans(toBlockedPeriods([{ title: 'Dreh', startDate: day(10), endDate: day(10) }], { now })),
+  [[10, 10]]);
+
+// The three collections converge: a booking and an availability entry a day
+// apart are one block, not two, and the platform is told "not available" once.
+check('a booking and an availability entry merge into one block',
+  spans(toBlockedPeriods([
+    booking({ startDate: day(10), endDate: day(11) }),
+    { type: 'unavailable', startDate: day(12), endDate: day(14) }
+  ], { now })),
+  [[10, 14]]);
+
+// And the leak test again, for the shapes that carry the most: a booking knows
+// the production, the role, the fee and where it shoots.
+check('nothing of a booking but its dates leaves the app',
+  Object.keys(toBlockedFormItems([booking({
+    startDate: day(10),
+    endDate: day(12),
+    role: 'Jochen Bauer',
+    fee: '1200 EUR',
+    location: 'Köln',
+    notes: 'Vertrag noch nicht unterschrieben'
+  })], { now })[0]).sort(),
+  ['endDate', 'startDate']);
 
 console.log(`\n${passed}/${passed + failed} passed.`);
 process.exit(failed ? 1 : 0);
