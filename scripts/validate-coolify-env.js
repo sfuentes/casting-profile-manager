@@ -37,7 +37,15 @@ const REQUIRED_VARS = [
   {
     name: 'MONGO_ROOT_PASSWORD',
     description: 'MongoDB root password',
-    example: 'openssl rand -base64 32',
+    // -hex, not -base64. COOLIFY-DEPLOYMENT.md has said so all along and this
+    // script said the opposite. Base64 output contains / + and =, which break a
+    // pre-assembled MONGO_URI - docker-compose.yml, docker-compose.dev.yml and
+    // the Atlas route all use one. The Coolify compose file survives base64 only
+    // because it passes the credentials separately for database.js to URL-encode.
+    // Hex is safe on every one of those paths, which is why it is the single
+    // instruction worth giving. Same 32 random bytes either way - this is about
+    // what survives a connection string, not about strength.
+    example: 'openssl rand -hex 32',
     critical: true,
     validate: (value) => value && value.length >= 12,
     errorMessage: 'Must be at least 12 characters long',
@@ -399,7 +407,7 @@ function printNextSteps() {
 
   console.log(`1. ${colors.bright}Generate secure secrets:${colors.reset}`);
   console.log(`   ${colors.cyan}openssl rand -hex 64${colors.reset}  # For JWT_SECRET`);
-  console.log(`   ${colors.cyan}openssl rand -base64 32${colors.reset}  # For MONGO_ROOT_PASSWORD\n`);
+  console.log(`   ${colors.cyan}openssl rand -hex 32${colors.reset}  # For MONGO_ROOT_PASSWORD\n`);
 
   console.log(`2. ${colors.bright}Set environment variables in Coolify:${colors.reset}`);
   console.log(`   - Go to your Coolify resource`);

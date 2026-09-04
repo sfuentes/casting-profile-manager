@@ -34,3 +34,6 @@ dist-ssr
 
 # JetBrains project files
 *.iml
+
+# graphify knowledge graph output (rebuildable; graph.json is ~1 MB)
+graphify-out/

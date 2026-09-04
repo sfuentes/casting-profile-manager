@@ -42,7 +42,9 @@ echo -e "${BOLD}${CYAN}═══════════════════
 if [ -z "$MONGO_ROOT_PASSWORD" ]; then
     echo -e "${RED}✗ MONGO_ROOT_PASSWORD${NC}"
     echo -e "  ${RED}Missing or empty${NC}"
-    echo -e "  Generate with: ${CYAN}openssl rand -base64 32${NC}\n"
+    # -hex, not -base64: base64 contains / + and =, which break a pre-assembled
+    # MONGO_URI. Full note in validate-coolify-env.js.
+    echo -e "  Generate with: ${CYAN}openssl rand -hex 32${NC}\n"
     ERRORS=$((ERRORS + 1))
 elif [ ${#MONGO_ROOT_PASSWORD} -lt 12 ]; then
     echo -e "${YELLOW}⚠ MONGO_ROOT_PASSWORD${NC}"

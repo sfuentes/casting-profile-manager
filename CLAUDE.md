@@ -134,6 +134,19 @@ Set in the Coolify UI. All are required and fail the deploy if absent:
 `MONGO_ROOT_PASSWORD`, `JWT_SECRET` (`openssl rand -hex 64`), `FRONTEND_URL`,
 `VITE_API_URL`, and `CREDENTIAL_ENCRYPTION_KEY` (`openssl rand -hex 32`, PR #18).
 
+**Generate every secret with `openssl rand -hex`, never `-base64`.** Not because
+hex is stronger - 32 random bytes are 32 random bytes - but because base64
+output contains `/`, `+` and `=`, and those break a pre-assembled `MONGO_URI`
+(`docker-compose.yml`, `docker-compose.dev.yml`, the Atlas route all use one).
+The Coolify compose file survives base64 only because it passes the MongoDB
+credentials separately for `database.js` to URL-encode. Hex is safe on every
+path, so it is the single instruction worth giving.
+
+`scripts/validate-coolify-env.js`, its shell twin and `scripts/README.md` used
+to print `openssl rand -base64 32` for `MONGO_ROOT_PASSWORD` while
+`COOLIFY-DEPLOYMENT.md` warned against exactly that - two documents, one
+variable, opposite instructions. They agree now.
+
 `CREDENTIAL_ENCRYPTION_KEY` is **not recoverable**. Losing or changing it makes
 every stored platform credential undecryptable. It must be exactly 64 hex
 characters — no quotes, no whitespace, not base64. Coolify stores the value
@@ -583,6 +596,15 @@ the platform treating a datacenter address differently from a home one.
 The frontend is Material UI. Tailwind is gone - no classes in `src`, no plugin
 in `vite.config.js`, no config file, nothing in `package.json`. The CSS bundle
 went from 27.5 kB to zero, and `dependencies` is MUI, emotion, lucide and React.
+
+It survived one place longer than that, though: **`package-lock.json` still
+listed `tailwindcss`, `@tailwindcss/vite`, `autoprefixer` and `postcss` in its
+root entry** long after `package.json` had dropped them. Nothing imported them
+and nothing reached the bundle, but the Dockerfile builds with `npm ci`, which
+installs the lock - so every production image still downloaded Tailwind and the
+per-platform `@tailwindcss/oxide` Rust binaries. Removing a dependency means
+regenerating the lock, not only editing `package.json`; `npm ci` did not
+complain, so only reading the lock finds this.
 
 The migration went from the primitives up. `components/ui/` holds seven
 components every view already drew through, so reimplementing those on MUI put
