@@ -85,9 +85,9 @@ docker-start.bat
 - **Logging**: Winston + Morgan
 
 ### Frontend
-- **Framework**: React 18
+- **Framework**: React 19
 - **Build Tool**: Vite
-- **Styling**: Tailwind CSS
+- **Styling**: Material UI (MUI) + Emotion
 - **Icons**: Lucide React
 - **HTTP Client**: Fetch API
 - **State Management**: React Context API

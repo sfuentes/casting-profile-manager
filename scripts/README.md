@@ -90,7 +90,7 @@ npm run validate:coolify
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `MONGO_ROOT_PASSWORD` | MongoDB root password (12+ chars) | `openssl rand -base64 32` |
+| `MONGO_ROOT_PASSWORD` | MongoDB root password (12+ chars) | `openssl rand -hex 32` |
 | `JWT_SECRET` | JWT signing secret (32+ chars) | `openssl rand -hex 64` |
 | `VITE_API_URL` | Backend API URL (must end with `/api`) | `https://api.yourdomain.com/api` |
 | `FRONTEND_URL` | Frontend URL (no trailing slash) | `https://app.yourdomain.com` |
@@ -163,7 +163,7 @@ The validation scripts use standard exit codes:
 
 ✗ MONGO_ROOT_PASSWORD
   Missing or empty
-  Generate with: openssl rand -base64 32
+  Generate with: openssl rand -hex 32
 
 ⚠ JWT_SECRET
   Set but invalid
